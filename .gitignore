@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+server/client/build/
+
+# Environment files
+.env
+.env.local
+.env.production
+server/.env
+
+# Logs
+logs/
+*.log
+server/logs/
+
+# Uploads
+uploads/
+server/uploads/
+
+# Config files with sensitive data
+server/config/smtpConfig.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.amazonq/
+.claude/
+
+# Chat logs
+chat*.md
+.chat*.md
+Chat*.md
+
+# Database exports
+database-exports/
+
+# Docker
+.dockerignore

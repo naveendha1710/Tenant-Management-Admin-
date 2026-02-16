@@ -1,0 +1,394 @@
+import { supabase } from '@/lib/supabase';
+
+export interface Asset {
+  id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_category: string;
+  asset_type?: string;
+  manufacturer?: string;
+  make_model?: string;
+  serial_number?: string;
+  asset_description?: string;
+  asset_spec?: string;
+  asset_value?: number;
+  quantity: number;
+  asset_status: 'Active' | 'Idle' | 'Repair' | 'Scrap';
+  status?: 'Working' | 'Not Working';
+  asset_incharge?: string;
+  purchase_date?: string;
+  warranty_date?: string;
+  pm_date?: string;
+  depreciation_date?: string;
+  depreciation_percentage?: number;
+  last_depreciation_date?: string;
+  comments?: string;
+  asset_picture?: string;
+  contract?: 'Yes' | 'No';
+  vendor_id?: string;
+  
+  sez_classification?: string;
+  sez_status?: 'SEZ' | 'DTA';
+  customs_category?: 'Capital Goods' | 'Consumables' | 'Spares';
+  usage_purpose?: string;
+  
+  vendor_name?: string;
+  po_number?: string;
+  invoice_number?: string;
+  invoice_date?: string;
+  boe_number?: string;
+  boe_date?: string;
+  cif_value?: number;
+  duty_foregone_amount?: number;
+  import_date?: string;
+  customs_location?: string;
+  
+  asset_cost?: number;
+  capitalization_date?: string;
+  depreciation_method?: 'Straight Line' | 'WDV' | 'None';
+  useful_life?: number;
+  net_book_value?: number;
+  cost_center?: string;
+  gl_code?: string;
+  
+  sez_zone?: string;
+  unit?: string;
+  building?: string;
+  floor?: string;
+  room_rack?: string;
+  handover_to?: string;
+  decommission_date?: string;
+  
+  created_at: string;
+  updated_at: string;
+  updated_by?: string;
+  created_by?: string;
+}
+
+export interface AssetMovement {
+  id: string;
+  request_number: string;
+  asset_id: string;
+  movement_type: 'Location' | 'Maintenance' | 'Disposal';
+  movement_date: string;
+  movement_time?: string;
+  expected_return_date?: string;
+  from_building?: string;
+  from_floor?: string;
+  from_room?: string;
+  to_building?: string;
+  to_floor?: string;
+  to_room?: string;
+  vendor_name?: string;
+  vendor_contact?: string;
+  outward_date?: string;
+  expected_inward_date?: string;
+  gate_pass_number?: string;
+  movement_reason?: string;
+  other_reason?: string;
+  remarks?: string;
+  approval_status?: 'Pending' | 'Approved' | 'Rejected';
+  movement_status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
+  actual_movement_date?: string;
+  created_at: string;
+}
+
+export interface AssetMaintenance {
+  id: string;
+  asset_id: string;
+  maintenance_type: 'Preventive' | 'Breakdown';
+  schedule_date?: string;
+  vendor_engineer?: string;
+  amc_reference?: string;
+  sla_time?: number;
+  downtime_hours?: number;
+  repair_cost?: number;
+  next_due_date?: string;
+  maintenance_status: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
+  notes?: string;
+  created_at: string;
+}
+
+export interface AssetAMC {
+  id: string;
+  asset_id: string;
+  vendor_name: string;
+  amc_number: string;
+  start_date: string;
+  end_date: string;
+  amc_value?: number;
+  coverage_details?: string;
+  sla_hours?: number;
+  status: 'Active' | 'Expired' | 'Cancelled';
+  created_at: string;
+}
+
+export interface DashboardStats {
+  totalAssets: number;
+  bondedAssets: number;
+  assetValueGross: number;
+  assetValueNet: number;
+  dutyForegoneAmount: number;
+  pendingApprovals: number;
+  underMaintenance: number;
+  auditDue: number;
+  warrantyExpiring: number;
+  movementToday: number;
+}
+
+export class AssetService {
+  // ==================== ASSETS ====================
+  
+  static async createAsset(assetData: Partial<Asset>): Promise<Asset> {
+    // Get user from localStorage
+    const savedUser = localStorage.getItem('demo_user');
+    const userName = savedUser ? JSON.parse(savedUser).appUser?.name : null;
+    
+    const { data, error } = await supabase
+      .from('assets')
+      .insert({ 
+        ...assetData,
+        created_by: userName 
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+  }
+  
+  static async getAssets(filters?: { status?: string }): Promise<Asset[]> {
+    let query = supabase.from('assets').select('*').order('created_at', { ascending: false });
+    
+    if (filters?.status) query = query.eq('asset_status', filters.status);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    // Auto-process depreciation when loading assets
+    if (data) {
+      await this.autoDepreciate(data);
+    }
+    
+    return data || [];
+  }
+  
+  static async getAssetById(id: string): Promise<Asset> {
+    const { data, error } = await supabase
+      .from('assets')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+  
+  static async updateAsset(id: string, updates: Partial<Asset>): Promise<Asset> {
+    // Get user from localStorage
+    const savedUser = localStorage.getItem('demo_user');
+    const userName = savedUser ? JSON.parse(savedUser).appUser?.name : null;
+    
+    const { data, error } = await supabase
+      .from('assets')
+      .update({ ...updates, updated_by: userName })
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Update error:', error);
+      throw new Error(error.message);
+    }
+    return data;
+  }
+  
+  static async deleteAsset(id: string): Promise<void> {
+    const { error } = await supabase.from('assets').delete().eq('id', id);
+    if (error) throw error;
+  }
+  
+  // ==================== DEPRECIATION ====================
+  
+  private static async autoDepreciate(assets: Asset[]): Promise<void> {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    
+    for (const asset of assets) {
+      if (!asset.depreciation_date || !asset.depreciation_percentage || asset.depreciation_percentage <= 0) continue;
+      if (!asset.asset_value || asset.asset_value <= 0) continue;
+      
+      const depreciationDate = new Date(asset.depreciation_date);
+      const lastDepreciation = asset.last_depreciation_date ? new Date(asset.last_depreciation_date) : null;
+      
+      // Check if depreciation is due (yearly on the depreciation date)
+      const shouldDepreciate = lastDepreciation 
+        ? (currentYear > lastDepreciation.getFullYear() && today >= new Date(currentYear, depreciationDate.getMonth(), depreciationDate.getDate()))
+        : (today >= depreciationDate);
+      
+      if (shouldDepreciate) {
+        const currentValue = asset.asset_value;
+        const depreciationAmount = (currentValue * asset.depreciation_percentage) / 100;
+        const newValue = Math.max(0, currentValue - depreciationAmount);
+        
+        try {
+          await supabase
+            .from('assets')
+            .update({ 
+              asset_value: newValue,
+              last_depreciation_date: today.toISOString().split('T')[0]
+            })
+            .eq('id', asset.id);
+          
+          // Update the asset in the array
+          asset.asset_value = newValue;
+          asset.last_depreciation_date = today.toISOString().split('T')[0];
+        } catch (err) {
+          console.error(`Failed to depreciate asset ${asset.asset_id}:`, err);
+        }
+      }
+    }
+  }
+  
+  static async bulkImportAssets(assets: Partial<Asset>[]): Promise<{ success: number; failed: number }> {
+    let success = 0;
+    let failed = 0;
+    
+    for (const asset of assets) {
+      try {
+        await this.createAsset(asset);
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    
+    return { success, failed };
+  }
+  
+  // ==================== MOVEMENTS ====================
+  
+  static async createMovement(movementData: Partial<AssetMovement>): Promise<AssetMovement> {
+    const requestNumber = `MV-${Date.now()}`;
+    
+    const { data, error } = await supabase
+      .from('asset_movements')
+      .insert({ ...movementData, request_number: requestNumber })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+  
+  static async getMovements(assetId?: string): Promise<AssetMovement[]> {
+    let query = supabase.from('asset_movements').select('*').order('created_at', { ascending: false });
+    
+    if (assetId) query = query.eq('asset_id', assetId);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+  
+  static async updateMovementStatus(id: string, status: string, actualDate?: string): Promise<AssetMovement> {
+    const { data, error } = await supabase
+      .from('asset_movements')
+      .update({ movement_status: status, actual_movement_date: actualDate })
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+  
+  // ==================== MAINTENANCE ====================
+  
+  static async createMaintenance(maintenanceData: Partial<AssetMaintenance>): Promise<AssetMaintenance> {
+    const { data, error } = await supabase
+      .from('asset_maintenance')
+      .insert(maintenanceData)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+  
+  static async getMaintenance(assetId?: string): Promise<AssetMaintenance[]> {
+    let query = supabase.from('asset_maintenance').select('*').order('schedule_date', { ascending: false });
+    
+    if (assetId) query = query.eq('asset_id', assetId);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+  
+  // ==================== AMC ====================
+  
+  static async createAMC(amcData: Partial<AssetAMC>): Promise<AssetAMC> {
+    const { data, error } = await supabase
+      .from('asset_amc')
+      .insert(amcData)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+  
+  static async getAMC(assetId?: string): Promise<AssetAMC[]> {
+    let query = supabase.from('asset_amc').select('*').order('start_date', { ascending: false });
+    
+    if (assetId) query = query.eq('asset_id', assetId);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+  
+  // ==================== DASHBOARD STATS ====================
+  
+  static async getDashboardStats(): Promise<DashboardStats> {
+    const { data: assets } = await supabase.from('assets').select('*');
+    const { data: movements } = await supabase.from('asset_movements').select('*').eq('movement_status', 'Pending');
+    const { data: maintenance } = await supabase.from('asset_maintenance').select('*').in('maintenance_status', ['Scheduled', 'In Progress']);
+    
+    const totalAssets = assets?.length || 0;
+    const bondedAssets = assets?.filter(a => a.sez_status === 'SEZ').length || 0;
+    const assetValueGross = assets?.reduce((sum, a) => sum + (a.asset_value || a.asset_cost || 0), 0) || 0;
+    const assetValueNet = assets?.reduce((sum, a) => sum + (a.net_book_value || 0), 0) || 0;
+    const dutyForegoneAmount = assets?.filter(a => a.sez_status === 'SEZ').reduce((sum, a) => sum + (a.duty_foregone_amount || 0), 0) || 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const movementToday = movements?.filter(m => m.created_at?.startsWith(today)).length || 0;
+    
+    return {
+      totalAssets,
+      bondedAssets,
+      assetValueGross,
+      assetValueNet,
+      dutyForegoneAmount,
+      pendingApprovals: movements?.length || 0,
+      underMaintenance: maintenance?.length || 0,
+      auditDue: 0,
+      warrantyExpiring: 0,
+      movementToday
+    };
+  }
+  
+  // ==================== AUDIT LOGS ====================
+  
+  static async getAuditLogs(assetId: string) {
+    const { data, error } = await supabase
+      .from('asset_audit_logs')
+      .select('*')
+      .eq('asset_id', assetId)
+      .order('changed_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  }
+}

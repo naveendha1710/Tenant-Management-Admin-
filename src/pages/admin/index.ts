@@ -1,0 +1,11 @@
+export { default as ApplicationsPage } from './ApplicationsPage';
+export { default as LeadsPage } from './LeadsPage';
+export { default as SpaceAllocationPage } from './SpaceAllocationPage';
+export { default as BillingPage } from './BillingPage';
+export { default as BuildingsPage } from './BuildingsPage';
+export { default as FloorPlansPage } from './FloorPlansPage';
+export { default as ManageTicketsPage } from './ManageTicketsPage';
+export { default as SettingsPage } from './SettingsPage';
+export { default as AddTenantPage } from './AddTenantPage';
+export { default as ApplicationsApprovalPage } from './ApplicationsApprovalPage';
+export { default as TenantApplications } from './TenantApplications';

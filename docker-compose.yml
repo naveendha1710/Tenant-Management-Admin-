@@ -1,0 +1,20 @@
+services:
+  rathinam-techpark:
+    image: naveen171007/rathinam-techpark:1.5.4
+    container_name: rathinam-techpark
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${UPLOAD_PATH:-./uploads}:/app/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - UPLOAD_PATH=/app/uploads
+      - MAX_FILE_SIZE=209715200
+    restart: unless-stopped
+    networks:
+      - rathinam-network
+
+networks:
+  rathinam-network:
+    driver: bridge

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/Logo/Rathinam College Logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Viewer - Rathinam Techpark</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="docFrame"></iframe>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const docUrl = params.get('url');
+        if (docUrl) {
+            document.getElementById('docFrame').src = decodeURIComponent(docUrl);
+        }
+    </script>
+</body>
+</html>

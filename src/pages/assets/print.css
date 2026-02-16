@@ -1,0 +1,21 @@
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: flex !important;
+  }
+  header, nav, .sidebar, .app-header, .dashboard-header {
+    display: none !important;
+  }
+  body {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}

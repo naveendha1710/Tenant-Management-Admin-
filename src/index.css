@@ -1,0 +1,324 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Advanced Tenant Management SaaS Design System */
+
+@layer base {
+  :root {
+    /* Core Brand Colors - Professional SaaS Palette */
+    --background: 0 0% 100%;
+    --foreground: 221 39% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 221 39% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 221 39% 11%;
+
+    /* Primary Brand - Deep Blue */
+    --primary: 217 91% 25%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 217 91% 20%;
+
+    /* Secondary - Light Blue */
+    --secondary: 214 95% 93%;
+    --secondary-foreground: 217 91% 25%;
+
+    /* Success States */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+    --success-bg: 138 76% 97%;
+
+    /* Warning States */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+    --warning-bg: 48 96% 89%;
+
+    /* Error States */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --destructive-bg: 0 93% 94%;
+
+    /* Neutral System */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 221 39% 11%;
+
+    /* Interactive Elements */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 25%;
+    --radius: 0.5rem;
+
+    /* Dashboard Specific */
+    --dashboard-sidebar: 221 39% 11%;
+    --dashboard-sidebar-foreground: 0 0% 98%;
+    --dashboard-sidebar-accent: 217 91% 25%;
+    --dashboard-nav: 0 0% 98%;
+    --dashboard-nav-border: 214 32% 91%;
+
+    /* Data Visualization */
+    --chart-primary: 217 91% 25%;
+    --chart-secondary: 142 76% 36%;
+    --chart-tertiary: 38 92% 50%;
+    --chart-quaternary: 262 83% 58%;
+    --chart-quinary: 346 77% 49%;
+
+    /* Status Colors */
+    --status-occupied: 0 84% 60%;
+    --status-vacant: 142 76% 36%;
+    --status-blocked: 38 92% 50%;
+    --status-maintenance: 262 83% 58%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 25%) 0%, hsl(217 91% 35%) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 76% 46%) 100%);
+    --gradient-dashboard: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(214 95% 98%) 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+    --shadow-card: 0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+
+    /* Animations */
+    --transition-fast: 150ms ease-in-out;
+    --transition-normal: 250ms ease-in-out;
+    --transition-slow: 350ms ease-in-out;
+
+    /* Sidebar Variables */
+    --sidebar-background: 221 39% 11%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 217 91% 25%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 221 39% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 221 39% 15%;
+    --sidebar-ring: 217 91% 25%;
+  }
+
+  .dark {
+    --background: 221 39% 11%;
+    --foreground: 0 0% 98%;
+
+    --card: 221 39% 11%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 221 39% 11%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 221 39% 11%;
+    --primary-hover: 217 91% 65%;
+
+    --secondary: 221 39% 15%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 221 39% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 221 39% 15%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 221 39% 15%;
+    --input: 221 39% 15%;
+    --ring: 217 91% 60%;
+
+    --dashboard-sidebar: 221 39% 7%;
+    --dashboard-sidebar-foreground: 0 0% 98%;
+    --dashboard-nav: 221 39% 11%;
+
+    --sidebar-background: 221 39% 7%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 221 39% 11%;
+    --sidebar-accent: 221 39% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 221 39% 12%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    @apply h-full overflow-hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Remove number input arrows */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  /* Sidebar Scrollbar Styling */
+  [data-sidebar="content"] {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  [data-sidebar="content"]::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  [data-sidebar="content"]::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  [data-sidebar="content"]::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Mobile Responsive Utilities */
+  .mobile-card {
+    @apply rounded-lg border bg-card p-4 shadow-sm;
+  }
+
+  .mobile-stack {
+    @apply flex flex-col gap-2;
+  }
+
+  .mobile-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4;
+  }
+
+  .mobile-hide {
+    @apply hidden sm:block;
+  }
+
+  .mobile-show {
+    @apply block sm:hidden;
+  }
+
+  .mobile-text {
+    @apply text-sm sm:text-base;
+  }
+
+  .mobile-heading {
+    @apply text-lg sm:text-xl md:text-2xl;
+  }
+
+  /* Responsive Table */
+  .responsive-table {
+    @apply w-full overflow-x-auto;
+  }
+
+  .responsive-table table {
+    @apply min-w-full;
+  }
+
+  /* Mobile Button Adjustments */
+  .mobile-btn {
+    @apply text-xs sm:text-sm px-2 sm:px-4 py-1.5 sm:py-2;
+  }
+
+  /* Mobile Padding */
+  .mobile-p {
+    @apply p-3 sm:p-4 md:p-6;
+  }
+
+  .mobile-px {
+    @apply px-3 sm:px-4 md:px-6;
+  }
+
+  .mobile-py {
+    @apply py-3 sm:py-4 md:py-6;
+  }
+}
+
+.buildings-bg {
+  background-image: 
+    /* Tall skyscrapers */
+    linear-gradient(to top, transparent 20%, #60a5fa 20%, #60a5fa 21%, transparent 21%),
+    linear-gradient(to top, transparent 15%, #60a5fa 15%, #60a5fa 16%, transparent 16%),
+    linear-gradient(to top, transparent 10%, #60a5fa 10%, #60a5fa 11%, transparent 11%),
+    /* Medium buildings */
+    linear-gradient(to top, transparent 40%, #60a5fa 40%, #60a5fa 41%, transparent 41%),
+    linear-gradient(to top, transparent 35%, #60a5fa 35%, #60a5fa 36%, transparent 36%),
+    linear-gradient(to top, transparent 45%, #60a5fa 45%, #60a5fa 46%, transparent 46%),
+    linear-gradient(to top, transparent 30%, #60a5fa 30%, #60a5fa 31%, transparent 31%),
+    /* Short buildings */
+    linear-gradient(to top, transparent 60%, #60a5fa 60%, #60a5fa 61%, transparent 61%),
+    linear-gradient(to top, transparent 55%, #60a5fa 55%, #60a5fa 56%, transparent 56%),
+    linear-gradient(to top, transparent 65%, #60a5fa 65%, #60a5fa 66%, transparent 66%),
+    linear-gradient(to top, transparent 50%, #60a5fa 50%, #60a5fa 51%, transparent 51%),
+    /* Very tall center building */
+    linear-gradient(to top, transparent 5%, #60a5fa 5%, #60a5fa 6%, transparent 6%),
+    /* Additional variety */
+    linear-gradient(to top, transparent 25%, #60a5fa 25%, #60a5fa 26%, transparent 26%),
+    linear-gradient(to top, transparent 70%, #60a5fa 70%, #60a5fa 71%, transparent 71%),
+    linear-gradient(to top, transparent 38%, #60a5fa 38%, #60a5fa 39%, transparent 39%);
+  background-size: 
+    60px 100%, 80px 100%, 120px 100%, 90px 100%, 70px 100%,
+    100px 100%, 110px 100%, 50px 100%, 85px 100%, 40px 100%,
+    95px 100%, 150px 100%, 75px 100%, 35px 100%, 65px 100%;
+  background-position: 
+    2% bottom, 8% bottom, 15% bottom, 25% bottom, 32% bottom,
+    40% bottom, 48% bottom, 55% bottom, 62% bottom, 68% bottom,
+    75% bottom, 82% bottom, 88% bottom, 93% bottom, 97% bottom;
+  background-repeat: no-repeat;
+}
+
+/* Mobile Responsive Tables */
+@media (max-width: 640px) {
+  .mobile-table-card {
+    display: block;
+  }
+
+  .mobile-table-card thead {
+    display: none;
+  }
+
+  .mobile-table-card tbody,
+  .mobile-table-card tr {
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .mobile-table-card tr {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background: hsl(var(--card));
+  }
+
+  .mobile-table-card td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .mobile-table-card td:last-child {
+    border-bottom: none;
+  }
+
+  .mobile-table-card td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    margin-right: 1rem;
+  }
+}
