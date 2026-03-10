@@ -1,13 +1,34 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useState, useEffect, useRef } from 'react';
-import { QrCode, CheckCircle2, XCircle, Eye, ArrowRight, Camera, X } from 'lucide-react';
+import { QrCode, CheckCircle2, XCircle, Eye, ArrowRight, Camera, X, Calendar, MapPin } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Pagination } from '@/components/ui/pagination';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useGPSCapture } from '@/hooks/useGPSCapture';
 
 type Condition = 'Good' | 'Damaged' | 'Scrap';
 type AuditResult = 'Pass' | 'Issues';
+
+// Convert decimal degrees to DMS format
+const convertToDMS = (lat: number, lng: number): string => {
+  const latDir = lat >= 0 ? 'N' : 'S';
+  const lngDir = lng >= 0 ? 'E' : 'W';
+  
+  const latAbs = Math.abs(lat);
+  const lngAbs = Math.abs(lng);
+  
+  const latDeg = Math.floor(latAbs);
+  const latMin = Math.floor((latAbs - latDeg) * 60);
+  const latSec = ((latAbs - latDeg - latMin / 60) * 3600).toFixed(1);
+  
+  const lngDeg = Math.floor(lngAbs);
+  const lngMin = Math.floor((lngAbs - lngDeg) * 60);
+  const lngSec = ((lngAbs - lngDeg - lngMin / 60) * 3600).toFixed(1);
+  
+  return `${latDeg}°${latMin}'${latSec}"${latDir} ${lngDeg}°${lngMin}'${lngSec}"${lngDir}`;
+};
 
 interface Asset {
   id: string;
@@ -35,6 +56,9 @@ interface AuditHistory {
   location_match: boolean;
   tenant_match: boolean;
   serial_match: boolean;
+  gps_latitude?: number;
+  gps_longitude?: number;
+  gps_accuracy?: number;
 }
 
 export default function PhysicalAuditModule() {
@@ -59,9 +83,13 @@ export default function PhysicalAuditModule() {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const [todayAssets, setTodayAssets] = useState<any[]>([]);
+  const [loadingToday, setLoadingToday] = useState(true);
+  const { coordinates, error: gpsError, loading: gpsLoading, captureLocation, reset: resetGPS } = useGPSCapture();
 
   useEffect(() => {
     fetchAuditHistory();
+    loadTodayAuditAssets();
   }, []);
 
   useEffect(() => {
@@ -127,8 +155,82 @@ export default function PhysicalAuditModule() {
     if (data) setAuditHistory(data);
   };
 
+  const loadTodayAuditAssets = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get assets scheduled for today OR overdue (past dates)
+      const { data: pmSchedules } = await supabase
+        .from('preventive_maintenance')
+        .select('asset_id, pm_next_date')
+        .eq('pm_enabled', true)
+        .lte('pm_next_date', today);
+
+      if (!pmSchedules || pmSchedules.length === 0) {
+        setTodayAssets([]);
+        setLoadingToday(false);
+        return;
+      }
+
+      const assetIds = pmSchedules.map(pm => pm.asset_id);
+      
+      const { data: assets } = await supabase
+        .from('assets')
+        .select(`
+          id,
+          asset_id,
+          asset_name,
+          asset_category,
+          serial_number,
+          status,
+          building,
+          floor,
+          room_rack,
+          handover_to
+        `)
+        .in('id', assetIds);
+
+      if (!assets) {
+        setTodayAssets([]);
+        setLoadingToday(false);
+        return;
+      }
+
+      const buildingIds = [...new Set(assets.map(a => a.building).filter(Boolean))];
+      const floorIds = [...new Set(assets.map(a => a.floor).filter(Boolean))];
+      const tenantIds = [...new Set(assets.map(a => a.handover_to).filter(Boolean))];
+
+      const [{ data: buildings }, { data: floors }, { data: tenants }] = await Promise.all([
+        supabase.from('buildings').select('id, name').in('id', buildingIds),
+        supabase.from('floors').select('id, floor_name, floor_number').in('id', floorIds),
+        supabase.from('tenants').select('id, company, name').in('id', tenantIds)
+      ]);
+
+      const buildingMap = new Map(buildings?.map(b => [b.id, b.name]) || []);
+      const floorMap = new Map(floors?.map(f => [f.id, f.floor_name || f.floor_number]) || []);
+      const tenantMap = new Map(tenants?.map(t => [t.id, t.company || t.name]) || []);
+
+      const formattedAssets = assets.map(asset => ({
+        ...asset,
+        building_name: buildingMap.get(asset.building) || 'N/A',
+        floor_name: floorMap.get(asset.floor) || 'N/A',
+        tenant_name: tenantMap.get(asset.handover_to) || 'Unassigned'
+      }));
+
+      setTodayAssets(formattedAssets);
+    } catch (error) {
+      console.error('Failed to load today audit assets:', error);
+    } finally {
+      setLoadingToday(false);
+    }
+  };
+
   const validateAndShowAsset = async (scannedId: string) => {
     setLoading(true);
+    
+    // Capture GPS immediately
+    captureLocation();
+    
     const { data: asset, error } = await supabase
       .from('assets')
       .select('id, asset_id, asset_name, asset_category, asset_type, serial_number, asset_picture, building, floor, room_rack')
@@ -139,6 +241,7 @@ export default function PhysicalAuditModule() {
       alert('Asset not found in Asset Master!');
       setAssetId('');
       setLoading(false);
+      resetGPS();
       return;
     }
 
@@ -184,6 +287,11 @@ export default function PhysicalAuditModule() {
   const handleRecordAudit = async () => {
     if (!assetId.trim()) return;
     
+    if (!coordinates) {
+      alert('GPS location is required for physical audit. Please wait for location to be captured.');
+      return;
+    }
+    
     setLoading(true);
     const { error } = await supabase.from('physical_audits').insert({
       asset_id: assetId,
@@ -196,10 +304,34 @@ export default function PhysicalAuditModule() {
       audit_result: auditResult,
       remarks,
       audit_date: new Date().toISOString(),
-      auditor_name: user?.email || 'Unknown'
+      auditor_name: user?.email || 'Unknown',
+      gps_latitude: coordinates?.latitude,
+      gps_longitude: coordinates?.longitude,
+      gps_accuracy: coordinates?.accuracy
     });
 
     if (!error) {
+      // Update PM schedule: set last completed date and calculate next date
+      const { data: pmData } = await supabase
+        .from('preventive_maintenance')
+        .select('pm_frequency_days, pm_next_date')
+        .eq('asset_id', assetDetails?.id)
+        .single();
+
+      if (pmData) {
+        const nextDate = new Date();
+        nextDate.setDate(nextDate.getDate() + pmData.pm_frequency_days);
+        
+        await supabase
+          .from('preventive_maintenance')
+          .update({
+            pm_last_completed_date: new Date().toISOString().split('T')[0],
+            pm_next_date: nextDate.toISOString().split('T')[0],
+            updated_by: user?.email
+          })
+          .eq('asset_id', assetDetails?.id);
+      }
+
       setAssetId('');
       setScanned(false);
       setAssetDetails(null);
@@ -211,7 +343,9 @@ export default function PhysicalAuditModule() {
       setCondition('Good');
       setAuditResult('Pass');
       setRemarks('');
+      resetGPS();
       fetchAuditHistory();
+      loadTodayAuditAssets();
       alert('Audit recorded successfully!');
     }
     setLoading(false);
@@ -454,6 +588,39 @@ export default function PhysicalAuditModule() {
                 ))}
               </div>
 
+              {/* GPS Capture - Auto captured */}
+              <div className="mt-6">
+                <label className="block text-xs font-medium text-gray-500 uppercase mb-2">GPS Location <span className="text-red-500">*</span></label>
+                {gpsLoading ? (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-sm font-medium text-blue-700">Capturing GPS location...</span>
+                    </div>
+                  </div>
+                ) : coordinates ? (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin className="h-4 w-4 text-green-600" />
+                      <span className="text-xs font-semibold text-green-700 uppercase">Location Captured</span>
+                    </div>
+                    <p className="text-sm text-gray-700 font-mono">{convertToDMS(coordinates.latitude, coordinates.longitude)}</p>
+                    <p className="text-xs text-gray-500 mt-1">Accuracy: ±{coordinates.accuracy.toFixed(1)}m</p>
+                  </div>
+                ) : gpsError ? (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700 font-medium mb-2">⚠️ Location Required</p>
+                    <p className="text-xs text-red-600">{gpsError.message}</p>
+                    <button
+                      onClick={captureLocation}
+                      className="mt-3 w-full px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700"
+                    >
+                      Retry GPS Capture
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               {/* Remarks */}
               <div className="mt-6">
                 <label className="block text-xs font-medium text-gray-500 uppercase mb-2">Remarks</label>
@@ -520,18 +687,35 @@ export default function PhysicalAuditModule() {
               {/* Submit Button */}
               <button
                 onClick={handleRecordAudit}
-                disabled={loading}
+                disabled={loading || gpsLoading || !coordinates}
                 className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                {loading ? 'Submitting...' : 'Submit Audit & Update Maintenance'}
+                {loading ? 'Submitting...' : gpsLoading ? 'Waiting for GPS...' : 'Submit Audit & Update Maintenance'}
               </button>
+              {!coordinates && !gpsLoading && (
+                <p className="text-xs text-center text-red-600 mt-2 font-medium">
+                  ⚠️ GPS location is required to submit audit
+                </p>
+              )}
             </div>
           </div>
         )}
 
         {/* Audit History Card - Only show when no asset is being audited */}
         {!assetDetails && !showAuditForm && (
-          <div className="mt-6 rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
+          <Tabs defaultValue="history" className="w-full mt-6">
+            <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+              <TabsTrigger value="history" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                Audit History
+              </TabsTrigger>
+              <TabsTrigger value="day-audit" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                <Calendar className="h-4 w-4 mr-2" />
+                Day Audit
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="history" className="mt-4">
+          <div className="rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
             <div className="p-4 md:p-6 border-b border-gray-200">
               <h2 className="text-xs md:text-sm font-semibold text-gray-600 uppercase tracking-wide">Audit History</h2>
             </div>
@@ -610,6 +794,82 @@ export default function PhysicalAuditModule() {
             )}
           </div>
         </div>
+            </TabsContent>
+
+            <TabsContent value="day-audit" className="mt-4">
+              <div className="bg-white rounded-lg border border-gray-200">
+                <div className="px-6 py-4 border-b bg-blue-50">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-gray-900">Today's Physical Audits (Due & Overdue)</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                </div>
+
+                {loadingToday ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : todayAssets.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No assets scheduled for physical audit today</p>
+                    <p className="text-xs text-gray-400 mt-1">Check the Preventive Maintenance schedule</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Asset Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Serial Number</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tenant</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {todayAssets.map((asset) => (
+                          <tr key={asset.id} className="border-b hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-medium text-gray-900">{asset.asset_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{asset.asset_category}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{asset.serial_number || 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {asset.building_name} / {asset.floor_name}
+                              {asset.room_rack && ` / ${asset.room_rack}`}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{asset.tenant_name}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                asset.status === 'Working' ? 'bg-green-100 text-green-700' :
+                                asset.status === 'Not Working' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {asset.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setShowScanModal(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                              >
+                                <QrCode className="h-4 w-4" />
+                                Audit
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
 
         {/* View Audit Modal */}
@@ -697,6 +957,30 @@ export default function PhysicalAuditModule() {
                   <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Remarks</label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">{viewingAudit.remarks || 'No remarks'}</p>
                 </div>
+
+                {viewingAudit.gps_latitude && viewingAudit.gps_longitude && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 uppercase mb-1">GPS Location</label>
+                    <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <MapPin className="h-4 w-4 text-blue-600" />
+                        <span className="text-xs font-semibold text-blue-700">Audit Location</span>
+                      </div>
+                      <p className="text-sm text-gray-700"><span className="font-medium">Latitude:</span> {viewingAudit.gps_latitude.toFixed(6)}</p>
+                      <p className="text-sm text-gray-700"><span className="font-medium">Longitude:</span> {viewingAudit.gps_longitude.toFixed(6)}</p>
+                      <p className="text-sm text-gray-700"><span className="font-medium">Accuracy:</span> ±{viewingAudit.gps_accuracy?.toFixed(1)}m</p>
+                      <a
+                        href={`https://www.google.com/maps?q=${viewingAudit.gps_latitude},${viewingAudit.gps_longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        <MapPin className="h-3 w-3" />
+                        View on Google Maps
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={() => setViewingAudit(null)}

@@ -9,10 +9,15 @@ import { AssetService, DashboardStats, Asset } from '@/services/assetService';
 import { buildingService, Building, Floor } from '@/services/buildingService';
 import { AppSettingsService } from '@/services/appSettingsService';
 import { supabase } from '@/lib/supabaseClient';
-import { Package, DollarSign, Wrench, TrendingUp, Bell, X, Save, Ticket } from 'lucide-react';
+import { Package, DollarSign, Wrench, TrendingUp, Bell, X, Save, Ticket, Check, ChevronsUpDown, FileSpreadsheet, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AssetList from './AssetList';
 import { QRCodeSVG } from 'qrcode.react';
+import { Combobox } from '@/components/ui/combobox';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useAssetExport } from '@/hooks/useAssetExport';
+import { generateAssetExcelReport } from '@/utils/assetExport';
 
 const ASSET_TYPE_MAPPING: Record<string, string[]> = {
   'IT Equipment': ['Laptop', 'Desktop', 'Monitor', 'Printer', 'Server'],
@@ -31,7 +36,10 @@ export default function AssetMaster() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
   const [allAssetTypes, setAllAssetTypes] = useState<string[]>([]);
+  const [allManufacturers, setAllManufacturers] = useState<string[]>([]);
   const [assetTypes, setAssetTypes] = useState<string[]>([]);
+  const [assetCombinations, setAssetCombinations] = useState<any[]>([]);
+  const [assetSubCategories, setAssetSubCategories] = useState<string[]>([]);
   const [assetStatuses, setAssetStatuses] = useState<string[]>([]);
   const [sezStatuses, setSezStatuses] = useState<string[]>([]);
   const [customsCategories, setCustomsCategories] = useState<string[]>([]);
@@ -44,6 +52,37 @@ export default function AssetMaster() {
   const [generatedAssetId, setGeneratedAssetId] = useState('');
   const [assetTickets, setAssetTickets] = useState<any[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [assetAudits, setAssetAudits] = useState<any[]>([]);
+  const [loadingAudits, setLoadingAudits] = useState(false);
+  const [assetHistory, setAssetHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [assetMovements, setAssetMovements] = useState<any[]>([]);
+  const [loadingMovements, setLoadingMovements] = useState(false);
+  const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
+  const [bulkGeneration, setBulkGeneration] = useState(false);
+  const [bulkQuantity, setBulkQuantity] = useState('');
+  const [bulkAssetIds, setBulkAssetIds] = useState<string[]>([]);
+  const [duplicateIds, setDuplicateIds] = useState<string[]>([]);
+  const [assetInchargeUsers, setAssetInchargeUsers] = useState<any[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [sortOrder, setSortOrder] = useState('asc');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubCategory, setFilterSubCategory] = useState('');
+  const [filterSubCategories, setFilterSubCategories] = useState<string[]>([]);
+  const [filterType, setFilterType] = useState('');
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterBuilding, setFilterBuilding] = useState('');
+  const [filterFloor, setFilterFloor] = useState('');
+  const [filterFloors, setFilterFloors] = useState<Floor[]>([]);
+  const [filterCombinations, setFilterCombinations] = useState<any[]>([]);
+  const [filterColor, setFilterColor] = useState('');
+  const [filterMaterial, setFilterMaterial] = useState('');
+  const [filterSize, setFilterSize] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showCategoryCards, setShowCategoryCards] = useState(false);
+  const { fetchAssetsForExport, loading: exportLoading } = useAssetExport();
   const { toast } = useToast();
   const [formData, setFormData] = useState<Partial<Asset>>({
     asset_name: '',
@@ -58,14 +97,15 @@ export default function AssetMaster() {
     loadBuildings();
     loadAssetSettings();
     loadTenants();
+    loadAssetInchargeUsers();
+    loadAssets();
   }, []);
 
   useEffect(() => {
-    if (formData.asset_category && formData.asset_type && !editingAsset) {
-      // Wait a bit to ensure config is loaded
+    if (formData.asset_category && formData.asset_sub_category && !editingAsset) {
       setTimeout(() => generateAssetId(), 100);
     }
-  }, [formData.asset_category, formData.asset_type]);
+  }, [formData.asset_category, formData.asset_sub_category]);
 
   useEffect(() => {
     if (showForm && !editingAsset) {
@@ -87,16 +127,183 @@ export default function AssetMaster() {
   }, [formData.building]);
 
   useEffect(() => {
+    if (filterBuilding && filterBuilding !== 'all') {
+      loadFilterFloors(filterBuilding);
+    } else {
+      setFilterFloors([]);
+      setFilterFloor('');
+    }
+  }, [filterBuilding]);
+
+  useEffect(() => {
+    if (filterCategory && filterCategory !== 'all') {
+      const config = (window as any).assetDropdownConfig || [];
+      const category = config.find((c: any) => c.name === filterCategory);
+      const subTypes = category?.subTypes?.map((st: any) => st.name) || [];
+      setFilterSubCategories(subTypes);
+    } else {
+      setFilterSubCategories([]);
+      setFilterSubCategory('');
+      setFilterTypes([]);
+      setFilterType('');
+    }
+  }, [filterCategory]);
+
+  useEffect(() => {
+    if (filterSubCategory && filterSubCategory !== 'all') {
+      const config = (window as any).assetDropdownConfig || [];
+      const category = config.find((c: any) => c.name === filterCategory);
+      const subCategory = category?.subTypes?.find((st: any) => st.name === filterSubCategory);
+      const subSubTypes = subCategory?.subTypes?.map((sst: any) => sst.name) || [];
+      setFilterTypes(subSubTypes);
+    } else {
+      setFilterTypes([]);
+      setFilterType('');
+      setFilterCombinations([]);
+      setFilterColor('');
+      setFilterMaterial('');
+      setFilterSize('');
+    }
+  }, [filterSubCategory]);
+
+  useEffect(() => {
+    if (filterType && filterType !== 'all') {
+      loadFilterCombinations(filterType);
+    } else {
+      setFilterCombinations([]);
+      setFilterColor('');
+      setFilterMaterial('');
+      setFilterSize('');
+    }
+  }, [filterType]);
+
+  useEffect(() => {
     if (formData.asset_category) {
       const config = (window as any).assetDropdownConfig || [];
       const category = config.find((c: any) => c.name === formData.asset_category);
       const subTypes = category?.subTypes?.map((st: any) => st.name) || [];
-      setAssetTypes(subTypes);
-      if (!subTypes.includes(formData.asset_type || '')) {
+      setAssetSubCategories(subTypes);
+      if (!subTypes.includes(formData.asset_sub_category || '')) {
+        updateField('asset_sub_category', '');
         updateField('asset_type', '');
       }
     }
   }, [formData.asset_category]);
+
+  useEffect(() => {
+    if (formData.asset_sub_category) {
+      const config = (window as any).assetDropdownConfig || [];
+      const category = config.find((c: any) => c.name === formData.asset_category);
+      const subCategory = category?.subTypes?.find((st: any) => st.name === formData.asset_sub_category);
+      const subSubTypes = subCategory?.subTypes?.map((sst: any) => sst.name) || [];
+      setAssetTypes(subSubTypes);
+      if (!subSubTypes.includes(formData.asset_type || '')) {
+        updateField('asset_type', '');
+        updateField('asset_combination', '');
+      }
+    }
+  }, [formData.asset_sub_category]);
+
+  useEffect(() => {
+    if (formData.asset_type) {
+      loadAssetCombinations(formData.asset_type);
+    } else {
+      setAssetCombinations([]);
+      updateField('asset_combination', '');
+    }
+  }, [formData.asset_type]);
+
+  useEffect(() => {
+    if (bulkGeneration && formData.asset_category && formData.asset_sub_category && bulkQuantity && parseInt(bulkQuantity) > 0) {
+      generateBulkAssetIds();
+    } else {
+      setBulkAssetIds([]);
+      setDuplicateIds([]);
+    }
+  }, [bulkGeneration, bulkQuantity, formData.asset_category, formData.asset_sub_category]);
+
+  const generateBulkAssetIds = async () => {
+    try {
+      const { data: config } = await supabase
+        .from('id_configs')
+        .select('*')
+        .eq('entity_type', 'asset')
+        .eq('is_active', true)
+        .single();
+
+      if (!config) return;
+
+      const configData = (window as any).assetDropdownConfig || [];
+      const category = configData.find((c: any) => c.name === formData.asset_category);
+      const subCategory = category?.subTypes?.find((st: any) => st.name === formData.asset_sub_category);
+
+      const { data: existingAssets } = await supabase
+        .from('assets')
+        .select('asset_id')
+        .eq('asset_category', formData.asset_category)
+        .eq('asset_sub_category', formData.asset_sub_category);
+
+      let maxSeq = 0;
+      const existingIds = new Set<string>();
+      
+      if (existingAssets) {
+        existingAssets.forEach(asset => {
+          if (asset.asset_id) {
+            existingIds.add(asset.asset_id);
+            const parts = asset.asset_id.split(config.separator);
+            const seqStr = parts[parts.length - 1];
+            const seq = parseInt(seqStr, 10);
+            if (!isNaN(seq) && seq > maxSeq) {
+              maxSeq = seq;
+            }
+          }
+        });
+      }
+
+      const newIds: string[] = [];
+      const duplicates: string[] = [];
+      const sep = config.separator;
+
+      for (let i = 0; i < parseInt(bulkQuantity); i++) {
+        const nextNum = maxSeq + i + 1;
+        const num = nextNum.toString().padStart(config.digits, '0');
+        
+        let assetId = '';
+        switch (config.structure) {
+          case 'cat-type-seq':
+            assetId = `${category?.code || 'CAT'}${sep}${subCategory?.code || 'SUB'}${sep}${num}`;
+            break;
+          case 'cat-year-seq':
+            assetId = `${category?.code || 'CAT'}${sep}${new Date().getFullYear()}${sep}${num}`;
+            break;
+          case 'type-seq':
+            assetId = `${subCategory?.code || 'SUB'}${sep}${num}`;
+            break;
+          case 'cat-seq':
+            assetId = `${category?.code || 'CAT'}${sep}${num}`;
+            break;
+          case 'year-seq':
+            assetId = `${new Date().getFullYear()}${sep}${num}`;
+            break;
+          case 'seq-only':
+            assetId = num;
+            break;
+          default:
+            assetId = `${category?.code || 'CAT'}${sep}${subCategory?.code || 'SUB'}${sep}${num}`;
+        }
+
+        newIds.push(assetId);
+        if (existingIds.has(assetId)) {
+          duplicates.push(assetId);
+        }
+      }
+
+      setBulkAssetIds(newIds);
+      setDuplicateIds(duplicates);
+    } catch (error) {
+      console.error('Failed to generate bulk asset IDs:', error);
+    }
+  };
 
 
 
@@ -121,6 +328,11 @@ export default function AssetMaster() {
     setFloors(data);
   };
 
+  const loadFilterFloors = async (buildingId: string) => {
+    const data = await buildingService.getFloorsByBuilding(buildingId);
+    setFilterFloors(data);
+  };
+
   const loadAssetSettings = async () => {
     try {
       const { data: cats, error: catsError } = await supabase
@@ -137,6 +349,13 @@ export default function AssetMaster() {
         .eq('form_type', 'asset');
 
       if (subsError) throw subsError;
+
+      const { data: subSubs, error: subSubsError } = await supabase
+        .from('form_sub_subcategories')
+        .select('*')
+        .eq('form_type', 'asset');
+
+      if (subSubsError) throw subSubsError;
 
       const { data: mfrs, error: mfrsError } = await supabase
         .from('form_options')
@@ -169,7 +388,11 @@ export default function AssetMaster() {
         code: cat.short_code,
         subTypes: subs?.filter(s => s.category_id === cat.id).map(s => ({
           name: s.name,
-          code: s.short_code
+          code: s.short_code,
+          subTypes: subSubs?.filter(ss => ss.subcategory_id === s.id).map(ss => ({
+            name: ss.name,
+            code: ss.short_code
+          })) || []
         })) || [],
         manufacturers: mfrs?.filter(m => m.category_id === cat.id).map(m => m.name) || []
       })) || [];
@@ -178,8 +401,11 @@ export default function AssetMaster() {
       const types = configData.flatMap((cat: any) => 
         (cat.subTypes || []).map((st: any) => st.name)
       );
+      const allMfrs = mfrs?.map(m => m.name) || [];
       setAssetCategories(categories);
       setAllAssetTypes(types);
+      setAllManufacturers(allMfrs);
+      setAssetStatuses(assetStatusData?.map(s => s.name) || []);
       setAssetStatuses(assetStatusData?.map(s => s.name) || []);
       setSezStatuses(sezStatusData?.map(s => s.name) || []);
       setCustomsCategories(customsCategoryData?.map(s => s.name) || []);
@@ -222,6 +448,103 @@ export default function AssetMaster() {
     }
   };
 
+  const loadAssetCombinations = async (assetType: string) => {
+    try {
+      // First get the sub_subcategory_id for the asset type
+      const { data: subSubCategory } = await supabase
+        .from('form_sub_subcategories')
+        .select('id')
+        .eq('name', assetType)
+        .eq('form_type', 'asset')
+        .single();
+      
+      if (!subSubCategory) {
+        setAssetCombinations([]);
+        return;
+      }
+      
+      // Get all combinations for this sub-subcategory
+      const { data: combinations } = await supabase
+        .from('sub_subcategory_combinations')
+        .select('*')
+        .eq('sub_subcategory_id', subSubCategory.id)
+        .eq('is_active', true);
+      
+      if (combinations) {
+        // Format combinations for display
+        const formattedCombinations = combinations.map(combo => ({
+          id: combo.id,
+          label: `${combo.color || 'N/A'} | ${combo.material || 'N/A'} | ${combo.size || 'N/A'}`,
+          value: combo.id,
+          color: combo.color,
+          material: combo.material,
+          size: combo.size
+        }));
+        setAssetCombinations(formattedCombinations);
+      } else {
+        setAssetCombinations([]);
+      }
+    } catch (error) {
+      console.error('Failed to load asset combinations:', error);
+      setAssetCombinations([]);
+    }
+  };
+
+  const loadFilterCombinations = async (assetType: string) => {
+    try {
+      const { data: subSubCategory } = await supabase
+        .from('form_sub_subcategories')
+        .select('id')
+        .eq('name', assetType)
+        .eq('form_type', 'asset')
+        .single();
+      
+      if (!subSubCategory) {
+        setFilterCombinations([]);
+        return;
+      }
+      
+      const { data: combinations } = await supabase
+        .from('sub_subcategory_combinations')
+        .select('*')
+        .eq('sub_subcategory_id', subSubCategory.id)
+        .eq('is_active', true);
+      
+      if (combinations) {
+        setFilterCombinations(combinations);
+      } else {
+        setFilterCombinations([]);
+      }
+    } catch (error) {
+      console.error('Failed to load filter combinations:', error);
+      setFilterCombinations([]);
+    }
+  };
+
+  const loadAssetInchargeUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('asset_incharge', true)
+        .eq('is_active', true);
+      
+      if (error) return;
+      if (data) setAssetInchargeUsers(data);
+    } catch (error) {
+      console.error('Failed to load asset incharge users:', error);
+    }
+  };
+
+  const loadAssets = async () => {
+    try {
+      const data = await AssetService.getAssets();
+      setAssets(data);
+    } catch (error) {
+      console.error('Failed to load assets:', error);
+    }
+  };
+
   const generateAssetId = async () => {
     try {
       const configData = (window as any).assetDropdownConfig || [];
@@ -245,15 +568,31 @@ export default function AssetMaster() {
       }
 
       const category = configData.find((c: any) => c.name === formData.asset_category);
-      const subType = category?.subTypes?.find((st: any) => st.name === formData.asset_type);
+      const subCategory = category?.subTypes?.find((st: any) => st.name === formData.asset_sub_category);
+      const subType = subCategory?.subTypes?.find((sst: any) => sst.name === formData.asset_type);
 
-      const { count } = await supabase
+      const { data: existingAssets } = await supabase
         .from('assets')
-        .select('*', { count: 'exact', head: true })
+        .select('asset_id')
         .eq('asset_category', formData.asset_category)
-        .eq('asset_type', formData.asset_type);
+        .eq('asset_sub_category', formData.asset_sub_category);
 
-      const nextNum = (count || 0) + config.start_value;
+      // Extract sequence numbers from existing asset IDs
+      let maxSeq = 0;
+      if (existingAssets && existingAssets.length > 0) {
+        existingAssets.forEach(asset => {
+          if (asset.asset_id) {
+            const parts = asset.asset_id.split(config.separator);
+            const seqStr = parts[parts.length - 1];
+            const seq = parseInt(seqStr, 10);
+            if (!isNaN(seq) && seq > maxSeq) {
+              maxSeq = seq;
+            }
+          }
+        });
+      }
+
+      const nextNum = maxSeq + 1;
       const num = nextNum.toString().padStart(config.digits, '0');
       const sep = config.separator;
       const year = new Date().getFullYear();
@@ -261,13 +600,13 @@ export default function AssetMaster() {
       let assetId = '';
       switch (config.structure) {
         case 'cat-type-seq':
-          assetId = `${category?.code || 'CAT'}${sep}${subType?.code || 'TYP'}${sep}${num}`;
+          assetId = `${category?.code || 'CAT'}${sep}${subCategory?.code || 'SUB'}${sep}${num}`;
           break;
         case 'cat-year-seq':
           assetId = `${category?.code || 'CAT'}${sep}${year}${sep}${num}`;
           break;
         case 'type-seq':
-          assetId = `${subType?.code || 'TYP'}${sep}${num}`;
+          assetId = `${subCategory?.code || 'SUB'}${sep}${num}`;
           break;
         case 'cat-seq':
           assetId = `${category?.code || 'CAT'}${sep}${num}`;
@@ -279,7 +618,7 @@ export default function AssetMaster() {
           assetId = num;
           break;
         default:
-          assetId = `${category?.code || 'CAT'}${sep}${subType?.code || 'TYP'}${sep}${num}`;
+          assetId = `${category?.code || 'CAT'}${sep}${subCategory?.code || 'SUB'}${sep}${num}`;
       }
 
       setGeneratedAssetId(assetId);
@@ -300,6 +639,8 @@ export default function AssetMaster() {
     setEditingAsset(null);
     setViewMode(false);
     setGeneratedAssetId('');
+    setBulkGeneration(false);
+    setBulkQuantity('');
     setShowForm(true);
   };
 
@@ -310,12 +651,146 @@ export default function AssetMaster() {
     setShowForm(true);
   };
 
-  const handleView = (asset: Asset) => {
+  const handleView = async (asset: Asset) => {
     setFormData(asset);
     setEditingAsset(asset);
     setViewMode(true);
     setShowForm(true);
     loadAssetTickets(asset.id);
+    loadAssetAudits(asset.asset_id);
+    loadAssetHistory(asset.id);
+    loadAssetMovements(asset.asset_id);
+  };
+
+  const loadAssetAudits = async (assetId: string) => {
+    setLoadingAudits(true);
+    try {
+      const { data, error } = await supabase
+        .from('physical_audits')
+        .select('*')
+        .eq('asset_id', assetId)
+        .order('audit_date', { ascending: false });
+      
+      if (!error && data) {
+        setAssetAudits(data);
+      }
+    } catch (error) {
+      console.error('Failed to load asset audits:', error);
+    } finally {
+      setLoadingAudits(false);
+    }
+  };
+
+  const loadAssetHistory = async (assetId: string) => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from('asset_history')
+        .select('*')
+        .eq('asset_id', assetId)
+        .order('changed_at', { ascending: false });
+      
+      if (!error && data) {
+        const enriched = await Promise.all(data.map(async (h) => {
+          let oldValueName = h.old_value || 'N/A';
+          let newValueName = h.new_value || 'N/A';
+          
+          if (h.field_name === 'building') {
+            if (h.old_value && h.old_value !== 'null') {
+              const { data: oldBuilding } = await supabase.from('buildings').select('name').eq('id', h.old_value).single();
+              oldValueName = oldBuilding?.name || h.old_value;
+            }
+            if (h.new_value && h.new_value !== 'null') {
+              const { data: newBuilding } = await supabase.from('buildings').select('name').eq('id', h.new_value).single();
+              newValueName = newBuilding?.name || h.new_value;
+            }
+          } else if (h.field_name === 'floor') {
+            if (h.old_value && h.old_value !== 'null') {
+              const { data: oldFloor } = await supabase.from('floors').select('floor_name, floor_number').eq('id', h.old_value).single();
+              oldValueName = oldFloor?.floor_name || `Floor ${oldFloor?.floor_number}` || h.old_value;
+            }
+            if (h.new_value && h.new_value !== 'null') {
+              const { data: newFloor } = await supabase.from('floors').select('floor_name, floor_number').eq('id', h.new_value).single();
+              newValueName = newFloor?.floor_name || `Floor ${newFloor?.floor_number}` || h.new_value;
+            }
+          }
+          
+          let requestNumber = null;
+          if (h.movement_request_id) {
+            const { data: movement } = await supabase
+              .from('asset_movements')
+              .select('request_number')
+              .eq('id', h.movement_request_id)
+              .single();
+            requestNumber = movement?.request_number;
+          }
+          
+          return { ...h, old_value_name: oldValueName, new_value_name: newValueName, request_number: requestNumber };
+        }));
+        setAssetHistory(enriched);
+      }
+    } catch (error) {
+      console.error('Failed to load asset history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const loadAssetMovements = async (assetId: string) => {
+    setLoadingMovements(true);
+    try {
+      // First get the asset UUID from the asset_id string
+      const { data: assetData } = await supabase
+        .from('assets')
+        .select('id')
+        .eq('asset_id', assetId)
+        .single();
+      
+      if (!assetData) {
+        setAssetMovements([]);
+        return;
+      }
+      
+      // Use the UUID to search in asset_movements
+      const { data, error } = await supabase
+        .from('asset_movements')
+        .select('*')
+        .filter('assets', 'cs', JSON.stringify([assetData.id]))
+        .order('movement_date', { ascending: false });
+      
+      if (!error && data) {
+        const enriched = await Promise.all(data.map(async (m) => {
+          let fromBuildingName = m.from_building;
+          let toBuildingName = m.to_building;
+          let fromFloorName = m.from_floor;
+          let toFloorName = m.to_floor;
+          
+          if (m.from_building) {
+            const { data: building } = await supabase.from('buildings').select('name').eq('id', m.from_building).single();
+            fromBuildingName = building?.name || m.from_building;
+          }
+          if (m.to_building) {
+            const { data: building } = await supabase.from('buildings').select('name').eq('id', m.to_building).single();
+            toBuildingName = building?.name || m.to_building;
+          }
+          if (m.from_floor) {
+            const { data: floor } = await supabase.from('floors').select('floor_name, floor_number').eq('id', m.from_floor).single();
+            fromFloorName = floor?.floor_name || `Floor ${floor?.floor_number}` || m.from_floor;
+          }
+          if (m.to_floor) {
+            const { data: floor } = await supabase.from('floors').select('floor_name, floor_number').eq('id', m.to_floor).single();
+            toFloorName = floor?.floor_name || `Floor ${floor?.floor_number}` || m.to_floor;
+          }
+          
+          return { ...m, from_building_name: fromBuildingName, to_building_name: toBuildingName, from_floor_name: fromFloorName, to_floor_name: toFloorName };
+        }));
+        setAssetMovements(enriched);
+      }
+    } catch (error) {
+      console.error('Failed to load asset movements:', error);
+    } finally {
+      setLoadingMovements(false);
+    }
   };
 
   const loadAssetTickets = async (assetId: string) => {
@@ -343,15 +818,39 @@ export default function AssetMaster() {
       if (cleanData.contract === 'No' || !cleanData.vendor_id) {
         delete cleanData.vendor_id;
       }
+      if (!cleanData.customs_category) {
+        delete cleanData.customs_category;
+      }
+      if (!cleanData.asset_combination) {
+        delete cleanData.asset_combination;
+      }
+      
+      // Handle handover_to field - set to null if handoverType is 'other'
+      if (handoverType === 'other') {
+        cleanData.handover_to = null;
+      } else if (!cleanData.handover_to) {
+        delete cleanData.handover_to;
+      }
       
       if (editingAsset) {
         await AssetService.updateAsset(editingAsset.id, cleanData);
         toast({ title: 'Success', description: 'Asset updated successfully' });
       } else {
-        // Set asset_id from generated ID
-        cleanData.asset_id = generatedAssetId;
-        await AssetService.createAsset(cleanData);
-        toast({ title: 'Success', description: 'Asset created successfully' });
+        if (bulkGeneration && bulkQuantity && parseInt(bulkQuantity) > 1) {
+          // Bulk creation with pre-generated IDs
+          const promises = bulkAssetIds.map((assetId) => {
+            const assetData = { ...cleanData, asset_id: assetId };
+            return AssetService.createAsset(assetData);
+          });
+          
+          await Promise.all(promises);
+          toast({ title: 'Success', description: `${parseInt(bulkQuantity)} assets created successfully` });
+        } else {
+          // Single creation
+          cleanData.asset_id = generatedAssetId;
+          await AssetService.createAsset(cleanData);
+          toast({ title: 'Success', description: 'Asset created successfully' });
+        }
       }
       setShowForm(false);
       loadStats();
@@ -363,6 +862,44 @@ export default function AssetMaster() {
   const updateField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const handleExportReport = async () => {
+    try {
+      toast({ title: 'Generating Report', description: 'Please wait while we prepare your Excel report...' });
+      const assets = await fetchAssetsForExport();
+      await generateAssetExcelReport(assets);
+      toast({ title: 'Success', description: 'Excel report downloaded successfully' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to generate report', variant: 'destructive' });
+    }
+  };
+
+  // Calculate filtered assets for count display
+  const filteredAssets = assets.filter(a => {
+    const matchesCategory = !filterCategory || filterCategory === 'all' || a.asset_category === filterCategory;
+    const matchesSubCategory = !filterSubCategory || filterSubCategory === 'all' || a.asset_sub_category === filterSubCategory;
+    const matchesType = !filterType || filterType === 'all' || a.asset_type === filterType;
+    const matchesStatus = !filterStatus || filterStatus === 'all' || a.asset_status === filterStatus;
+    const matchesBuilding = !filterBuilding || filterBuilding === 'all' || a.building === filterBuilding;
+    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor === filterFloor;
+    
+    // Combination filters
+    let matchesCombination = true;
+    if (a.asset_combination && (filterColor || filterMaterial || filterSize)) {
+      // Need to load combination data for filtering
+      const combination = filterCombinations.find(c => c.id === a.asset_combination);
+      if (combination) {
+        const matchesColor = !filterColor || filterColor === 'all' || combination.color === filterColor;
+        const matchesMaterial = !filterMaterial || filterMaterial === 'all' || combination.material === filterMaterial;
+        const matchesSize = !filterSize || filterSize === 'all' || combination.size === filterSize;
+        matchesCombination = matchesColor && matchesMaterial && matchesSize;
+      } else {
+        matchesCombination = false;
+      }
+    }
+    
+    return matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesCombination;
+  });
 
   return (
     <DashboardLayout title="Asset Master" subtitle="Manage assets and inventory">
@@ -380,16 +917,6 @@ export default function AssetMaster() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.totalAssets || 0}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Bonded Assets</CardTitle>
-                <Package className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats?.bondedAssets || 0}</div>
               </CardContent>
             </Card>
 
@@ -415,17 +942,6 @@ export default function AssetMaster() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Duty Foregone</CardTitle>
-                <DollarSign className="h-4 w-4 text-orange-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">₹{(stats?.dutyForegoneAmount || 0).toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">Bonded only</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
                 <Wrench className="h-4 w-4 text-red-600" />
               </CardHeader>
@@ -433,17 +949,38 @@ export default function AssetMaster() {
                 <div className="text-2xl font-bold">{stats?.underMaintenance || 0}</div>
               </CardContent>
             </Card>
+          </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Warranty/AMC Expiry</CardTitle>
-                <Bell className="h-4 w-4 text-orange-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats?.warrantyExpiring || 0}</div>
-                <p className="text-xs text-muted-foreground">Expiring soon</p>
-              </CardContent>
-            </Card>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowCategoryCards(!showCategoryCards)}>
+              <h3 className="text-sm font-medium text-gray-700">Asset Categories</h3>
+              {showCategoryCards ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+            </div>
+            {showCategoryCards && (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {assetCategories.map((cat, idx) => {
+                  const count = stats?.assetsByCategory?.[cat] || 0;
+                  const colors = [
+                    'bg-blue-100 border-blue-300 hover:bg-blue-200',
+                    'bg-green-100 border-green-300 hover:bg-green-200',
+                    'bg-purple-100 border-purple-300 hover:bg-purple-200',
+                    'bg-orange-100 border-orange-300 hover:bg-orange-200',
+                    'bg-pink-100 border-pink-300 hover:bg-pink-200',
+                    'bg-cyan-100 border-cyan-300 hover:bg-cyan-200'
+                  ];
+                  return (
+                    <Card key={cat} className={`cursor-pointer hover:shadow-md transition-shadow border ${colors[idx % colors.length]}`} onClick={() => { setFilterCategory(cat); setFilterSubCategory(''); setFilterType(''); }}>
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium text-muted-foreground">{cat}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <div className="text-lg font-bold">{count}</div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {showForm ? (
@@ -480,11 +1017,15 @@ export default function AssetMaster() {
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_name || 'N/A'}</p>
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Category</label>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Type</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_category || 'N/A'}</p>
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Type</label>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Category</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_sub_category || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sub Category</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_type || 'N/A'}</p>
                             </div>
                             <div>
@@ -499,6 +1040,20 @@ export default function AssetMaster() {
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Serial Number</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.serial_number || 'N/A'}</p>
                             </div>
+                            <div className="col-span-3">
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Description</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_description || 'N/A'}</p>
+                            </div>
+                            <div className="col-span-3">
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Technical Specifications</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_spec || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Location</h2>
+                          <div className="grid grid-cols-3 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Building</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{buildings.find(b => b.id === formData.building)?.name || 'N/A'}</p>
@@ -511,23 +1066,41 @@ export default function AssetMaster() {
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Room/Rack</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.room_rack || 'N/A'}</p>
                             </div>
-                            <div className="col-span-3">
-                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Description</label>
-                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_description || 'N/A'}</p>
-                            </div>
-                            <div className="col-span-3">
-                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Technical Specifications</label>
-                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_spec || 'N/A'}</p>
-                            </div>
                           </div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Handover Details</h2>
+                          {formData.handover_to && (() => {
+                            const selectedTenant = tenants.find(t => t.id === formData.handover_to);
+                            return selectedTenant ? (
+                              <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                                <p className="font-semibold text-sm text-gray-900 mb-2">{selectedTenant.company || selectedTenant.name}</p>
+                                <p className="text-xs text-gray-600">Contact: {selectedTenant.name}</p>
+                                <p className="text-xs text-gray-600">Email: {selectedTenant.email}</p>
+                                <p className="text-xs text-gray-600">Phone: {selectedTenant.phone_numbers}</p>
+                              </div>
+                            ) : null;
+                          })()}
+                          {(formData.handover_other_name || formData.handover_other_email || formData.handover_other_contact) && (
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">Other Handover Recipient</label>
+                              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <p className="text-sm text-gray-700"><span className="font-medium">Name:</span> {formData.handover_other_name || 'N/A'}</p>
+                                <p className="text-sm text-gray-700 mt-1"><span className="font-medium">Email:</span> {formData.handover_other_email || 'N/A'}</p>
+                                <p className="text-sm text-gray-700 mt-1"><span className="font-medium">Contact Mobile:</span> {formData.handover_other_contact || 'N/A'}</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                         
                         <Tabs value={activeTab} onValueChange={setActiveTab}>
                           <TabsList>
                             <TabsTrigger value="status">Status & Maintenance</TabsTrigger>
-                            <TabsTrigger value="handover">Handover Details</TabsTrigger>
                             <TabsTrigger value="sez">SEZ & Customs</TabsTrigger>
                             <TabsTrigger value="tickets">Tickets</TabsTrigger>
+                            <TabsTrigger value="history">Movement History</TabsTrigger>
+                            <TabsTrigger value="audits">Physical Audits</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="status" className="mt-4">
@@ -543,7 +1116,7 @@ export default function AssetMaster() {
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Incharge</label>
-                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_incharge || 'N/A'}</p>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{assetInchargeUsers.find(user => user.id === formData.asset_incharge)?.name || 'N/A'}</p>
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Purchase Date</label>
@@ -573,46 +1146,7 @@ export default function AssetMaster() {
                             </div>
                           </TabsContent>
                           
-                          <TabsContent value="handover" className="mt-4">
-                            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-                              <div className="grid grid-cols-3 gap-6 mb-6">
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Building</label>
-                                  <p className="text-sm font-medium text-gray-900 mt-2">{buildings.find(b => b.id === formData.building)?.name || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Floor</label>
-                                  <p className="text-sm font-medium text-gray-900 mt-2">{floors.find(f => f.id === formData.floor)?.floor_name || floors.find(f => f.id === formData.floor)?.floor_number || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Room/Rack</label>
-                                  <p className="text-sm font-medium text-gray-900 mt-2">{formData.room_rack || 'N/A'}</p>
-                                </div>
-                              </div>
-                              {formData.handover_to && (() => {
-                                const selectedTenant = tenants.find(t => t.id === formData.handover_to);
-                                return selectedTenant ? (
-                                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                                    <p className="font-semibold text-sm text-gray-900 mb-2">{selectedTenant.company || selectedTenant.name}</p>
-                                    <p className="text-xs text-gray-600">Contact: {selectedTenant.name}</p>
-                                    <p className="text-xs text-gray-600">Email: {selectedTenant.email}</p>
-                                    <p className="text-xs text-gray-600">Phone: {selectedTenant.phone_numbers}</p>
-                                  </div>
-                                ) : null;
-                              })()}
-                              {(formData.handover_other_name || formData.handover_other_email || formData.handover_other_contact) && (
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">Other Handover Recipient</label>
-                                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                    <p className="text-sm text-gray-700"><span className="font-medium">Name:</span> {formData.handover_other_name || 'N/A'}</p>
-                                    <p className="text-sm text-gray-700 mt-1"><span className="font-medium">Email:</span> {formData.handover_other_email || 'N/A'}</p>
-                                    <p className="text-sm text-gray-700 mt-1"><span className="font-medium">Contact Mobile:</span> {formData.handover_other_contact || 'N/A'}</p>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </TabsContent>
-                          
+
                           <TabsContent value="sez" className="mt-4">
                             <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                               <div className="grid grid-cols-3 gap-6">
@@ -706,6 +1240,265 @@ export default function AssetMaster() {
                               )}
                             </div>
                           </TabsContent>
+                          
+                          <TabsContent value="history" className="mt-4">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Movement History</h3>
+                              {loadingMovements ? (
+                                <div className="flex justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
+                              ) : assetMovements.length === 0 ? (
+                                <p className="text-sm text-gray-500">No movement history found</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {assetMovements.map((movement) => (
+                                    <div key={movement.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                                      <div 
+                                        className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                                        onClick={() => setExpandedMovement(expandedMovement === movement.id ? null : movement.id)}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-mono text-sm font-semibold text-blue-600">{movement.request_number}</span>
+                                              <span className="text-gray-400">|</span>
+                                              <span className="text-sm font-medium text-gray-700">{movement.movement_type}</span>
+                                            </div>
+                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                              movement.movement_status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                              movement.movement_status === 'Approved' ? 'bg-blue-100 text-blue-700' :
+                                              movement.movement_status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}>
+                                              {movement.movement_status}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <span className="text-xs text-gray-500">{new Date(movement.movement_date).toLocaleDateString()}</span>
+                                            {expandedMovement === movement.id ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      {expandedMovement === movement.id && (
+                                        <div className="p-4 bg-white border-t border-gray-200">
+                                          <Tabs defaultValue="location" className="w-full">
+                                            <TabsList className="grid w-full grid-cols-3">
+                                              <TabsTrigger value="location">Location</TabsTrigger>
+                                              <TabsTrigger value="handover">Tenant/Handover</TabsTrigger>
+                                              <TabsTrigger value="details">Details</TabsTrigger>
+                                            </TabsList>
+                                            <TabsContent value="location" className="mt-4">
+                                              <div className="grid grid-cols-2 gap-6">
+                                                <div className="space-y-3">
+                                                  <h4 className="text-xs font-semibold text-gray-500 uppercase">From Location</h4>
+                                                  <div className="space-y-2">
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Building</p>
+                                                      <p className="text-sm text-gray-900">{movement.from_building_name || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Floor</p>
+                                                      <p className="text-sm text-gray-900">{movement.from_floor_name || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Room</p>
+                                                      <p className="text-sm text-gray-900">{movement.from_room || 'N/A'}</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                  <h4 className="text-xs font-semibold text-gray-500 uppercase">To Location</h4>
+                                                  <div className="space-y-2">
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Building</p>
+                                                      <p className="text-sm text-gray-900">{movement.to_building_name || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Floor</p>
+                                                      <p className="text-sm text-gray-900">{movement.to_floor_name || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Room</p>
+                                                      <p className="text-sm text-gray-900">{movement.to_room || 'N/A'}</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </TabsContent>
+                                            <TabsContent value="handover" className="mt-4">
+                                              <div className="space-y-3">
+                                                <div>
+                                                  <p className="text-xs text-gray-500">Handover Type</p>
+                                                  <p className="text-sm font-medium text-gray-900">{movement.handover_to || 'N/A'}</p>
+                                                </div>
+                                                {movement.handover_name && (
+                                                  <div>
+                                                    <p className="text-xs text-gray-500">Name</p>
+                                                    <p className="text-sm text-gray-900">{movement.handover_name}</p>
+                                                  </div>
+                                                )}
+                                                {movement.handover_email && (
+                                                  <div>
+                                                    <p className="text-xs text-gray-500">Email</p>
+                                                    <p className="text-sm text-gray-900">{movement.handover_email}</p>
+                                                  </div>
+                                                )}
+                                                {movement.handover_mobile && (
+                                                  <div>
+                                                    <p className="text-xs text-gray-500">Contact Mobile</p>
+                                                    <p className="text-sm text-gray-900">{movement.handover_mobile}</p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </TabsContent>
+                                            <TabsContent value="details" className="mt-4">
+                                              <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                  <p className="text-xs text-gray-500">Movement Type</p>
+                                                  <p className="text-sm text-gray-900">{movement.movement_type}</p>
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs text-gray-500">Movement Date</p>
+                                                  <p className="text-sm text-gray-900">{new Date(movement.movement_date).toLocaleDateString()}</p>
+                                                </div>
+                                                {movement.movement_time && (
+                                                  <div>
+                                                    <p className="text-xs text-gray-500">Movement Time</p>
+                                                    <p className="text-sm text-gray-900">{movement.movement_time}</p>
+                                                  </div>
+                                                )}
+                                                {movement.movement_reason && (
+                                                  <div>
+                                                    <p className="text-xs text-gray-500">Reason</p>
+                                                    <p className="text-sm text-gray-900">{movement.movement_reason}</p>
+                                                  </div>
+                                                )}
+                                                {movement.other_reason && (
+                                                  <div className="col-span-2">
+                                                    <p className="text-xs text-gray-500">Other Reason</p>
+                                                    <p className="text-sm text-gray-900">{movement.other_reason}</p>
+                                                  </div>
+                                                )}
+                                                {movement.remarks && (
+                                                  <div className="col-span-2">
+                                                    <p className="text-xs text-gray-500">Remarks</p>
+                                                    <p className="text-sm text-gray-900">{movement.remarks}</p>
+                                                  </div>
+                                                )}
+                                                {movement.movement_type === 'Maintenance' && (
+                                                  <>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Vendor Name</p>
+                                                      <p className="text-sm text-gray-900">{movement.vendor_name || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Vendor Contact</p>
+                                                      <p className="text-sm text-gray-900">{movement.vendor_contact || 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Outward Date</p>
+                                                      <p className="text-sm text-gray-900">{movement.outward_date ? new Date(movement.outward_date).toLocaleDateString() : 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Expected Inward Date</p>
+                                                      <p className="text-sm text-gray-900">{movement.expected_inward_date ? new Date(movement.expected_inward_date).toLocaleDateString() : 'N/A'}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-gray-500">Gate Pass Number</p>
+                                                      <p className="text-sm text-gray-900">{movement.gate_pass_number || 'N/A'}</p>
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </div>
+                                            </TabsContent>
+                                          </Tabs>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="audits" className="mt-4">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Physical Audit History</h3>
+                              {loadingAudits ? (
+                                <div className="flex justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
+                              ) : assetAudits.length === 0 ? (
+                                <p className="text-sm text-gray-500">No physical audit records found</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full">
+                                    <thead>
+                                      <tr className="border-b border-gray-200">
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Audit Date</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Auditor</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Result</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Asset Found</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Location Match</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Condition</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">GPS Location</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Remarks</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {assetAudits.map((audit) => (
+                                        <tr key={audit.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                          <td className="py-3 px-4 text-sm text-gray-900">{new Date(audit.audit_date).toLocaleDateString()}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{audit.auditor_name || 'N/A'}</td>
+                                          <td className="py-3 px-4">
+                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                              audit.audit_result === 'Pass' ? 'bg-green-100 text-green-700' :
+                                              audit.audit_result === 'Fail' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}>
+                                              {audit.audit_result || 'N/A'}
+                                            </span>
+                                          </td>
+                                          <td className="py-3 px-4 text-sm">{audit.asset_found ? '✓ Yes' : '✗ No'}</td>
+                                          <td className="py-3 px-4 text-sm">{audit.location_match ? '✓ Yes' : '✗ No'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{audit.condition || 'N/A'}</td>
+                                          <td className="py-3 px-4 text-sm">
+                                            {audit.gps_latitude && audit.gps_longitude ? (
+                                              <a
+                                                href={`https://www.google.com/maps?q=${audit.gps_latitude},${audit.gps_longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 hover:text-blue-700 font-mono text-xs"
+                                                title={`Accuracy: ±${audit.gps_accuracy?.toFixed(1)}m`}
+                                              >
+                                                {(() => {
+                                                  const latDir = audit.gps_latitude >= 0 ? 'N' : 'S';
+                                                  const lngDir = audit.gps_longitude >= 0 ? 'E' : 'W';
+                                                  const latAbs = Math.abs(audit.gps_latitude);
+                                                  const lngAbs = Math.abs(audit.gps_longitude);
+                                                  const latDeg = Math.floor(latAbs);
+                                                  const latMin = Math.floor((latAbs - latDeg) * 60);
+                                                  const latSec = ((latAbs - latDeg - latMin / 60) * 3600).toFixed(1);
+                                                  const lngDeg = Math.floor(lngAbs);
+                                                  const lngMin = Math.floor((lngAbs - lngDeg) * 60);
+                                                  const lngSec = ((lngAbs - lngDeg - lngMin / 60) * 3600).toFixed(1);
+                                                  return `${latDeg}°${latMin}'${latSec}"${latDir} ${lngDeg}°${lngMin}'${lngSec}"${lngDir}`;
+                                                })()}
+                                              </a>
+                                            ) : (
+                                              <span className="text-gray-400">-</span>
+                                            )}
+                                          </td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{audit.remarks || '-'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </TabsContent>
                         </Tabs>
                         {formData.comments && (
                           <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
@@ -735,43 +1528,103 @@ export default function AssetMaster() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Category <span className="text-red-500">*</span></label>
-                            <Select value={formData.asset_category} onValueChange={(v) => updateField('asset_category', v)}>
-                              <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                                <SelectValue placeholder="Select category" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {assetCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
+                            <label className="text-sm font-medium text-gray-700">Asset Type <span className="text-red-500">*</span></label>
+                            <Combobox
+                              value={formData.asset_category || ''}
+                              onValueChange={(v) => updateField('asset_category', v)}
+                              options={assetCategories.map(cat => ({ value: cat, label: cat }))}
+                              placeholder="Select asset type"
+                              searchPlaceholder="Search asset type..."
+                            />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Asset Type</label>
-                            <Select value={formData.asset_type || ''} onValueChange={(v) => updateField('asset_type', v)} disabled={!formData.asset_category}>
-                              <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                                <SelectValue placeholder="Select type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {assetTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
+                            <label className="text-sm font-medium text-gray-700">Category</label>
+                            <Combobox
+                              value={formData.asset_sub_category || ''}
+                              onValueChange={(v) => updateField('asset_sub_category', v)}
+                              options={assetSubCategories.map(sub => ({ value: sub, label: sub }))}
+                              placeholder="Select category"
+                              searchPlaceholder="Search category..."
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">Sub Category</label>
+                            <Combobox
+                              value={formData.asset_type || ''}
+                              onValueChange={(v) => updateField('asset_type', v)}
+                              options={assetTypes.map(type => ({ value: type, label: type }))}
+                              placeholder="Select sub category"
+                              searchPlaceholder="Search sub category..."
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">Combination (Color | Material | Size)</label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className="w-full justify-between h-11 border-gray-300 focus:border-primary focus:ring-primary/20"
+                                  disabled={!formData.asset_type || assetCombinations.length === 0}
+                                >
+                                  {formData.asset_combination ? 
+                                    assetCombinations.find(combo => combo.value === formData.asset_combination)?.label || 'Select combination'
+                                    : 'Select combination'
+                                  }
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-full p-0" align="start">
+                                <div className="max-h-64 overflow-y-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b sticky top-0">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left font-medium text-gray-700">Color</th>
+                                        <th className="px-3 py-2 text-left font-medium text-gray-700">Material</th>
+                                        <th className="px-3 py-2 text-left font-medium text-gray-700">Size</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {assetCombinations.map((combo) => (
+                                        <tr 
+                                          key={combo.id} 
+                                          className={`border-b hover:bg-gray-50 cursor-pointer ${
+                                            formData.asset_combination === combo.value ? 'bg-blue-50' : ''
+                                          }`}
+                                          onClick={() => updateField('asset_combination', combo.value)}
+                                        >
+                                          <td className="px-3 py-2">
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                                              {combo.color || 'N/A'}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                                              {combo.material || 'N/A'}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                                              {combo.size || 'N/A'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Manufacturer</label>
-                            <Select value={formData.manufacturer || ''} onValueChange={(v) => updateField('manufacturer', v)}>
-                              <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                                <SelectValue placeholder="Select manufacturer" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(() => {
-                                  const config = (window as any).assetDropdownConfig || [];
-                                  const category = config.find((c: any) => c.name === formData.asset_category);
-                                  return (category?.manufacturers || []).map((mfr: string) => (
-                                    <SelectItem key={mfr} value={mfr}>{mfr}</SelectItem>
-                                  ));
-                                })()}
-                              </SelectContent>
-                            </Select>
+                            <Combobox
+                              value={formData.manufacturer || ''}
+                              onValueChange={(v) => updateField('manufacturer', v)}
+                              options={allManufacturers.map(mfr => ({ value: mfr, label: mfr }))}
+                              placeholder="Select manufacturer"
+                              searchPlaceholder="Search manufacturer..."
+                            />
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Make/Model</label>
@@ -793,116 +1646,111 @@ export default function AssetMaster() {
                             <label className="text-sm font-medium text-gray-700">Technical Specifications</label>
                             <Input value={formData.asset_spec || ''} onChange={(e) => updateField('asset_spec', e.target.value)} placeholder="e.g., Intel i7, 16GB RAM, 512GB SSD" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" />
                           </div>
+                          
+                          {!editingAsset && (
+                            <div className="col-span-3 border-t pt-4">
+                              <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={bulkGeneration} 
+                                    onChange={(e) => setBulkGeneration(e.target.checked)}
+                                    className="w-4 h-4" 
+                                  />
+                                  <span className="text-sm font-medium text-gray-700">Bulk Generation</span>
+                                </label>
+                                {bulkGeneration && (
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-sm font-medium text-gray-700">Quantity:</label>
+                                    <Input 
+                                      type="text" 
+                                      value={bulkQuantity} 
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value === '' || (/^\d+$/.test(value) && parseInt(value) <= 100)) {
+                                          setBulkQuantity(value);
+                                        }
+                                      }}
+                                      className="w-20 h-9 border-gray-300"
+                                      placeholder="1"
+                                    />
+                                    <span className="text-xs text-gray-500">(Max: 100)</span>
+                                  </div>
+                                )}
+                              </div>
+                              {bulkGeneration && bulkAssetIds.length > 0 && (
+                                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                                  <p className="text-sm font-medium text-gray-700 mb-2">Asset IDs to be created:</p>
+                                  <div className="text-xs font-mono px-2 py-1 rounded bg-blue-100 text-blue-700 border border-blue-200">
+                                    {bulkAssetIds[0]} to {bulkAssetIds[bulkAssetIds.length - 1]} ({parseInt(bulkQuantity)} assets)
+                                  </div>
+                                  {duplicateIds.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-xs text-red-600 mb-1">Duplicate IDs found:</p>
+                                      <div className="space-y-1">
+                                        {duplicateIds.map((id, index) => (
+                                          <div key={index} className="text-xs font-mono px-2 py-1 rounded bg-red-100 text-red-700 border border-red-200">
+                                            {id} (DUPLICATE)
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         </div>
 
-                        <Tabs value={activeTab} onValueChange={setActiveTab}>
-                          <TabsList>
-                            <TabsTrigger value="status">Status & Maintenance</TabsTrigger>
-                            <TabsTrigger value="handover">Handover Details</TabsTrigger>
-                            <TabsTrigger value="sez">SEZ & Customs</TabsTrigger>
-                            <TabsTrigger value="tickets">Tickets</TabsTrigger>
-                          </TabsList>
-                          
-                          <TabsContent value="status" className="mt-4">
-                            <div className="bg-white rounded-lg shadow-sm p-6">
-                              <div className="grid grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Working Status</label>
-                        <Select value={formData.status || 'Working'} onValueChange={(v) => updateField('status', v)} disabled={viewMode}>
-                          <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Working">✓ Working</SelectItem>
-                            <SelectItem value="Not Working">✗ Not Working</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Asset Status</label>
-                        <Select value={formData.asset_status} onValueChange={(v) => updateField('asset_status', v)} disabled={viewMode}>
-                          <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {assetStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Asset Incharge</label>
-                        <Input value={formData.asset_incharge || ''} onChange={(e) => updateField('asset_incharge', e.target.value)} placeholder="Person responsible" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Purchase Date</label>
-                        <Input type="date" value={formData.purchase_date || ''} onChange={(e) => updateField('purchase_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Purchase Order Number</label>
-                        <Input value={formData.po_number || ''} onChange={(e) => updateField('po_number', e.target.value)} placeholder="Enter PO number" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Warranty Expiry</label>
-                        <Input type="date" value={formData.warranty_date || ''} onChange={(e) => updateField('warranty_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                          <div className="border-l-4 border-blue-700 pl-3 mb-6">
+                            <h2 className="text-lg font-semibold text-gray-800">Location</h2>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-gray-700">Building</label>
+                              <Select value={formData.building || ''} onValueChange={(v) => updateField('building', v)} disabled={viewMode}>
+                                <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
+                                  <SelectValue placeholder="Select building" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {buildings.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-gray-700">Floor</label>
+                              <Select value={formData.floor || ''} onValueChange={(v) => updateField('floor', v)} disabled={viewMode || !formData.building}>
+                                <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
+                                  <SelectValue placeholder="Select floor" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {floors.map(f => <SelectItem key={f.id} value={f.id}>{f.floor_name || f.floor_number}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-gray-700">Room/Rack</label>
+                              <Input value={formData.room_rack || ''} onChange={(e) => updateField('room_rack', e.target.value)} placeholder="Enter room/rack" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                            </div>
+                          </div>
+                        </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Depreciation Date</label>
-                        <Input type="date" value={formData.depreciation_date || ''} onChange={(e) => updateField('depreciation_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Depreciation %</label>
-                        <Input type="number" value={formData.depreciation_percentage || ''} onChange={(e) => updateField('depreciation_percentage', e.target.value)} placeholder="0" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Decommission Date</label>
-                        <Input type="date" value={formData.decommission_date || ''} onChange={(e) => updateField('decommission_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                      </div>
-                              </div>
-                            </div>
-                          </TabsContent>
-                          
-                          <TabsContent value="handover" className="mt-4">
-                            <div className="bg-white rounded-lg shadow-sm p-6">
-                              <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4 mb-4">
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700">Building</label>
-                                <Select value={formData.building || ''} onValueChange={(v) => updateField('building', v)} disabled={viewMode}>
-                                  <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                                    <SelectValue placeholder="Select building" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {buildings.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700">Floor</label>
-                                <Select value={formData.floor || ''} onValueChange={(v) => updateField('floor', v)} disabled={viewMode || !formData.building}>
-                                  <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
-                                    <SelectValue placeholder="Select floor" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {floors.map(f => <SelectItem key={f.id} value={f.id}>{f.floor_name || f.floor_number}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700">Room/Rack</label>
-                                <Input value={formData.room_rack || ''} onChange={(e) => updateField('room_rack', e.target.value)} placeholder="Enter room/rack" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
-                              </div>
-                            </div>
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                          <div className="border-l-4 border-blue-700 pl-3 mb-6">
+                            <h2 className="text-lg font-semibold text-gray-800">Handover Details</h2>
+                          </div>
+                          <div className="space-y-4">
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Handover To</label>
                               <div className="flex gap-4 mb-3">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                  <input type="radio" checked={handoverType === 'tenant'} onChange={() => setHandoverType('tenant')} disabled={viewMode} className="w-4 h-4" />
+                                  <input type="radio" checked={handoverType === 'tenant'} onChange={() => { setHandoverType('tenant'); updateField('handover_to', ''); updateField('handover_other_name', ''); updateField('handover_other_email', ''); updateField('handover_other_contact', ''); }} disabled={viewMode} className="w-4 h-4" />
                                   <span className="text-sm">Tenant</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                  <input type="radio" checked={handoverType === 'other'} onChange={() => setHandoverType('other')} disabled={viewMode} className="w-4 h-4" />
+                                  <input type="radio" checked={handoverType === 'other'} onChange={() => { setHandoverType('other'); updateField('handover_to', null); }} disabled={viewMode} className="w-4 h-4" />
                                   <span className="text-sm">Other</span>
                                 </label>
                               </div>
@@ -928,7 +1776,7 @@ export default function AssetMaster() {
                                           size="sm" 
                                           variant="ghost" 
                                           className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50" 
-                                          onClick={() => { updateField('handover_to', ''); setTenantSearch(''); }}
+                                          onClick={() => { updateField('handover_to', null); setTenantSearch(''); }}
                                         >
                                           Remove
                                         </Button>
@@ -989,10 +1837,81 @@ export default function AssetMaster() {
                                 </div>
                               )}
                             </div>
+                          </div>
+                        </div>
+
+                        <Tabs value={activeTab} onValueChange={setActiveTab}>
+                          <TabsList>
+                            <TabsTrigger value="status">Status & Maintenance</TabsTrigger>
+                            <TabsTrigger value="sez">SEZ & Customs</TabsTrigger>
+                          </TabsList>
+                          
+                          <TabsContent value="status" className="mt-4">
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                              <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Working Status</label>
+                        <Select value={formData.status || 'Working'} onValueChange={(v) => updateField('status', v)} disabled={viewMode}>
+                          <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Working">✓ Working</SelectItem>
+                            <SelectItem value="Not Working">✗ Not Working</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Asset Status</label>
+                        <Select value={formData.asset_status} onValueChange={(v) => updateField('asset_status', v)} disabled={viewMode}>
+                          <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assetStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Asset Incharge</label>
+                        <Combobox
+                          value={formData.asset_incharge || ''}
+                          onValueChange={(v) => updateField('asset_incharge', v)}
+                          options={assetInchargeUsers.map(user => ({ value: user.id, label: `${user.name} (${user.email})` }))}
+                          placeholder="Select asset incharge"
+                          searchPlaceholder="Search users..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Purchase Date</label>
+                        <Input type="date" value={formData.purchase_date || ''} onChange={(e) => updateField('purchase_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Purchase Order Number</label>
+                        <Input value={formData.po_number || ''} onChange={(e) => updateField('po_number', e.target.value)} placeholder="Enter PO number" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Warranty Expiry</label>
+                        <Input type="date" value={formData.warranty_date || ''} onChange={(e) => updateField('warranty_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Depreciation Date</label>
+                        <Input type="date" value={formData.depreciation_date || ''} onChange={(e) => updateField('depreciation_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Depreciation %</label>
+                        <Input type="number" value={formData.depreciation_percentage || ''} onChange={(e) => updateField('depreciation_percentage', e.target.value)} placeholder="0" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Decommission Date</label>
+                        <Input type="date" value={formData.decommission_date || ''} onChange={(e) => updateField('decommission_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
                               </div>
                             </div>
                           </TabsContent>
                           
+
                           <TabsContent value="sez" className="mt-4">
                             <div className="bg-white rounded-lg shadow-sm p-6">
                               <div className="grid grid-cols-2 gap-4">
@@ -1210,6 +2129,37 @@ export default function AssetMaster() {
                       </div>
                     </div>
                   )}
+
+                  {editingAsset && assetAudits.length > 0 && assetAudits[0].gps_latitude && assetAudits[0].gps_longitude && (
+                    <div className="bg-white rounded-lg shadow-sm p-6">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-4">LAST AUDIT LOCATION</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-2">GPS Coordinates</p>
+                          <p className="text-xs font-mono text-gray-700">{assetAudits[0].gps_latitude.toFixed(6)}, {assetAudits[0].gps_longitude.toFixed(6)}</p>
+                          <p className="text-xs text-gray-500 mt-1">Accuracy: ±{assetAudits[0].gps_accuracy?.toFixed(1)}m</p>
+                        </div>
+                        <div className="relative w-full h-48 bg-gray-100 rounded-lg overflow-hidden">
+                          <iframe
+                            width="100%"
+                            height="100%"
+                            frameBorder="0"
+                            style={{ border: 0 }}
+                            src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${assetAudits[0].gps_latitude},${assetAudits[0].gps_longitude}&zoom=18`}
+                            allowFullScreen
+                          />
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${assetAudits[0].gps_latitude},${assetAudits[0].gps_longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block w-full text-center px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                        >
+                          Open in Google Maps
+                        </a>
+                      </div>
+                    </div>
+                  )}
                   </div>
 
                   <div className="mt-6 flex justify-end gap-3">
@@ -1218,9 +2168,9 @@ export default function AssetMaster() {
                         <Button variant="outline" onClick={() => setShowForm(false)} className="px-6 py-2 border-gray-300">
                           Cancel
                         </Button>
-                        <Button onClick={handleSave} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white">
+                        <Button onClick={handleSave} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white" disabled={duplicateIds.length > 0}>
                           <Save className="h-4 w-4 mr-2" />
-                          {editingAsset ? 'Save Changes' : 'Create Asset'}
+                          {editingAsset ? 'Save Changes' : bulkGeneration ? `Create ${parseInt(bulkQuantity) || 0} Assets` : 'Create Asset'}
                         </Button>
                       </>
                     )}
@@ -1229,7 +2179,143 @@ export default function AssetMaster() {
               </div>
             </div>
           ) : (
-            <AssetList onCreateNew={handleCreateNew} onEdit={handleEdit} onView={handleView} />
+            <div className="space-y-4">
+              <div className="flex gap-4 items-center p-4 bg-white rounded-lg border">
+                <div className="flex gap-4 flex-1 flex-wrap">
+                  <Select value={sortOrder} onValueChange={setSortOrder}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">↑ Ascending</SelectItem>
+                      <SelectItem value="desc">↓ Descending</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterCategory} onValueChange={setFilterCategory}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Asset Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Asset Types</SelectItem>
+                      {assetCategories.map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterSubCategory} onValueChange={setFilterSubCategory} disabled={!filterCategory || filterCategory === 'all'}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {filterSubCategories.map(sub => (
+                        <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterType} onValueChange={setFilterType} disabled={!filterSubCategory || filterSubCategory === 'all'}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Sub Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sub Categories</SelectItem>
+                      {filterTypes.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      {assetStatuses.map(status => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterBuilding} onValueChange={setFilterBuilding}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Building" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Buildings</SelectItem>
+                      {buildings.map(building => (
+                        <SelectItem key={building.id} value={building.id}>{building.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterFloor} onValueChange={setFilterFloor} disabled={!filterBuilding || filterBuilding === 'all'}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Floor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Floors</SelectItem>
+                      {filterFloors.map(floor => (
+                        <SelectItem key={floor.id} value={floor.id}>{floor.floor_name || floor.floor_number}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterColor} onValueChange={setFilterColor} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Color" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Colors</SelectItem>
+                      {[...new Set(filterCombinations.map(c => c.color).filter(Boolean))].map(color => (
+                        <SelectItem key={color} value={color}>{color}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterMaterial} onValueChange={setFilterMaterial} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Materials</SelectItem>
+                      {[...new Set(filterCombinations.map(c => c.material).filter(Boolean))].map(material => (
+                        <SelectItem key={material} value={material}>{material}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterSize} onValueChange={setFilterSize} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by Size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sizes</SelectItem>
+                      {[...new Set(filterCombinations.map(c => c.size).filter(Boolean))].map(size => (
+                        <SelectItem key={size} value={size}>{size}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                  <div className="text-xs text-blue-600 font-medium">Filtered Assets</div>
+                  <div className="text-lg font-bold text-blue-700">{filteredAssets.length}</div>
+                </div>
+              </div>
+              <AssetList 
+                onCreateNew={handleCreateNew} 
+                onEdit={handleEdit} 
+                onView={handleView} 
+                filterCategory={filterCategory}
+                filterSubCategory={filterSubCategory}
+                filterType={filterType}
+                filterStatus={filterStatus}
+                filterBuilding={filterBuilding}
+                filterFloor={filterFloor}
+                filterColor={filterColor}
+                filterMaterial={filterMaterial}
+                filterSize={filterSize}
+                sortOrder={sortOrder}
+                currentPage={currentPage}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            </div>
           )}
         </div>
       )}

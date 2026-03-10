@@ -9,8 +9,10 @@ import { PMStatusBadge } from './components/PMStatusBadge';
 import { PMAssetDetail } from './PMAssetDetail';
 import { supabase } from '@/lib/supabaseClient';
 import { Pagination } from '@/components/ui/pagination';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function PreventiveMaintenanceList() {
+  const { user } = useAuth();
   const [assets, setAssets] = useState<PMAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
@@ -46,21 +48,37 @@ export default function PreventiveMaintenanceList() {
 
   const loadAssets = async () => {
     try {
-      const { data } = await supabase
+      const { data: pmSchedules } = await supabase
+        .from('preventive_maintenance')
+        .select(`
+          asset_id,
+          pm_next_date
+        `)
+        .eq('pm_enabled', true)
+        .not('pm_next_date', 'is', null);
+
+      if (!pmSchedules || pmSchedules.length === 0) {
+        setAssets([]);
+        setLoading(false);
+        return;
+      }
+
+      const assetIds = pmSchedules.map(pm => pm.asset_id);
+      const pmMap = new Map(pmSchedules.map(pm => [pm.asset_id, pm.pm_next_date]));
+
+      const { data: assetsData } = await supabase
         .from('assets')
         .select(`
           id,
           asset_id,
           asset_name,
           status,
-          pm_next_date,
           handover_to
         `)
-        .eq('pm_enabled', true)
-        .not('pm_next_date', 'is', null);
+        .in('id', assetIds);
 
-      if (data) {
-        const tenantIds = [...new Set(data.map(a => a.handover_to).filter(Boolean))];
+      if (assetsData) {
+        const tenantIds = [...new Set(assetsData.map(a => a.handover_to).filter(Boolean))];
         const { data: tenantsData } = await supabase
           .from('tenants')
           .select('id, company, name')
@@ -70,14 +88,14 @@ export default function PreventiveMaintenanceList() {
         const uniqueTenants = [...new Set(tenantsData?.map(t => t.company || t.name) || [])];
         setTenants(uniqueTenants);
 
-        const pmAssets: PMAsset[] = data.map(asset => ({
+        const pmAssets: PMAsset[] = assetsData.map(asset => ({
           id: asset.id,
           asset_id: asset.asset_id,
           asset_name: asset.asset_name,
           tenant_name: tenantMap.get(asset.handover_to) || 'Unassigned',
           status: asset.status || 'Working',
-          pm_date: asset.pm_next_date,
-          pmStatus: calculatePMStatus(asset.pm_next_date)
+          pm_date: pmMap.get(asset.id) || '',
+          pmStatus: calculatePMStatus(pmMap.get(asset.id) || '')
         }));
 
         setAssets(pmAssets);
@@ -133,18 +151,36 @@ export default function PreventiveMaintenanceList() {
     
     const frequency = parseInt(pmFrequency);
     const startDate = new Date(pmStartDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const isPastOrToday = startDate <= today;
+    
+    // If start date is today or future, pm_next_date = start date
+    // If start date is past, pm_next_date = start date + frequency
     const nextDate = new Date(startDate);
-    nextDate.setDate(nextDate.getDate() + frequency);
+    if (isPastOrToday && startDate < today) {
+      nextDate.setDate(nextDate.getDate() + frequency);
+    }
 
     try {
       for (const assetId of selectedAssets) {
-        await supabase.from('assets').update({
+        const { error } = await supabase.from('preventive_maintenance').upsert({
+          asset_id: assetId,
           pm_enabled: true,
           pm_start_date: pmStartDate,
           pm_end_date: pmEndDate || null,
           pm_frequency_days: frequency,
-          pm_next_date: nextDate.toISOString().split('T')[0]
-        }).eq('id', assetId);
+          pm_next_date: nextDate.toISOString().split('T')[0],
+          pm_last_completed_date: (isPastOrToday && startDate < today) ? pmStartDate : null,
+          created_by: user?.email,
+          updated_by: user?.email
+        }, { onConflict: 'asset_id' });
+        
+        if (error) {
+          console.error('Error upserting PM:', error);
+        }
       }
       
       setShowScheduleModal(false);

@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     https: true,
+    hmr: {
+      protocol: 'wss',
+      host: 'localhost',
+      port: 8080,
+    },
   },
   plugins: [react(), basicSsl(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

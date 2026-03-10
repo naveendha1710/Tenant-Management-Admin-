@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-
-import { Users, Plus, Search, Edit, Trash2, Shield, UserCheck, UserX } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Users, Plus, Search, Edit, Trash2, Shield, UserCheck, UserX, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -21,6 +22,9 @@ export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
+  const [syncChanges, setSyncChanges] = useState({ updates: [], newTenants: [] });
+  const [selectedChanges, setSelectedChanges] = useState(new Set());
   const { toast } = useToast();
 
   useEffect(() => {
@@ -29,17 +33,66 @@ export default function UserManagement() {
 
   const fetchData = async () => {
     try {
-      const [usersResult, branchesResult] = await Promise.all([
-        Promise.resolve({ data: [], error: null }),
-Promise.resolve({ data: [], error: null })
-      ]);
-
-      setUsers(usersResult.data || []);
-      setBranches(branchesResult.data || []);
+      const { data: usersData } = await supabase.from('users').select('*');
+      const { data: branchesData } = await supabase.from('branches').select('*');
+      setUsers(usersData || []);
+      setBranches(branchesData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncTenants = async () => {
+    try {
+      const { data: tenants } = await supabase.from('tenants').select('id, email, company_name, status');
+      const { data: existingUsers } = await supabase.from('users').select('email, tenant_id');
+      
+      const userEmailMap = new Map(existingUsers?.map(u => [u.tenant_id, u.email]) || []);
+      const updates = [];
+      const newTenants = [];
+
+      tenants?.forEach(tenant => {
+        const existingEmail = userEmailMap.get(tenant.id);
+        if (existingEmail && existingEmail !== tenant.email) {
+          updates.push({ tenantId: tenant.id, oldEmail: existingEmail, newEmail: tenant.email, companyName: tenant.company_name });
+        } else if (!existingEmail) {
+          newTenants.push({ tenantId: tenant.id, email: tenant.email, companyName: tenant.company_name });
+        }
+      });
+
+      setSyncChanges({ updates, newTenants });
+      setSelectedChanges(new Set());
+      setIsSyncDialogOpen(true);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to sync tenants", variant: "destructive" });
+    }
+  };
+
+  const handleApplySyncChanges = async () => {
+    try {
+      const selected = Array.from(selectedChanges);
+      
+      for (const key of selected) {
+        if (key.startsWith('update-')) {
+          const update = syncChanges.updates.find(u => `update-${u.tenantId}` === key);
+          if (update) {
+            await supabase.from('users').update({ email: update.newEmail }).eq('tenant_id', update.tenantId);
+          }
+        } else if (key.startsWith('new-')) {
+          const newTenant = syncChanges.newTenants.find(t => `new-${t.tenantId}` === key);
+          if (newTenant) {
+            await supabase.from('users').insert({ email: newTenant.email, tenant_id: newTenant.tenantId, role: 'tenant', full_name: newTenant.companyName, status: 'active' });
+          }
+        }
+      }
+
+      toast({ title: "Success", description: `${selected.length} changes applied successfully` });
+      setIsSyncDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to apply changes", variant: "destructive" });
     }
   };
 
@@ -198,10 +251,16 @@ Promise.resolve({ data: [], error: null })
                 <CardTitle>System Users</CardTitle>
                 <CardDescription>Manage all system users and their permissions</CardDescription>
               </div>
-              <Button onClick={() => { setSelectedUser(null); setIsDialogOpen(true); }}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add User
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleSyncTenants}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Sync Existing Tenants
+                </Button>
+                <Button onClick={() => { setSelectedUser(null); setIsDialogOpen(true); }}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -308,6 +367,85 @@ Promise.resolve({ data: [], error: null })
             </div>
           </CardContent>
         </Card>
+
+        {/* Sync Dialog */}
+        <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Sync Tenant Users</DialogTitle>
+              <DialogDescription>
+                {syncChanges.updates.length === 0 && syncChanges.newTenants.length === 0 
+                  ? "All tenant users are already synced. No changes detected."
+                  : "Select changes to apply"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {syncChanges.updates.length === 0 && syncChanges.newTenants.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No changes detected. All tenant users are in sync.</p>
+                </div>
+              ) : (
+                <>
+              {syncChanges.updates.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">Email Updates</h3>
+                  {syncChanges.updates.map(update => (
+                    <div key={update.tenantId} className="flex items-center gap-3 p-3 border rounded mb-2">
+                      <Checkbox
+                        checked={selectedChanges.has(`update-${update.tenantId}`)}
+                        onCheckedChange={(checked) => {
+                          const newSet = new Set(selectedChanges);
+                          checked ? newSet.add(`update-${update.tenantId}`) : newSet.delete(`update-${update.tenantId}`);
+                          setSelectedChanges(newSet);
+                        }}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{update.companyName}</div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <span>{update.oldEmail}</span>
+                          <ArrowRight className="h-4 w-4" />
+                          <span className="text-green-600">{update.newEmail}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {syncChanges.newTenants.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">New Tenant Users</h3>
+                  {syncChanges.newTenants.map(tenant => (
+                    <div key={tenant.tenantId} className="flex items-center gap-3 p-3 border rounded mb-2">
+                      <Checkbox
+                        checked={selectedChanges.has(`new-${tenant.tenantId}`)}
+                        onCheckedChange={(checked) => {
+                          const newSet = new Set(selectedChanges);
+                          checked ? newSet.add(`new-${tenant.tenantId}`) : newSet.delete(`new-${tenant.tenantId}`);
+                          setSelectedChanges(newSet);
+                        }}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{tenant.companyName}</div>
+                        <div className="text-sm text-green-600">{tenant.email}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)}>Close</Button>
+              {(syncChanges.updates.length > 0 || syncChanges.newTenants.length > 0) && (
+                <Button onClick={handleApplySyncChanges} disabled={selectedChanges.size === 0}>
+                  Apply {selectedChanges.size} Changes
+                </Button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* User Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

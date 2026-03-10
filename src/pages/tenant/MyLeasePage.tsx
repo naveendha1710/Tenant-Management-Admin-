@@ -6,6 +6,7 @@ import { Building, MapPin, Calendar, DollarSign, Loader2, CheckCircle, Building2
 import { useTenantProfile } from '@/hooks/useTenantProfile';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { BranchTabs } from '@/components/tenant/BranchTabs';
 
 interface Agreement {
   id: string;
@@ -36,6 +37,7 @@ export default function MyLeasePage() {
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [expandedAgreementId, setExpandedAgreementId] = useState<string | null>(null);
   const [showCompanyDetails, setShowCompanyDetails] = useState(false);
+  const [activeTenantIds, setActiveTenantIds] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchAgreements = async () => {
@@ -47,38 +49,43 @@ export default function MyLeasePage() {
           .eq('email', user.email)
           .single();
 
-        if (tenantData) {
-          const { data } = await supabase
-            .from('agreements')
-            .select('*')
-            .eq('tenant_id', tenantData.id)
-            .order('created_at', { ascending: false });
-          
-          if (data) {
-            const enrichedAgreements = data.map((agreement) => {
-              if (agreement.space_assignments?.length > 0) {
-                const enrichedSpaces = agreement.space_assignments.map((space: any) => ({
-                  ...space,
-                  building: space.buildingName || 'Unknown Building',
-                  floor: space.floor === 0 ? 'Ground Floor' : `Floor ${space.floor}`,
-                  occupied_sqft: space.assignedSqft || 0,
-                  spaceType: space.spaceType || 'N/A'
-                }));
-                return { ...agreement, space_assignments: enrichedSpaces };
-              }
-              return agreement;
-            });
-            setAgreements(enrichedAgreements);
-          }
+        if (tenantData && activeTenantIds.length === 0) {
+          setActiveTenantIds([tenantData.id]);
+          return;
+        }
+
+        if (!tenantData || activeTenantIds.length === 0) return;
+
+        const { data } = await supabase
+          .from('agreements')
+          .select('*')
+          .in('tenant_id', activeTenantIds)
+          .order('created_at', { ascending: false });
+        
+        if (data) {
+          const enrichedAgreements = data.map((agreement) => {
+            if (agreement.space_assignments?.length > 0) {
+              const enrichedSpaces = agreement.space_assignments.map((space: any) => ({
+                ...space,
+                building: space.buildingName || 'Unknown Building',
+                floor: space.floor === 0 ? 'Ground Floor' : `Floor ${space.floor}`,
+                occupied_sqft: space.assignedSqft || 0,
+                spaceType: space.spaceType || 'N/A'
+              }));
+              return { ...agreement, space_assignments: enrichedSpaces };
+            }
+            return agreement;
+          });
+          setAgreements(enrichedAgreements);
         }
       } catch (error) {
         console.error('Error:', error);
       }
     };
     fetchAgreements();
-  }, [user]);
+  }, [user, activeTenantIds]);
 
-  if (loading) {
+  if (loading || activeTenantIds.length === 0) {
     return (
       <DashboardLayout title="My Lease" subtitle="Loading...">
         <div className="flex items-center justify-center h-64">
@@ -103,6 +110,8 @@ export default function MyLeasePage() {
   return (
     <DashboardLayout title="My Lease" subtitle="View your lease agreement and space details">
       <div className="space-y-6">
+        <BranchTabs onBranchChange={setActiveTenantIds} />
+        
         <div>
           <h3 className="text-lg font-semibold mb-4">My Agreements ({agreements.length})</h3>
           {agreements.length === 0 ? (

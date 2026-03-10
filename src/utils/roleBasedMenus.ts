@@ -94,8 +94,9 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
           icon: List,
           expandable: true,
           subItems: [
-            { title: "Categories", url: "/admin/master-settings?tab=asset", icon: List },
-            { title: "Sub-Categories", url: "/admin/master-settings?tab=asset&section=subcategories", icon: List },
+            { title: "Asset Types", url: "/admin/master-settings?tab=asset", icon: List },
+            { title: "Categories", url: "/admin/master-settings?tab=asset&section=subcategories", icon: List },
+            { title: "Sub-Categories", url: "/admin/master-settings?tab=asset&section=sub_subcategories", icon: List },
             { title: "Manufacturers", url: "/admin/master-settings?tab=asset&section=manufacturers", icon: List },
             { title: "Asset Status", url: "/admin/master-settings?tab=asset&section=asset_status", icon: List },
             { title: "SEZ Status", url: "/admin/master-settings?tab=asset&section=sez_status", icon: List },
@@ -162,8 +163,9 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
           icon: List,
           expandable: true,
           subItems: [
-            { title: "Categories", url: "/admin/master-settings?tab=asset", icon: List },
-            { title: "Sub-Categories", url: "/admin/master-settings?tab=asset&section=subcategories", icon: List },
+            { title: "Asset Types", url: "/admin/master-settings?tab=asset", icon: List },
+            { title: "Categories", url: "/admin/master-settings?tab=asset&section=subcategories", icon: List },
+            { title: "Sub-Categories", url: "/admin/master-settings?tab=asset&section=sub_subcategories", icon: List },
             { title: "Manufacturers", url: "/admin/master-settings?tab=asset&section=manufacturers", icon: List },
             { title: "Asset Status", url: "/admin/master-settings?tab=asset&section=asset_status", icon: List },
             { title: "SEZ Status", url: "/admin/master-settings?tab=asset&section=sez_status", icon: List },

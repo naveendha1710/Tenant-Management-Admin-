@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { AssetCard } from '@/components/tenant/AssetCard';
+import { BranchTabs } from '@/components/tenant/BranchTabs';
 
 interface Asset {
   id: string;
@@ -38,12 +39,22 @@ export default function MyAssetsPage() {
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [sortColumn, setSortColumn] = useState<keyof Asset>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [activeTenantIds, setActiveTenantIds] = useState<string[]>([]);
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user?.email) fetchAssets();
+    const initTenantIds = async () => {
+      if (!user?.email || activeTenantIds.length > 0) return;
+      const { data } = await supabase.from('tenants').select('id').eq('email', user.email).single();
+      if (data) setActiveTenantIds([data.id]);
+    };
+    initTenantIds();
   }, [user?.email]);
+
+  useEffect(() => {
+    if (user?.email && activeTenantIds.length > 0) fetchAssets();
+  }, [user?.email, activeTenantIds]);
 
   useEffect(() => {
     applyFilters();
@@ -52,13 +63,10 @@ export default function MyAssetsPage() {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      const { data: tenantData } = await supabase.from('tenants').select('id').eq('email', user?.email).single();
-      if (!tenantData) return;
-
       const { data, error } = await supabase
         .from('assets')
         .select('*')
-        .eq('handover_to', tenantData.id);
+        .in('handover_to', activeTenantIds);
 
       if (error) throw error;
       setAssets(data || []);
@@ -171,6 +179,8 @@ export default function MyAssetsPage() {
   return (
     <DashboardLayout title="My Assets" subtitle="View and manage your assigned assets">
       <div className="space-y-6">
+        <BranchTabs onBranchChange={setActiveTenantIds} />
+        
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-6">
@@ -281,7 +291,7 @@ export default function MyAssetsPage() {
                 )}
               </div>
 
-              {loading ? (
+              {(loading || activeTenantIds.length === 0) ? (
                 <div className="flex justify-center items-center py-20">
                   <div className="text-center">
                     <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />

@@ -113,6 +113,9 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
     paymentCycle: tenant?.paymentCycle || 'Monthly',
     status: tenant?.status || 'Pending Move-In',
     companyGroup: tenant?.companyGroup || defaultCompanyGroup || '',
+    parentTenantId: tenant?.parentTenantId || tenant?.parent_tenant_id || '',
+    branchName: tenant?.branchName || tenant?.branch_name || '',
+    isMainBranch: tenant?.isMainBranch ?? tenant?.is_main_branch ?? true,
     leaseAgreementDate: tenant?.leaseAgreementDate || '',
     operationDate: tenant?.operationDate || '',
     rentCommencementDate: tenant?.rentCommencementDate || '',
@@ -243,6 +246,9 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
       paymentCycle: agreementIndex === -1 ? 'Monthly' : (dataSource?.payment_cycle || dataSource?.paymentCycle || 'Monthly'),
       status: agreementIndex === -1 ? 'Pending Move-In' : (dataSource?.status || 'Pending Move-In'),
       companyGroup: tenant?.companyGroup || defaultCompanyGroup || '',
+      parentTenantId: tenant?.parentTenantId || tenant?.parent_tenant_id || '',
+      branchName: tenant?.branchName || tenant?.branch_name || '',
+      isMainBranch: tenant?.isMainBranch ?? tenant?.is_main_branch ?? true,
       leaseAgreementDate: agreementIndex === -1 ? '' : (dataSource?.lease_agreement_date || dataSource?.leaseAgreementDate || ''),
       operationDate: agreementIndex === -1 ? '' : (dataSource?.operation_date || dataSource?.operationDate || ''),
       rentCommencementDate: agreementIndex === -1 ? '' : (dataSource?.rent_commencement_date || dataSource?.rentCommencementDate || ''),
@@ -973,8 +979,25 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
                   value={formData.company}
                   onChange={(e) => handleInputChange('company', e.target.value)}
                   required
+                  disabled={!!formData.parentTenantId}
                 />
+                {formData.parentTenantId && (
+                  <p className="text-xs text-blue-600 mt-1">Inherited from parent tenant</p>
+                )}
               </div>
+              {formData.parentTenantId && (
+                <div>
+                  <Label htmlFor="branchName">Branch Name *</Label>
+                  <Input
+                    id="branchName"
+                    placeholder="e.g., Bangalore Branch, Chennai Office"
+                    value={formData.branchName}
+                    onChange={(e) => handleInputChange('branchName', e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Identifier for this branch location</p>
+                </div>
+              )}
               <div>
                 <Label htmlFor="email">Email *</Label>
                 <Input

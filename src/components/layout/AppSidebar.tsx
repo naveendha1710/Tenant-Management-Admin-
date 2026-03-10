@@ -410,7 +410,15 @@ export function AppSidebar() {
                       <div className={`ml-6 mt-1 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
                         expandedGroups.has('Asset Management') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
                       }`}>
-                        {group.items.map((item) => (
+                        {group.items.filter((item) => {
+                          if (item.title === 'Asset Master') return hasPermission(user?.appUser, 'Asset Master', 'view');
+                          if (item.title === 'Asset Movement') return hasPermission(user?.appUser, 'Asset Movement', 'view');
+                          if (item.title === 'Inventory') return hasPermission(user?.appUser, 'Inventory', 'view');
+                          if (item.title === 'Preventive Maintenance') return hasPermission(user?.appUser, 'Preventive Maintenance', 'view');
+                          if (item.title === 'Physical Audit') return hasPermission(user?.appUser, 'Physical Audit', 'view');
+                          if (item.title === 'Configuration') return hasPermission(user?.appUser, 'Configuration', 'view');
+                          return true;
+                        }).map((item) => (
                           <SidebarMenuItem key={item.title}>
                             <SidebarMenuButton asChild>
                               <NavLink 
@@ -522,7 +530,7 @@ export function AppSidebar() {
             {/* Action Buttons - Only show when expanded */}
             {!collapsed && (
               <div className="flex gap-1 flex-shrink-0">
-                {role === 'Tenant' && (
+                {role === 'Tenant' && hasPermission(user?.appUser, 'Profile', 'view') && (
                   <NavLink 
                     to="/tenant/profile"
                     className={`flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md transition-colors hover:bg-sidebar-accent ${getNavClass('/tenant/profile')}`}

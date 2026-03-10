@@ -1,0 +1,13 @@
+-- DISABLE RLS (Keep policies intact)
+ALTER TABLE public.inventory_resources DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_completion_images DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_estimations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.form_options DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.physical_audits DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.preventive_maintenance DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.maintenance_tickets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.id_configs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_assets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.form_dropdowns DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.form_subcategories DISABLE ROW LEVEL SECURITY;

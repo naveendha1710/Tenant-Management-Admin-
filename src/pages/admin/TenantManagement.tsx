@@ -28,6 +28,7 @@ const TenantManagement: React.FC = () => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'all' | 'grouped'>('grouped');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSpaceAssignmentOpen, setIsSpaceAssignmentOpen] = useState(false);
   const [isViewTenantOpen, setIsViewTenantOpen] = useState(false);
@@ -39,6 +40,10 @@ const TenantManagement: React.FC = () => {
   const [isChargeCategoryOpen, setIsChargeCategoryOpen] = useState(false);
   const [chargeCategories, setChargeCategories] = useState<string[]>([]);
   const [newChargeCategory, setNewChargeCategory] = useState('');
+  const [isTenantTypeDialogOpen, setIsTenantTypeDialogOpen] = useState(false);
+  const [isParentTenantSelectOpen, setIsParentTenantSelectOpen] = useState(false);
+  const [selectedParentTenant, setSelectedParentTenant] = useState<Tenant | null>(null);
+  const [parentTenantSearch, setParentTenantSearch] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [editingAgreementIndex, setEditingAgreementIndex] = useState<number | null>(null);
@@ -206,13 +211,34 @@ const TenantManagement: React.FC = () => {
                          tenant.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (tenant.space && tenant.space.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    // Only filter out branches when in grouped view
+    const isNotBranch = viewMode === 'all' || !tenant.parentTenantId;
+    return matchesSearch && matchesStatus && isNotBranch;
   });
 
-  const totalPages = Math.ceil(filteredTenants.length / itemsPerPage);
+  // Group tenants by company for grouped view
+  const groupedTenants = viewMode === 'grouped' ? (() => {
+    const groups = new Map<string, Tenant[]>();
+    filteredTenants.forEach(tenant => {
+      const key = tenant.parentTenantId || tenant.id;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(tenant);
+    });
+    // Return only main tenants (one per group)
+    return Array.from(groups.values()).map(group => {
+      const mainTenant = group.find(t => !t.parentTenantId) || group[0];
+      return { ...mainTenant, branches: group };
+    });
+  })() : filteredTenants;
+
+  const displayTenants = viewMode === 'grouped' ? groupedTenants : filteredTenants;
+
+  const totalPages = Math.ceil(displayTenants.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedTenants = filteredTenants.slice(startIndex, endIndex);
+  const paginatedTenants = displayTenants.slice(startIndex, endIndex);
 
   const getPageNumbers = () => {
     const pages = [];
@@ -243,10 +269,43 @@ const TenantManagement: React.FC = () => {
   };
 
   const handleAddTenant = () => {
+    setIsTenantTypeDialogOpen(true);
+  };
+
+  const handleNewTenant = () => {
     setSelectedTenant(null);
     setEditingAgreementIndex(null);
     setEditingPersonalOnly(false);
     setNewTenantId(null);
+    setSelectedParentTenant(null);
+    setIsTenantTypeDialogOpen(false);
+    setIsFormOpen(true);
+  };
+
+  const handleAddBranch = () => {
+    setIsTenantTypeDialogOpen(false);
+    setIsParentTenantSelectOpen(true);
+  };
+
+  const handleParentTenantSelected = (parent: Tenant) => {
+    setSelectedParentTenant(parent);
+    setSelectedTenant({
+      ...parent,
+      id: undefined,
+      name: '',
+      email: '',
+      phone: '',
+      phoneNumbers: [''],
+      address: '',
+      password: 'admin123',
+      parentTenantId: parent.id,
+      branchName: '',
+      isMainBranch: false,
+      status: 'Pending Move-In',
+      spaceAssignments: [],
+      agreements: []
+    });
+    setIsParentTenantSelectOpen(false);
     setIsFormOpen(true);
   };
 
@@ -260,7 +319,7 @@ const TenantManagement: React.FC = () => {
   const handleSaveTenant = async (tenantData: any) => {
     try {
       if ((!selectedTenant?.id || newTenantId) && canAdd) {
-        // Add new tenant
+        // Add new tenant (including branches)
         if (!newTenantId) {
           // First save: personal info to tenants table
           const result = await tenantDataService.addTenant({
@@ -278,7 +337,10 @@ const TenantManagement: React.FC = () => {
             gst_number: tenantData.gstNumber || null,
             tan_number: tenantData.tanNumber || null,
             pan_number: tenantData.panNumber || null,
-            cin_number: tenantData.cinNumber || null
+            cin_number: tenantData.cinNumber || null,
+            parent_tenant_id: tenantData.parentTenantId || null,
+            branch_name: tenantData.branchName || null,
+            is_main_branch: tenantData.isMainBranch ?? true
           });
           
           if (!result || !result.id) {
@@ -315,6 +377,9 @@ const TenantManagement: React.FC = () => {
             panNumber: result.pan_number,
             cinNumber: result.cin_number,
             phoneNumbers: result.phone_numbers || [result.phone],
+            parentTenantId: result.parent_tenant_id,
+            branchName: result.branch_name,
+            isMainBranch: result.is_main_branch,
             agreements: []
           });
           // Reload tenant list to show the newly created tenant
@@ -329,7 +394,8 @@ const TenantManagement: React.FC = () => {
             .from('tenants')
             .update({ 
               status: tenantData.status || 'Pending Move-In',
-              companygroup: tenantData.companyGroup || null
+              companygroup: tenantData.companyGroup || null,
+              branch_name: tenantData.branchName || null
             })
             .eq('id', newTenantId);
           
@@ -977,15 +1043,6 @@ const TenantManagement: React.FC = () => {
         {/* Header with Actions */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search tenants..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full sm:w-64"
-              />
-            </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-40">
                 <Filter className="h-4 w-4 mr-2" />
@@ -1015,12 +1072,12 @@ const TenantManagement: React.FC = () => {
             {canAdd ? (
               <Button onClick={handleAddTenant}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add New Tenant
+                Add Tenant
               </Button>
             ) : (
               <Button disabled title="You don't have permission to add tenants">
                 <Lock className="h-4 w-4 mr-2" />
-                Add New Tenant
+                Add Tenant
               </Button>
             )}
           </div>
@@ -1125,6 +1182,9 @@ const TenantManagement: React.FC = () => {
                           <div>
                             <p className="font-medium text-gray-900">{tenant.company}</p>
                             <p className="text-sm text-gray-500">{tenant.email}</p>
+                            {viewMode === 'grouped' && tenant.branches && tenant.branches.length > 1 && (
+                              <p className="text-xs text-blue-600 mt-1">{tenant.branches.length} locations</p>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -1226,10 +1286,10 @@ const TenantManagement: React.FC = () => {
               </Table>
             </div>
             )}
-            {!loading && filteredTenants.length > 0 && (
+            {!loading && displayTenants.length > 0 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
                 <div className="text-sm text-gray-500">
-                  Showing {startIndex + 1} to {Math.min(endIndex, filteredTenants.length)} of {filteredTenants.length} tenants
+                  Showing {startIndex + 1} to {Math.min(endIndex, displayTenants.length)} of {displayTenants.length} {viewMode === 'grouped' ? 'companies' : 'tenants'}
                 </div>
                 {filteredTenants.length > itemsPerPage && (
                 <div className="flex justify-center">
@@ -1437,7 +1497,29 @@ const TenantManagement: React.FC = () => {
           onEditAgreement={canEdit ? handleEditAgreement : undefined}
           onAddAgreement={canEdit ? handleAddAgreement : undefined}
           onDeleteAgreement={canEdit ? handleDeleteAgreement : undefined}
+          onAddBranch={canEdit ? (tenant) => {
+            setIsViewTenantOpen(false);
+            setSelectedParentTenant(tenant);
+            setSelectedTenant({
+              ...tenant,
+              id: undefined,
+              name: '',
+              email: '',
+              phone: '',
+              phoneNumbers: [''],
+              address: '',
+              password: 'admin123',
+              parentTenantId: tenant.id,
+              branchName: '',
+              isMainBranch: false,
+              status: 'Pending Move-In',
+              spaceAssignments: [],
+              agreements: []
+            });
+            setIsFormOpen(true);
+          } : undefined}
           canEdit={canEdit}
+          viewMode={viewMode}
         />
 
         {/* Delete Confirmation Dialog */}
@@ -1456,6 +1538,83 @@ const TenantManagement: React.FC = () => {
               <Button variant="destructive" onClick={confirmDeleteTenant}>
                 Delete
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Tenant Type Selection Dialog */}
+        <Dialog open={isTenantTypeDialogOpen} onOpenChange={setIsTenantTypeDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Tenant</DialogTitle>
+              <DialogDescription>
+                Choose how you want to add a tenant
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Button onClick={handleNewTenant} className="h-24 flex-col gap-2">
+                <UserIcon className="h-8 w-8" />
+                <div>
+                  <div className="font-semibold">New Tenant</div>
+                  <div className="text-xs font-normal opacity-80">Add a completely new tenant</div>
+                </div>
+              </Button>
+              <Button onClick={handleAddBranch} variant="outline" className="h-24 flex-col gap-2">
+                <Building className="h-8 w-8" />
+                <div>
+                  <div className="font-semibold">Add Branch</div>
+                  <div className="text-xs font-normal opacity-80">Add branch of existing tenant</div>
+                </div>
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Parent Tenant Selection Dialog */}
+        <Dialog open={isParentTenantSelectOpen} onOpenChange={setIsParentTenantSelectOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle>Select Parent Tenant</DialogTitle>
+              <DialogDescription>
+                Choose the main tenant for this branch
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mb-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search tenants..."
+                  value={parentTenantSearch}
+                  onChange={(e) => setParentTenantSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div className="space-y-2 overflow-y-auto max-h-[60vh]">
+              {tenants
+                .filter(t => t.isMainBranch !== false)
+                .filter(t => 
+                  t.company.toLowerCase().includes(parentTenantSearch.toLowerCase()) ||
+                  t.email.toLowerCase().includes(parentTenantSearch.toLowerCase())
+                )
+                .map((tenant) => (
+                <div
+                  key={tenant.id}
+                  onClick={() => handleParentTenantSelected(tenant)}
+                  className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold">
+                      {tenant.company.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{tenant.company}</p>
+                      <p className="text-sm text-muted-foreground">{tenant.email}</p>
+                    </div>
+                    <Badge variant={getStatusColor(tenant.status)}>{tenant.status}</Badge>
+                  </div>
+                </div>
+              ))}
             </div>
           </DialogContent>
         </Dialog>

@@ -38,10 +38,10 @@
 
 1. **Login Process**:
    - User enters email/password on `/auth` page
-   - System checks `users` table in Supabase first
-   - If not found, checks `tenants` table (for tenant users)
+   - System checks `users` table in Supabase first using `verify_user_password()` RPC function
+   - Password verification: Bcrypt hash comparison via PostgreSQL `crypt()` function
+   - If not found in users, checks `tenants` table (for tenant users with plain text passwords)
    - Falls back to hardcoded demo users if Supabase fails
-   - Password validation: Plain text comparison (⚠️ **SECURITY RISK** - no hashing)
    - On success: Updates `last_login`, stores user in localStorage
 
 2. **Session Management**:
@@ -100,8 +100,47 @@
 
 ## 3. Backend Architecture
 
-**Server Entry**: `server/index.js` (Express.js 4.18)
-**Port**: 3000 (configurable via `PORT` env var)
+**Server Entry**: `server/index.js` (Express.js 4.18)  
+**Development Port**: Backend runs on port 3000 (configurable via `PORT` env var)  
+**Production Port**: Single port 3000 serves both API and built frontend
+
+### Development vs Production Setup
+
+**Development Mode:**
+- Frontend: Vite dev server on port 8080 (hot reload, fast refresh)
+- Backend: Express server on port 3000 (API endpoints, file uploads, email)
+- Database: Direct Supabase connection from frontend (no backend proxy)
+- Start: Two separate processes
+  - Terminal 1: `cd server && node index.js` (backend)
+  - Terminal 2: `npm run dev` (frontend)
+
+**Production Mode:**
+- Single Port: 3000 serves both API and static React build
+- Backend serves compiled frontend from `client/build/`
+- Start: `cd server && node index.js` (unified server)
+- Access: `http://localhost:3000`
+
+**⚠️ IMPORTANT: Do NOT change port configurations or Nginx settings without understanding the full impact on development workflow.**
+
+### Database Connection Architecture
+
+**Frontend → Supabase (Direct):**
+- All database queries go directly from React to Supabase cloud
+- Uses Supabase JavaScript client (`@supabase/supabase-js`)
+- No backend proxy for database operations
+- Authentication, CRUD, real-time subscriptions all client-side
+
+**Backend is ONLY used for:**
+- File uploads via Multer (cannot be done client-side)
+- Email sending via Nodemailer (requires SMTP credentials)
+- Serving uploaded files from `/uploads/*`
+- Serving static React build in production
+
+**Backend is NOT needed for:**
+- Login/authentication (direct Supabase RPC)
+- Database queries (direct Supabase client)
+- Viewing/browsing data (direct Supabase)
+- Real-time notifications (Supabase subscriptions)
 
 ### Server Startup Sequence
 1. Load environment variables from `.env`
@@ -428,7 +467,23 @@ uploads/
 
 **Asset Pages** (`src/pages/assets/`):
 - `AssetMaster.tsx` - Asset list with CRUD, QR code generation, bulk import
-- `AssetMovement.tsx` - Movement requests with approval workflow
+  - View Mode: Movement History tab shows location change audit trail
+  - History Display: Grouped by movement request with table format
+  - Field Changes: Building, Floor, Room with old → new value mapping
+  - **Advanced Filters** (hierarchical cascading):
+    - Category → Sub-Category → Type (asset classification hierarchy)
+    - Building → Floor (location hierarchy)
+    - Status (independent filter)
+    - All filters work together with AND logic
+    - Dependent filters auto-clear when parent changes
+    - Disabled state for dependent filters when parent not selected
+- `AssetMovement.tsx` - Movement requests with three-tab inline form:
+  - Tab 1: Movement Details (tenant, type, dates, locations, handover details)
+  - Tab 2: Asset Selection (QR scanner, search, multiple checkbox selection, 60:40 split layout)
+  - Tab 3: Review & Submit (summary of selected assets and movement details)
+  - Single Request: Creates one movement record with multiple assets in JSONB array
+  - Approval: Only users with asset_movement_approver permission see approve/reject buttons
+  - Auto-update: On approval, asset locations updated and history records created
 - `AssetManagement.tsx` - Asset dashboard with analytics
 - `Configuration.tsx` - Asset ID configuration with multiple structures
 
@@ -527,9 +582,16 @@ VITE_SUPABASE_ANON_KEY=<jwt_token>
 
 **Users & Authentication**:
 - `users` - System users (admin, staff, managers)
-  - Fields: id, email, password, name, role, isActive, isApprover, permissions, lastLogin, created_at, updated_at
+  - Fields: id, email, password, name, role, isActive, isApprover, asset_movement_approver, permissions, lastLogin, created_at, updated_at
   - Roles: Super Admin, Admin, Accountant, Maintenance Manager, Helpdesk, Technician, Viewer, Custom
-  - Password: Plain text (⚠️ **SECURITY RISK** - should be hashed)
+  - Password: Bcrypt hashed (automatically via trigger)
+  - Asset Movement Approver: Boolean flag for approve/reject permissions on asset movements
+  - Password Security:
+    - Extension: `pgcrypto` for bcrypt hashing
+    - Trigger: `hash_password_trigger` auto-hashes passwords on INSERT/UPDATE
+    - Function: `hash_password()` uses `crypt(password, gen_salt('bf'))`
+    - Verification: `verify_user_password(email, password)` RPC function returns boolean
+    - Algorithm: Bcrypt with automatic salt generation
 
 **Property Management**:
 - `buildings` - Property buildings
@@ -596,9 +658,18 @@ VITE_SUPABASE_ANON_KEY=<jwt_token>
   - SEZ Status: SEZ, DTA, Bonded
   - Customs Category: Capital Goods, Consumables, Spares, Raw Materials
 - `asset_movements` - Asset transfers
-  - Fields: id, asset_id, movement_type, from_location, to_location, from_building_id, to_building_id, from_floor_id, to_floor_id, movement_date, expected_return_date, actual_return_date, reason, requested_by, approved_by, approval_date, status, gate_pass_number, vendor_name, vendor_contact, notes, created_at
+  - Fields: id, asset_id, assets (JSONB array), movement_type, from_location, to_location, from_building_id, to_building_id, from_floor_id, to_floor_id, movement_date, expected_return_date, actual_return_date, reason, requested_by, approved_by, approval_date, status, gate_pass_number, vendor_name, vendor_contact, handover_to, handover_name, handover_email, handover_mobile, notes, created_at
   - Types: Location (internal), Maintenance (external), Disposal
   - Status: Pending, Approved, Rejected, In Transit, Completed, Cancelled
+  - Supports: Multiple asset selection for bulk movement requests (stored as JSONB array)
+  - QR Scan: Integrated QR code scanner for quick asset addition
+  - Handover: Tenant or Other (manual entry) with contact details
+- `asset_history` - Location change tracking
+  - Fields: id, asset_id, change_type, field_name, old_value, new_value, changed_by, changed_at, movement_request_id, remarks
+  - Change Types: location
+  - Field Names: building, floor, room_rack
+  - Purpose: Audit trail for all asset location changes
+  - Linked to movement requests for full traceability
 - `physical_audits` - Physical verification records
   - Fields: id, asset_id, audit_date, auditor_name, scan_type, asset_found, location_match, tenant_match, serial_match, physical_condition, audit_result, remarks, created_at
   - Scan Types: QR Code, Manual
@@ -824,7 +895,9 @@ SMTP_FROM=Rathinam Nexus <your-email@gmail.com>
 
 ### Nginx Configuration
 
-**nginx.conf** (Reverse proxy):
+**⚠️ WARNING: Do NOT modify Nginx configuration without full system understanding**
+
+**nginx.conf** (Reverse proxy for production deployment only):
 ```nginx
 server {
     listen 80;
@@ -892,13 +965,16 @@ server {
 - Password masking in SMTP config
 - Email validation (regex)
 - Port validation (1-65535)
+- **Bcrypt password hashing** with automatic trigger
+- **Password verification** via secure RPC function
+- **pgcrypto extension** for cryptographic functions
 
 ### ⚠️ Concerns
-- Plain text password storage (no hashing)
 - Credentials in `.env` files
 - No rate limiting on API endpoints
 - No request validation middleware
 - localStorage for sensitive data
+- Tenant passwords still plain text (not migrated)
 
 ---
 
@@ -953,12 +1029,67 @@ server {
 4. Initial Location → Building, floor, room assigned
 5. Handover → Assigned to tenant or other party
 6. Movement Request → asset_movements table (Pending)
+   - Single or multiple assets can be selected
+   - QR code scanning for quick asset selection
+   - Search and filter assets by ID, name, category
 7. Approval → Movement approved, status updated
+   - Only users with asset_movement_approver permission can approve/reject
+   - Approval creates history records in asset_history table
+   - Asset location fields (building, floor, room_rack) updated automatically
 8. Physical Movement → Location updated, gate pass generated
-9. PM Scheduling → If pm_enabled, next PM date calculated
+9. History Tracking → All location changes logged with:
+   - Old value → New value mapping
+   - Movement request reference
+   - Changed by user
+   - Timestamp
+10. PM Scheduling → If pm_enabled, next PM date calculated
+```
+
+### Asset Movement History System
+```
+1. Movement Approval → Triggers history creation
+2. History Records → asset_history table stores:
+   - Field changes (building, floor, room_rack)
+   - Old/new values (UUIDs converted to names)
+   - Movement request ID for linking
+   - Changed by user and timestamp
+3. Grouping → Changes from same movement grouped in single card
+4. Display → Table format showing all field changes:
+   - Field | Old Value → New Value
+   - Movement request number badge
+   - Changed by information
+5. Enrichment → UUIDs replaced with actual names:
+   - Building IDs → Building names
+   - Floor IDs → Floor names/numbers
+   - Null values → "N/A"
+```
 10. Physical Audit → QR code scanned, verification recorded
 11. Depreciation → Automatic calculation based on method
 12. Disposal → Movement type: Disposal, status: Disposed
+```
+
+### Asset Movement Flow
+```
+1. User Opens Movement Module → AssetMovement page
+2. Tab 1: Asset Selection
+   - QR Code Scan → Html5Qrcode library captures asset ID
+   - Search Assets → Filter by ID, name, category
+   - Multiple Selection → Checkbox-based selection
+   - Excel-style Table → Display selected assets with remove option
+3. Tab 2: Movement Details
+   - Movement Type → Location/Maintenance/Disposal
+   - Date & Time → Movement date and time
+   - Conditional Sections:
+     - Location: From/To building, floor, room
+     - Maintenance: Vendor details, gate pass
+     - Disposal: Reason and remarks
+4. Tab 3: Review & Submit
+   - Summary → Selected assets count and details
+   - Movement Details → Type, date, location/vendor info
+   - Submit → Create movement records for all selected assets
+5. Database Insert → asset_movements table (one record per asset)
+6. Status → Pending (awaiting approval)
+7. Notification → Approver receives alert
 ```
 
 ### Physical Audit Flow
@@ -1785,7 +1916,7 @@ id, ticket_id, asset_id, created_at
 - vendor_name (text)
 - amc_number (text)
 - start_date (date)
-- end_date (date)
+- end_date (date)          
 - amc_value (numeric)
 - coverage_details (text)
 - sla_hours (integer)

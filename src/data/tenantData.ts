@@ -33,6 +33,13 @@ export interface Tenant {
   tanNumber?: string;
   panNumber?: string;
   cinNumber?: string;
+  parentTenantId?: string; // For branch tenants
+  parent_tenant_id?: string; // Database field name
+  branchName?: string;
+  branch_name?: string; // Database field name
+  isMainBranch?: boolean;
+  is_main_branch?: boolean; // Database field name
+  branches?: Tenant[]; // Related branch locations
   created_at?: string;
   updated_at?: string;
   
@@ -98,6 +105,9 @@ export const tenantDataService = {
         tanNumber: tenant.tan_number,
         panNumber: tenant.pan_number,
         cinNumber: tenant.cin_number,
+        parentTenantId: tenant.parent_tenant_id,
+        branchName: tenant.branch_name,
+        isMainBranch: tenant.is_main_branch,
         phoneNumbers: tenant.phone_numbers || [tenant.phone],
         rentAmount: totalRent, // Calculate from agreements
         agreements: tenantAgreements.map(a => ({
@@ -169,6 +179,9 @@ export const tenantDataService = {
         tanNumber: tenant.tan_number,
         panNumber: tenant.pan_number,
         cinNumber: tenant.cin_number,
+        parentTenantId: tenant.parent_tenant_id,
+        branchName: tenant.branch_name,
+        isMainBranch: tenant.is_main_branch,
         phoneNumbers: tenant.phone_numbers || [tenant.phone],
         rentAmount: totalRent,
         agreements: tenantAgreements.map(a => ({

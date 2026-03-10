@@ -27,9 +27,10 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
   title?: string;
   subtitle?: string;
+  action?: React.ReactNode;
 }
 
-export function DashboardLayout({ children, title, subtitle }: DashboardLayoutProps) {
+export function DashboardLayout({ children, title, subtitle, action }: DashboardLayoutProps) {
   const { user, role, logout } = useAuth();
 
   const handleSignOut = async () => {
@@ -56,6 +57,13 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
           </div>
           
           <div className="flex items-center gap-1 sm:gap-4">
+            {/* Branch Selector (if provided) */}
+            {action && (
+              <div className="hidden md:block">
+                {action}
+              </div>
+            )}
+            
             {/* Role-based Primary Action Button */}
             <div className="hidden lg:block">
               <RoleBasedActionButton />

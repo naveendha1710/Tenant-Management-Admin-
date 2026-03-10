@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { type AppUser, type UserRole, type UserType, type Permission, userService } from '@/data/userData';
-import { X, User, Shield, Lock, Trash2, KeyRound, AlertTriangle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { X, User, Shield, Lock, Trash2, KeyRound, AlertTriangle, ShieldCheck, Eye, EyeOff, Building2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface UserFormProps {
@@ -34,6 +34,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     isActive: true,
     twoFactorEnabled: false,
     isApprover: false,
+    assetMovementApprover: false,
+    assetIncharge: false,
     technicianCategory: '',
     notificationsEnabled: true,
     userManagementAccess: {
@@ -42,13 +44,15 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
       otherUsers: true
     },
     tenantSidebarPermissions: {
+      profile: true,
       dashboard: true,
       myLease: true,
       invoices: true,
       documents: true,
       maintenance: true,
       myAssets: true
-    }
+    },
+    branchAccess: [] as string[]
   });
   const [initialData, setInitialData] = useState(formData);
   const [hasChanges, setHasChanges] = useState(false);
@@ -57,8 +61,9 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [tenants, setTenants] = useState<any[]>([]);
 
-  const roles: UserRole[] = ['Super Admin', 'Admin', 'Accountant', 'Maintenance Manager', 'Helpdesk', 'Technician', 'Viewer', 'Manage Tickets', 'Vendor'];
+  const roles: UserRole[] = ['Super Admin', 'Admin', 'Accountant', 'Maintenance Manager', 'Helpdesk', 'Technician', 'Viewer', 'Manage Tickets', 'Vendor', 'Asset Manager'];
 
   const mergeRolePermissions = (roles: UserRole[]): Permission[] => {
     const permMap = new Map<string, Permission>();
@@ -122,6 +127,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
         isActive: user.isActive,
         twoFactorEnabled: user.twoFactorEnabled,
         isApprover: user.isApprover || false,
+        assetMovementApprover: (user as any).assetMovementApprover || false,
+        assetIncharge: (user as any).assetIncharge || false,
         technicianCategory: user.technicianCategory || '',
         notificationsEnabled: (user as any).notificationsEnabled !== undefined ? (user as any).notificationsEnabled : true,
         userManagementAccess: (user as any).userManagementAccess || {
@@ -130,6 +137,7 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           otherUsers: true
         },
         tenantSidebarPermissions: user.role === 'Tenant' && user.permissions?.length > 0 ? {
+          profile: user.permissions.some((p: any) => p.module === 'Profile' && p.view),
           dashboard: user.permissions.some((p: any) => p.module === 'Dashboard' && p.view),
           myLease: user.permissions.some((p: any) => p.module === 'My Lease' && p.view),
           invoices: user.permissions.some((p: any) => p.module === 'Invoices' && p.view),
@@ -137,13 +145,15 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           maintenance: user.permissions.some((p: any) => p.module === 'Maintenance' && p.view),
           myAssets: user.permissions.some((p: any) => p.module === 'My Assets' && p.view)
         } : {
+          profile: true,
           dashboard: true,
           myLease: true,
           invoices: true,
           documents: true,
           maintenance: true,
           myAssets: true
-        }
+        },
+        branchAccess: user.branchAccess || []
       };
       setFormData(data);
       setInitialData(data);
@@ -161,6 +171,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
         isActive: true,
         twoFactorEnabled: false,
         isApprover: false,
+        assetMovementApprover: false,
+        assetIncharge: false,
         technicianCategory: '',
         notificationsEnabled: true,
         userManagementAccess: {
@@ -168,13 +180,15 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           tenantUsers: true
         },
         tenantSidebarPermissions: {
+          profile: true,
           dashboard: true,
           myLease: true,
           invoices: true,
           documents: true,
           maintenance: true,
           myAssets: true
-        }
+        },
+        branchAccess: []
       };
       setFormData(data);
       setInitialData(data);
@@ -182,7 +196,43 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     }
     setHasChanges(false);
     setActiveTab(isOtherUserForm ? 'access' : 'profile');
+    
+    // Load tenants for branch access
+    if (user?.role === 'Tenant') {
+      loadTenants();
+    }
   }, [user, isOpen, isOtherUserForm]);
+
+  const loadTenants = async () => {
+    const { tenantDataService } = await import('@/data/tenantData');
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    if (!user) return;
+    
+    // Find the tenant record for this user
+    const { data: userTenant } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('email', user.email)
+      .single();
+    
+    if (!userTenant) return;
+    
+    // Get parent tenant ID (if this is a branch, get parent; if main, use own ID)
+    const parentId = userTenant.parent_tenant_id || userTenant.id;
+    
+    // Get all tenants in this group (parent + branches)
+    const { data: groupTenants } = await supabase
+      .from('tenants')
+      .select('*')
+      .or(`id.eq.${parentId},parent_tenant_id.eq.${parentId}`);
+    
+    if (groupTenants) {
+      const all = await tenantDataService.getAllTenants();
+      const filtered = groupTenants.map(t => all.find(at => at.id === t.id)).filter(Boolean);
+      setTenants(filtered as any[]);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -203,6 +253,7 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     let finalPermissions = permissions;
     if (user?.role === 'Tenant') {
       finalPermissions = [
+        { module: 'Profile', view: formData.tenantSidebarPermissions.profile, add: false, edit: false, delete: false },
         { module: 'Dashboard', view: formData.tenantSidebarPermissions.dashboard, add: false, edit: false, delete: false },
         { module: 'My Lease', view: formData.tenantSidebarPermissions.myLease, add: false, edit: false, delete: false },
         { module: 'Invoices', view: formData.tenantSidebarPermissions.invoices, add: false, edit: false, delete: false },
@@ -288,9 +339,13 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
 
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
-    ...(user?.role === 'Tenant' ? [{ id: 'sidebar' as const, label: 'Sidebar', icon: Shield }] : []),
-    { id: 'access' as const, label: 'Access', icon: Shield },
-    ...(user?.role !== 'Tenant' && !user?.selectedRoles?.includes('Technician') && !user?.selectedRoles?.includes('Vendor') && !isOtherUserForm ? [{ id: 'permissions' as const, label: 'Permissions', icon: ShieldCheck }] : []),
+    ...(user?.role === 'Tenant' ? [
+      { id: 'branches' as const, label: 'Branches', icon: Building2 },
+      { id: 'sidebar' as const, label: 'Sidebar', icon: Shield }
+    ] : [
+      { id: 'access' as const, label: 'Access', icon: Shield },
+      ...(user?.role !== 'Tenant' && !user?.selectedRoles?.includes('Technician') && !user?.selectedRoles?.includes('Vendor') && !isOtherUserForm ? [{ id: 'permissions' as const, label: 'Permissions', icon: ShieldCheck }] : [])
+    ]),
     { id: 'security' as const, label: 'Security', icon: Lock }
   ];
 
@@ -487,7 +542,47 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
               </div>
             )}
 
-            {/* Tab 2: Sidebar (Tenant only) */}
+            {/* Tab 2: Branches (Tenant only) */}
+            {activeTab === 'branches' && user?.role === 'Tenant' && (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>Branch Access:</strong> Select which branches this user can access. Empty = no restrictions.
+                  </p>
+                </div>
+                
+                <div className="space-y-2 border rounded-lg p-3 max-h-96 overflow-y-auto">
+                  {tenants.filter(t => t.email !== user.email).map(t => (
+                    <div key={t.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded">
+                      <Checkbox
+                        id={`branch-${t.id}`}
+                        checked={formData.branchAccess.includes(t.id)}
+                        onCheckedChange={(checked) => {
+                          setFormData({
+                            ...formData,
+                            branchAccess: checked
+                              ? [...formData.branchAccess, t.id]
+                              : formData.branchAccess.filter(id => id !== t.id)
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`branch-${t.id}`} className="flex-1 cursor-pointer flex items-center gap-2 text-sm">
+                        <Building2 className="h-3.5 w-3.5 text-gray-500" />
+                        <div>
+                          <p className="font-medium">{t.company}</p>
+                          <p className="text-xs text-muted-foreground">{t.email}</p>
+                        </div>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selected: {formData.branchAccess.length} {formData.branchAccess.length === 0 && '(No restrictions)'}
+                </p>
+              </div>
+            )}
+
+            {/* Tab 3: Sidebar (Tenant only) */}
             {activeTab === 'sidebar' && user?.role === 'Tenant' && (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -500,6 +595,17 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
                   <Label className="text-sm font-medium">Visible Sidebar Tabs</Label>
                   
                   <div className="space-y-2 border rounded-lg p-3">
+                    <div className="flex items-center justify-between py-2">
+                      <Label htmlFor="sidebar-profile" className="text-sm">Profile</Label>
+                      <Switch
+                        id="sidebar-profile"
+                        checked={formData.tenantSidebarPermissions.profile}
+                        onCheckedChange={(checked) => setFormData({ 
+                          ...formData, 
+                          tenantSidebarPermissions: { ...formData.tenantSidebarPermissions, profile: checked }
+                        })}
+                      />
+                    </div>
                     <div className="flex items-center justify-between py-2">
                       <Label htmlFor="sidebar-dashboard" className="text-sm">Dashboard</Label>
                       <Switch
@@ -680,6 +786,34 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
                       id="isApprover"
                       checked={formData.isApprover}
                       onCheckedChange={(checked) => setFormData({ ...formData, isApprover: checked })}
+                    />
+                  </div>
+                )}
+                
+                {permissions.some(p => p.module === 'Asset Movement' && p.view) && (
+                  <div className="flex items-center justify-between py-3 border-b">
+                    <div>
+                      <Label htmlFor="assetMovementApprover" className="text-sm font-medium">Asset Movement Approver</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Can approve/reject asset movements</p>
+                    </div>
+                    <Switch
+                      id="assetMovementApprover"
+                      checked={formData.assetMovementApprover}
+                      onCheckedChange={(checked) => setFormData({ ...formData, assetMovementApprover: checked })}
+                    />
+                  </div>
+                )}
+                
+                {(permissions.some(p => p.module === 'Asset Master' && p.view) || formData.selectedRoles.includes('Asset Manager')) && (
+                  <div className="flex items-center justify-between py-3 border-b">
+                    <div>
+                      <Label htmlFor="assetIncharge" className="text-sm font-medium">Asset Incharge</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Responsible for asset management</p>
+                    </div>
+                    <Switch
+                      id="assetIncharge"
+                      checked={formData.assetIncharge}
+                      onCheckedChange={(checked) => setFormData({ ...formData, assetIncharge: checked })}
                     />
                   </div>
                 )}

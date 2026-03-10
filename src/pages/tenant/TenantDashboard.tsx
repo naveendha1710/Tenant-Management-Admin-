@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   FileText, 
   CreditCard, 
@@ -15,7 +16,8 @@ import {
   TrendingUp,
   Loader2,
   Plus,
-  ChevronDown
+  ChevronDown,
+  Building2
 } from 'lucide-react';
 import { useTenantProfile } from '@/hooks/useTenantProfile';
 import { supabase } from '@/lib/supabase';
@@ -46,15 +48,82 @@ export default function TenantDashboard() {
   const navigate = useNavigate();
   const { tenant, loading } = useTenantProfile();
   const { user } = useAuth();
+  
+  // Redirect if Dashboard is disabled
+  useEffect(() => {
+    if (!user?.appUser?.permissions) return;
+    
+    const hasDashboardAccess = user.appUser.permissions.some((p: any) => p.module === 'Dashboard' && p.view);
+    
+    if (!hasDashboardAccess) {
+      // Find first available tab
+      const availableTabs = [
+        { module: 'My Lease', path: '/tenant/lease' },
+        { module: 'Invoices', path: '/tenant/invoices' },
+        { module: 'Documents', path: '/tenant/documents' },
+        { module: 'Maintenance', path: '/tenant/maintenance-requests' },
+        { module: 'My Assets', path: '/tenant/my-assets' }
+      ];
+      
+      const firstAvailable = availableTabs.find(tab => 
+        user.appUser.permissions.some((p: any) => p.module === tab.module && p.view)
+      );
+      
+      if (firstAvailable) {
+        navigate(firstAvailable.path, { replace: true });
+      }
+    }
+  }, [user, navigate]);
   const [openTickets, setOpenTickets] = useState(0);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [recentTickets, setRecentTickets] = useState<Ticket[]>([]);
   const [currentRent, setCurrentRent] = useState(0);
+  const [rentBreakdown, setRentBreakdown] = useState({ floor: 0, maintenance: 0, general: 0, service: 0 });
   const [leaseProgress, setLeaseProgress] = useState(0);
   const [totalLeaseMonths, setTotalLeaseMonths] = useState(0);
   const [elapsedMonths, setElapsedMonths] = useState(0);
   const [showCompanyDetails, setShowCompanyDetails] = useState(false);
   const [shouldPlayVideo, setShouldPlayVideo] = useState(false);
+  const [activeTenantIds, setActiveTenantIds] = useState<string[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [currentTenantId, setCurrentTenantId] = useState<string>('');
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      if (!user?.email) return;
+      
+      const { data: currentTenant } = await supabase
+        .from('tenants')
+        .select('id, company')
+        .eq('email', user.email)
+        .single();
+
+      if (!currentTenant) return;
+
+      const branchAccess = user.appUser?.branchAccess || [];
+      const allBranches = [currentTenant];
+      
+      if (branchAccess.length > 0) {
+        const { data: accessibleBranches } = await supabase
+          .from('tenants')
+          .select('id, company')
+          .in('id', branchAccess);
+        
+        if (accessibleBranches) {
+          allBranches.push(...accessibleBranches);
+        }
+      }
+      
+      setBranches(allBranches);
+      setActiveTenantIds([currentTenant.id]);
+      setCurrentTenantId(currentTenant.id);
+      setSelectedBranch(currentTenant.id);
+    };
+    
+    loadBranches();
+  }, [user]);
 
   useEffect(() => {
     const hasPlayed = sessionStorage.getItem('tenant_video_played');
@@ -88,17 +157,27 @@ export default function TenantDashboard() {
           .eq('email', user.email)
           .single();
 
-        if (tenantData) {
-          const { data: agreementsData } = await supabase
-            .from('agreements')
-            .select('*')
-            .eq('tenant_id', tenantData.id)
-            .eq('status', 'Active');
+        if (tenantData && activeTenantIds.length === 0) {
+          setActiveTenantIds([tenantData.id]);
+          return;
+        }
 
-          if (agreementsData && agreementsData.length > 0) {
+        if (!tenantData || activeTenantIds.length === 0) return;
+
+        const { data: agreementsData } = await supabase
+          .from('agreements')
+          .select('*')
+          .in('tenant_id', activeTenantIds)
+          .eq('status', 'Active');
+
+        if (agreementsData && agreementsData.length > 0) {
             setAgreements(agreementsData);
             
             let totalRent = 0;
+            let totalFloor = 0;
+            let totalMaintenance = 0;
+            let totalGeneral = 0;
+            let totalService = 0;
             let earliestStart: Date | null = null;
             let latestEnd: Date | null = null;
             
@@ -131,6 +210,10 @@ export default function TenantDashboard() {
               const serviceCharge = agreementData.service_charge;
               const serviceTotal = (serviceCharge && !serviceCharge.isIncludedInRent) ? (serviceCharge.amount || 0) : 0;
               
+              totalFloor += floorRent;
+              totalMaintenance += maintenanceTotal;
+              totalGeneral += generalTotal;
+              totalService += serviceTotal;
               totalRent += floorRent + maintenanceTotal + generalTotal + serviceTotal;
               
               const startDate = new Date(agreementData.rent_commencement_date);
@@ -141,6 +224,12 @@ export default function TenantDashboard() {
             });
             
             setCurrentRent(totalRent);
+            setRentBreakdown({ 
+              floor: Math.round(totalFloor), 
+              maintenance: Math.round(totalMaintenance), 
+              general: Math.round(totalGeneral), 
+              service: Math.round(totalService) 
+            });
             
             if (earliestStart && latestEnd) {
               const today = new Date();
@@ -153,26 +242,26 @@ export default function TenantDashboard() {
               setTotalLeaseMonths(totalMonths);
               setElapsedMonths(elapsed);
             }
-          }
-          
-          const { count } = await supabase
+        }
+        
+        const { count } = await supabase
             .from('maintenance_tickets')
             .select('id', { count: 'exact', head: true })
-            .eq('tenant_id', tenantData.id)
+            .in('tenant_id', activeTenantIds)
             .neq('status', 'resolved');
-          
-          setOpenTickets(count || 0);
-          
-          const { data: ticketsData } = await supabase
+        
+        setOpenTickets(count || 0);
+        
+        const { data: ticketsData } = await supabase
             .from('maintenance_tickets')
             .select('id, ticket_number, title, status, created_at')
-            .eq('tenant_id', tenantData.id)
+            .in('tenant_id', activeTenantIds)
+            .neq('status', 'resolved')
             .order('created_at', { ascending: false })
-            .limit(1);
-          
-          if (ticketsData) {
-            setRecentTickets(ticketsData);
-          }
+            .limit(2);
+        
+        if (ticketsData) {
+          setRecentTickets(ticketsData);
         }
       } catch (error) {
         console.error('Error:', error);
@@ -180,9 +269,14 @@ export default function TenantDashboard() {
     };
     
     fetchData();
-  }, [user]);
+  }, [user, activeTenantIds]);
 
-  if (loading) {
+  const handleBranchChange = (value: string) => {
+    setSelectedBranch(value);
+    setActiveTenantIds([value]);
+  };
+
+  if (loading || activeTenantIds.length === 0) {
     return (
       <DashboardLayout title="Dashboard" subtitle="Loading...">
         <div className="flex items-center justify-center h-64">
@@ -222,7 +316,27 @@ export default function TenantDashboard() {
   const hasMaintenanceAccess = user?.appUser?.permissions?.some((p: any) => p.module === 'Maintenance' && p.view) ?? true;
 
   return (
-    <DashboardLayout title={`Welcome back, ${tenant.company}`} subtitle="Your property management dashboard">
+    <DashboardLayout 
+      title={`Welcome back, ${tenant.company}`} 
+      subtitle="Your property management dashboard"
+      action={
+        branches.length > 1 ? (
+          <Select value={selectedBranch} onValueChange={handleBranchChange}>
+            <SelectTrigger className="w-[250px]">
+              <Building2 className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {branches.map(branch => (
+                <SelectItem key={branch.id} value={branch.id}>
+                  {branch.company}{branch.id === currentTenantId ? ' (Main)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null
+      }
+    >
       <div className="space-y-6">
         <div className="relative">
           <Card className={`relative z-20 overflow-hidden ${
@@ -295,15 +409,48 @@ export default function TenantDashboard() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => hasInvoiceAccess && navigate('/tenant/invoices')}>
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow" 
+            onClick={() => hasInvoiceAccess && navigate('/tenant/invoices')}
+            onMouseEnter={() => setHoveredCard('rent')}
+            onMouseLeave={() => setHoveredCard(null)}
+          >
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm text-muted-foreground">Current Rent</p>
                   <p className="text-2xl font-bold">₹{currentRent.toLocaleString()}</p>
                   <Badge className="bg-green-100 text-green-800 mt-2">Active</Badge>
                 </div>
                 <CreditCard className="h-8 w-8 text-green-600" />
+              </div>
+              <div 
+                className={`border-t space-y-1 text-xs transition-all duration-500 ease-in-out overflow-hidden ${
+                  hoveredCard === 'rent' ? 'max-h-40 opacity-100 pt-3 mt-3' : 'max-h-0 opacity-0 pt-0 mt-0'
+                }`}
+              >
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Floor Rent:</span>
+                  <span className="font-medium">₹{rentBreakdown.floor.toLocaleString()}</span>
+                </div>
+                {rentBreakdown.maintenance > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Maintenance:</span>
+                    <span className="font-medium">₹{rentBreakdown.maintenance.toLocaleString()}</span>
+                  </div>
+                )}
+                {rentBreakdown.general > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">General:</span>
+                    <span className="font-medium">₹{rentBreakdown.general.toLocaleString()}</span>
+                  </div>
+                )}
+                {rentBreakdown.service > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Service:</span>
+                    <span className="font-medium">₹{rentBreakdown.service.toLocaleString()}</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -321,15 +468,36 @@ export default function TenantDashboard() {
             </CardContent>
           </Card>
 
-          <Card className={hasMaintenanceAccess ? "cursor-pointer hover:shadow-lg transition-shadow" : "opacity-50"} onClick={() => hasMaintenanceAccess && navigate('/tenant/maintenance-requests')}>
+          <Card 
+            className={hasMaintenanceAccess ? "cursor-pointer hover:shadow-lg transition-shadow" : "opacity-50"} 
+            onClick={() => hasMaintenanceAccess && navigate('/tenant/maintenance-requests')}
+            onMouseEnter={() => setHoveredCard('tickets')}
+            onMouseLeave={() => setHoveredCard(null)}
+          >
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm text-muted-foreground">Open Tickets</p>
                   <p className="text-2xl font-bold">{openTickets}</p>
                 </div>
                 <Wrench className="h-8 w-8 text-yellow-600" />
               </div>
+              {recentTickets.length > 0 && (
+                <div 
+                  className={`border-t space-y-2 transition-all duration-500 ease-in-out overflow-hidden ${
+                    hoveredCard === 'tickets' ? 'max-h-40 opacity-100 pt-3 mt-3' : 'max-h-0 opacity-0 pt-0 mt-0'
+                  }`}
+                >
+                  {recentTickets.slice(0, 2).map((ticket) => (
+                    <div key={ticket.id} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground truncate flex-1">{ticket.title}</span>
+                      <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0">
+                        {ticket.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

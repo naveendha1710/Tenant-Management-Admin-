@@ -26,6 +26,7 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
   const [auditHistory, setAuditHistory] = useState<PhysicalAuditRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [pmSchedules, setPmSchedules] = useState<PMSchedule[]>([]);
+  const [isTodayAuditDone, setIsTodayAuditDone] = useState(false);
 
   useEffect(() => {
     loadAssetData();
@@ -47,11 +48,7 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
           room_rack,
           handover_to,
           building,
-          floor,
-          pm_date,
-          pm_start_date,
-          pm_frequency_days,
-          pm_next_date
+          floor
         `)
         .eq('id', assetId)
         .single();
@@ -60,20 +57,38 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
         console.error('Asset fetch error:', assetError);
       }
 
+      // Fetch PM schedule from preventive_maintenance table
+      const { data: pmData } = await supabase
+        .from('preventive_maintenance')
+        .select('*')
+        .eq('asset_id', assetId)
+        .single();
+
+      // Fetch all physical audits for this asset to check completion
+      const { data: allAudits } = await supabase
+        .from('physical_audits')
+        .select('audit_date')
+        .eq('asset_id', asset?.asset_id);
+
+      const auditDates = new Set(allAudits?.map(a => a.audit_date.split('T')[0]) || []);
+      const today = new Date().toISOString().split('T')[0];
+      const isTodayAuditDone = auditDates.has(today);
+      setIsTodayAuditDone(isTodayAuditDone);
+
       // Generate PM schedules based on frequency
-      if (asset?.pm_start_date && asset?.pm_frequency_days) {
+      if (pmData?.pm_start_date && pmData?.pm_frequency_days) {
         const schedules: PMSchedule[] = [];
-        const startDate = new Date(asset.pm_start_date);
-        const today = new Date();
+        const startDate = new Date(pmData.pm_start_date);
         
         for (let i = 0; i < 10; i++) {
           const scheduleDate = new Date(startDate);
-          scheduleDate.setDate(scheduleDate.getDate() + (asset.pm_frequency_days * i));
+          scheduleDate.setDate(scheduleDate.getDate() + (pmData.pm_frequency_days * i));
+          const scheduleDateStr = scheduleDate.toISOString().split('T')[0];
           
           schedules.push({
             id: `pm-${i}`,
-            scheduled_date: scheduleDate.toISOString().split('T')[0],
-            status: scheduleDate < today ? 'Completed' : 'Pending'
+            scheduled_date: scheduleDateStr,
+            status: auditDates.has(scheduleDateStr) ? 'Completed' : 'Pending'
           });
         }
         setPmSchedules(schedules);
@@ -146,8 +161,8 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
           status: asset.status,
           asset_status: asset.asset_status,
           condition: latestAudit?.condition,
-          pm_date: asset.pm_date,
-          pmStatus: asset.pm_date ? calculatePMStatus(asset.pm_date) : undefined,
+          pm_date: pmData?.pm_next_date,
+          pmStatus: pmData?.pm_next_date ? calculatePMStatus(pmData.pm_next_date) : undefined,
           last_audit_date: latestAudit?.audit_date,
           audit_result: latestAudit?.audit_result
         });
@@ -226,6 +241,33 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
 
             {/* Right side - 30% */}
             <div className="flex-[3]">
+              {/* Today's Audit Status Banner */}
+              {pmSchedules.some(s => s.scheduled_date === new Date().toISOString().split('T')[0]) && (
+                <div className={`mb-4 p-4 rounded-lg border-2 ${
+                  isTodayAuditDone 
+                    ? 'bg-green-50 border-green-500' 
+                    : 'bg-orange-50 border-orange-500'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {isTodayAuditDone ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <Clock className="h-5 w-5 text-orange-600" />
+                    )}
+                    <div>
+                      <p className={`text-sm font-bold ${
+                        isTodayAuditDone ? 'text-green-700' : 'text-orange-700'
+                      }`}>
+                        {isTodayAuditDone ? 'Today\'s Audit Completed' : 'Audit Pending Today'}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {new Date().toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">PM Schedule</h3>
                 <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">

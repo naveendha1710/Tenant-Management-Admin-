@@ -12,13 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Filter, Download, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, FileText, Plus, CircleX, TriangleAlert, MapPin, Calendar, Camera, Video, Upload, Cloud, Building2, Layers, Clock, FileImage } from 'lucide-react';
+import { Search, Filter, Download, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, FileText, Plus, CircleX, TriangleAlert, MapPin, Calendar, Camera, Video, Upload, Cloud, Building2, Layers, Clock, FileImage, ChevronDown } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { MaintenanceService } from '@/services/maintenanceService';
 import { getStatusColor, getStatusLabel } from '@/utils/ticketStatus';
 import { ReportDialog } from '@/components/reports/ReportDialog';
 import { buildingService } from '@/services/buildingService';
 import { useAuth } from '@/contexts/AuthContext';
+import jsPDF from 'jspdf';
 import { AssetInfo } from '@/components/tenant/AssetInfo';
 import { MaintenanceTicketForm } from '@/components/tenant/MaintenanceTicketForm';
 
@@ -304,9 +306,6 @@ export default function ManageTicketsPage() {
   };
 
   const filteredTickets = tickets.filter(ticket => {
-    const isManagerTicket = !ticket.tenant_id && ticket.created_by_user_id;
-    const isSubmitted = ticket.status !== 'pending' || !!ticket.assigned_to || isManagerTicket;
-    
     const tenantName = ticket.tenant?.company_name || 'N/A';
     const matchesSearch = tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -315,8 +314,6 @@ export default function ManageTicketsPage() {
     let matchesStatus = true;
     if (statusFilter === 'all_tickets') {
       matchesStatus = true;
-    } else if (statusFilter === 'manager_tickets') {
-      matchesStatus = isManagerTicket;
     } else if (statusFilter === 'pending_approval') {
       matchesStatus = ['pending_approval', 'rejected', 'pending_tenant_approval', 'tenant_rejected'].includes(ticket.status);
     } else if (statusFilter === 'in_progress') {
@@ -328,7 +325,7 @@ export default function ManageTicketsPage() {
     }
     
     const matchesPriority = priorityFilter === 'all' || ticket.priority.toLowerCase() === priorityFilter;
-    return isSubmitted && matchesSearch && matchesStatus && matchesPriority;
+    return matchesSearch && matchesStatus && matchesPriority;
   });
 
   const stats = {
@@ -495,6 +492,17 @@ export default function ManageTicketsPage() {
                         <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</Label>
                         <p className="mt-2 text-sm text-gray-700 leading-relaxed">{selectedTicket.description}</p>
                       </div>
+                      
+                      {/* Changes Requested Badge */}
+                      {selectedTicket.status_history?.includes('CHANGES REQUESTED BY HELPDESK') && (
+                        <div className="bg-orange-50 rounded-lg border border-orange-200 p-3">
+                          <div className="flex items-center gap-2">
+                            <TriangleAlert className="h-4 w-4 text-orange-600" />
+                            <Label className="text-sm font-semibold text-orange-900">Re-submitted Estimation</Label>
+                          </div>
+                          <p className="text-sm text-orange-700 mt-1">This estimation has been modified by helpdesk after previous approval.</p>
+                        </div>
+                      )}
 
                       {/* Additional Notes */}
                       {(() => {
@@ -853,14 +861,22 @@ export default function ManageTicketsPage() {
                           // Approval events from status_history
                           if (selectedTicket.status_history) {
                             const managerApprovalMatch = selectedTicket.status_history.match(/\[(.*?)\] MANAGER APPROVED/);
-                            if (managerApprovalMatch) {
-                              events.push({ type: 'manager_approved', timestamp: new Date(managerApprovalMatch[1]).toISOString() });
+                            if (managerApprovalMatch && managerApprovalMatch[1]) {
+                              try {
+                                events.push({ type: 'manager_approved', timestamp: new Date(managerApprovalMatch[1]).toISOString() });
+                              } catch (e) {
+                                events.push({ type: 'manager_approved', timestamp: selectedTicket.created_at });
+                              }
                             }
                             // Only show tenant approval if ticket has a tenant
                             if (selectedTicket.tenant_id) {
                               const tenantApprovalMatch = selectedTicket.status_history.match(/\[(.*?)\] TENANT APPROVED/);
-                              if (tenantApprovalMatch) {
-                                events.push({ type: 'tenant_approved', timestamp: new Date(tenantApprovalMatch[1]).toISOString() });
+                              if (tenantApprovalMatch && tenantApprovalMatch[1]) {
+                                try {
+                                  events.push({ type: 'tenant_approved', timestamp: new Date(tenantApprovalMatch[1]).toISOString() });
+                                } catch (e) {
+                                  events.push({ type: 'tenant_approved', timestamp: selectedTicket.created_at });
+                                }
                               }
                             }
                           }
@@ -1435,7 +1451,7 @@ export default function ManageTicketsPage() {
                     </TableRow>
                   ) : (
                     filteredTickets.map((ticket: any) => (
-                      <TableRow key={ticket.id}>
+                      <TableRow key={ticket.id} className="cursor-pointer" onDoubleClick={() => { setSelectedTicket(ticket); setIsDetailOpen(true); }}>
                         <TableCell className="font-medium">{ticket.ticket_number || '#' + ticket.id.slice(-6)}</TableCell>
                         <TableCell>{ticket.tenant?.company_name || 'N/A'}</TableCell>
                         <TableCell className="max-w-xs truncate">{ticket.title}</TableCell>
@@ -1454,16 +1470,315 @@ export default function ManageTicketsPage() {
                         </TableCell>
                         <TableCell>{ticket.assigned_to || 'Unassigned'}</TableCell>
                         <TableCell>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => {
-                              setSelectedTicket(ticket);
-                              setIsDetailOpen(true);
-                            }}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedTicket(ticket);
+                                setIsDetailOpen(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Download className="h-4 w-4 mr-1" />
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={async () => {
+                          if (!ticket.resolution_notes?.includes('=== ESTIMATION ===')) {
+                            toast({title: 'Info', description: 'No estimation available for this ticket'});
+                            return;
+                          }
+                                  try {
+                                    const doc = new jsPDF();
+                                    doc.setFontSize(18);
+                                    doc.setFont(undefined, 'bold');
+                                    doc.text('ESTIMATION REPORT', 105, 20, { align: 'center' });
+                                    
+                                    // Ticket Info Table
+                                    doc.setFontSize(10);
+                                    doc.setFont(undefined, 'normal');
+                                    let y = 35;
+                                    doc.setFillColor(240, 240, 240);
+                                    doc.rect(15, y, 180, 8, 'F');
+                                    doc.setFont(undefined, 'bold');
+                                    doc.text('Ticket Information', 20, y + 5);
+                                    y += 10;
+                                    doc.setFont(undefined, 'normal');
+                                    doc.text(`Ticket Number: ${ticket.ticket_number || '#' + ticket.id.slice(-6)}`, 20, y);
+                                    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y);
+                                    y += 6;
+                                    doc.text(`Created By: ${ticket.created_by_name || ticket.tenant?.company_name || 'N/A'}`, 20, y);
+                                    y += 6;
+                                    doc.text(`Created At: ${new Date(ticket.created_at).toLocaleString()}`, 20, y);
+                                    y += 12;
+                                    
+                                    // Materials Table
+                                    const materialsMatch = ticket.resolution_notes.match(/Materials:[\s\S]+?-{60}\n([\s\S]+?)\n-{60}/);
+                                    if (materialsMatch) {
+                                      doc.setFillColor(240, 240, 240);
+                                      doc.rect(15, y, 180, 8, 'F');
+                                      doc.setFont(undefined, 'bold');
+                                      doc.text('Materials Details', 20, y + 5);
+                                      y += 10;
+                                      
+                                      // Table header
+                                      doc.setFillColor(220, 220, 220);
+                                      doc.rect(15, y, 180, 7, 'F');
+                                      doc.setFontSize(9);
+                                      doc.text('Item', 20, y + 5);
+                                      doc.text('Qty', 90, y + 5);
+                                      doc.text('Rate', 110, y + 5);
+                                      doc.text('GST%', 135, y + 5);
+                                      doc.text('Total', 165, y + 5);
+                                      y += 7;
+                                      
+                                      // Table rows
+                                      doc.setFont(undefined, 'normal');
+                                      materialsMatch[1].split('\n').forEach((line, i) => {
+                                        const parts = line.split(' | ');
+                                        if (parts.length === 6) {
+                                          if (i % 2 === 0) {
+                                            doc.setFillColor(250, 250, 250);
+                                            doc.rect(15, y, 180, 6, 'F');
+                                          }
+                                          doc.text(parts[0].substring(0, 25), 20, y + 4);
+                                          doc.text(parts[1], 90, y + 4);
+                                          doc.text(parts[2], 110, y + 4);
+                                          doc.text(parts[3], 135, y + 4);
+                                          doc.text(parts[5], 165, y + 4);
+                                          y += 6;
+                                        }
+                                      });
+                                      y += 6;
+                                    }
+                                    
+                                    // Estimation Summary Table
+                                    const costMatch = ticket.resolution_notes.match(/Material Cost \(without GST\): ₹([\d,]+(?:\.\d{2})?)\s*\nTotal GST: ₹([\d,]+(?:\.\d{2})?)\s*\nMaterial Cost \(with GST\): ₹([\d,]+(?:\.\d{2})?)\s*\nLabor Hours: ([\d.]+)\s*\nLabor Cost: ₹([\d,]+(?:\.\d{2})?)\s*\nTotal: ₹([\d,]+(?:\.\d{2})?)/s);
+                                    if (costMatch) {
+                                      doc.setFillColor(240, 240, 240);
+                                      doc.rect(15, y, 180, 8, 'F');
+                                      doc.setFont(undefined, 'bold');
+                                      doc.setFontSize(10);
+                                      doc.text('Estimation Summary', 20, y + 5);
+                                      y += 10;
+                                      
+                                      doc.setFont(undefined, 'normal');
+                                      doc.setFontSize(9);
+                                      const rows = [
+                                        ['Material Cost (without GST)', '₹' + costMatch[1]],
+                                        ['Total GST', '₹' + costMatch[2]],
+                                        ['Material Cost (with GST)', '₹' + costMatch[3]],
+                                        ['Labor Hours', costMatch[4]],
+                                        ['Labor Cost', '₹' + costMatch[5]]
+                                      ];
+                                      
+                                      rows.forEach((row, i) => {
+                                        if (i % 2 === 0) {
+                                          doc.setFillColor(250, 250, 250);
+                                          doc.rect(15, y, 180, 6, 'F');
+                                        }
+                                        doc.text(row[0], 20, y + 4);
+                                        doc.text(row[1], 165, y + 4, { align: 'right' });
+                                        y += 6;
+                                      });
+                                      
+                                      // Total
+                                      y += 2;
+                                      doc.setFillColor(200, 220, 255);
+                                      doc.rect(15, y, 180, 8, 'F');
+                                      doc.setFont(undefined, 'bold');
+                                      doc.setFontSize(12);
+                                      doc.text('TOTAL ESTIMATION', 20, y + 5);
+                                      doc.text('₹' + costMatch[6], 175, y + 5, { align: 'right' });
+                                    }
+                                    
+                                    doc.save(`estimation_${ticket.ticket_number || ticket.id.slice(-6)}.pdf`);
+                                    toast({title: 'Success', description: 'Estimation PDF downloaded'});
+                                    return;
+                                  } catch (error: any) {
+                                    toast({title: 'Error', description: error.message, variant: 'destructive'});
+                                  }
+                                }}>
+                                  <FileText className="h-4 w-4 mr-2" />PDF (Estimation)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={async () => {
+                                try {
+                                  const ExcelJS = (await import('exceljs')).default;
+                                  const workbook = new ExcelJS.Workbook();
+                                  const worksheet = workbook.addWorksheet('Ticket Report');
+                                  worksheet.columns = [{header: 'Field', key: 'field', width: 35}, {header: 'Value', key: 'value', width: 60}];
+                                  
+                                  // Header
+                                  worksheet.addRow({field: '=== MAINTENANCE TICKET REPORT ===', value: ''});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Basic Info
+                                  worksheet.addRow({field: '--- TICKET INFORMATION ---', value: ''});
+                                  worksheet.addRow({field: 'Ticket Number', value: ticket.ticket_number || ticket.id.slice(-6)});
+                                  worksheet.addRow({field: 'Title', value: ticket.title});
+                                  worksheet.addRow({field: 'Description', value: ticket.description});
+                                  worksheet.addRow({field: 'Category', value: ticket.category});
+                                  worksheet.addRow({field: 'Priority', value: ticket.priority});
+                                  worksheet.addRow({field: 'Status', value: getStatusLabel(ticket.status)});
+                                  worksheet.addRow({field: 'Created Date', value: new Date(ticket.created_at).toLocaleString()});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Tenant/Creator Info
+                                  worksheet.addRow({field: '--- REQUESTER INFORMATION ---', value: ''});
+                                  if (ticket.tenant_id) {
+                                    worksheet.addRow({field: 'Tenant Company', value: ticket.tenant?.company_name || 'N/A'});
+                                    worksheet.addRow({field: 'Contact Person', value: ticket.tenant?.contact_person || 'N/A'});
+                                    worksheet.addRow({field: 'Email', value: ticket.tenant?.email || 'N/A'});
+                                    worksheet.addRow({field: 'Phone', value: ticket.tenant?.phone || 'N/A'});
+                                  } else {
+                                    worksheet.addRow({field: 'Created By', value: ticket.created_by_name || 'Helpdesk/Manager'});
+                                    worksheet.addRow({field: 'Role', value: ticket.created_by_role || 'N/A'});
+                                  }
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Location Details
+                                  worksheet.addRow({field: '--- LOCATION DETAILS ---', value: ''});
+                                  worksheet.addRow({field: 'Building', value: ticket.building || 'N/A'});
+                                  worksheet.addRow({field: 'Floor', value: ticket.floor || 'N/A'});
+                                  worksheet.addRow({field: 'Room', value: ticket.room || 'N/A'});
+                                  worksheet.addRow({field: 'Exact Spot', value: ticket.spot_description || 'N/A'});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Visit Preferences
+                                  worksheet.addRow({field: '--- VISIT PREFERENCES ---', value: ''});
+                                  worksheet.addRow({field: 'Preferred Date', value: ticket.preferred_date ? new Date(ticket.preferred_date).toLocaleDateString() : 'N/A'});
+                                  worksheet.addRow({field: 'Preferred Time', value: ticket.preferred_time || 'N/A'});
+                                  worksheet.addRow({field: 'Target Date', value: ticket.target_date ? new Date(ticket.target_date).toLocaleDateString() : 'N/A'});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Risk Flags
+                                  worksheet.addRow({field: '--- RISK ASSESSMENT ---', value: ''});
+                                  worksheet.addRow({field: 'Safety Risk', value: ticket.safety_risk ? 'YES - IMMEDIATE ATTENTION REQUIRED' : 'No'});
+                                  worksheet.addRow({field: 'Previous Occurrence', value: ticket.previous_occurrence ? 'Yes' : 'No'});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Technician Assignment
+                                  if (ticket.assigned_technicians?.length > 0) {
+                                    worksheet.addRow({field: '--- ASSIGNED TECHNICIANS ---', value: ''});
+                                    ticket.assigned_technicians.forEach((tech: any, idx: number) => {
+                                      worksheet.addRow({field: `Technician ${idx + 1}`, value: `${tech.name} | ${tech.contact} | ${tech.specialization}`});
+                                    });
+                                    worksheet.addRow({field: '', value: ''});
+                                  }
+                                  
+                                  // RCA Details
+                                  if (ticket.resolution_notes?.includes('=== RCA ===')) {
+                                    const rcaMatch = ticket.resolution_notes.match(/=== RCA ===\s*\nRoot Cause: ([^\n]+)\s*\nFindings: ([^\n]+)/);
+                                    if (rcaMatch) {
+                                      worksheet.addRow({field: '--- ROOT CAUSE ANALYSIS ---', value: ''});
+                                      worksheet.addRow({field: 'Root Cause', value: rcaMatch[1]});
+                                      worksheet.addRow({field: 'Findings', value: rcaMatch[2]});
+                                      worksheet.addRow({field: '', value: ''});
+                                    }
+                                  }
+                                  
+                                  // Materials & Cost
+                                  if (ticket.resolution_notes?.includes('Materials:')) {
+                                    worksheet.addRow({field: '--- MATERIALS & COST ESTIMATION ---', value: ''});
+                                    const materialsMatch = ticket.resolution_notes.match(/Materials:[\s\S]+?-{60}\n([\s\S]+?)\n-{60}/);
+                                    if (materialsMatch) {
+                                      worksheet.addRow({field: 'Item | Qty | Rate | GST% | GST Amt | Total', value: ''});
+                                      materialsMatch[1].split('\n').forEach(line => {
+                                        if (line.trim()) worksheet.addRow({field: line, value: ''});
+                                      });
+                                    }
+                                    const costMatch = ticket.resolution_notes.match(/Material Cost \(without GST\): ₹([\d,]+(?:\.\d{2})?)\s*\nTotal GST: ₹([\d,]+(?:\.\d{2})?)\s*\nMaterial Cost \(with GST\): ₹([\d,]+(?:\.\d{2})?)\s*\nLabor Hours: ([\d.]+)\s*\nLabor Cost: ₹([\d,]+(?:\.\d{2})?)\s*\nTotal: ₹([\d,]+(?:\.\d{2})?)/s);
+                                    if (costMatch) {
+                                      worksheet.addRow({field: '', value: ''});
+                                      worksheet.addRow({field: 'Material Cost (without GST)', value: `₹${costMatch[1]}`});
+                                      worksheet.addRow({field: 'Total GST', value: `₹${costMatch[2]}`});
+                                      worksheet.addRow({field: 'Material Cost (with GST)', value: `₹${costMatch[3]}`});
+                                      worksheet.addRow({field: 'Labor Hours', value: costMatch[4]});
+                                      worksheet.addRow({field: 'Labor Cost', value: `₹${costMatch[5]}`});
+                                      worksheet.addRow({field: 'TOTAL ESTIMATION', value: `₹${costMatch[6]}`});
+                                    }
+                                    worksheet.addRow({field: '', value: ''});
+                                  }
+                                  
+                                  // Financial Details
+                                  worksheet.addRow({field: '--- FINANCIAL DETAILS ---', value: ''});
+                                  worksheet.addRow({field: 'Estimated Cost', value: ticket.cost ? `₹${ticket.cost}` : '₹0'});
+                                  worksheet.addRow({field: 'OPEX Code', value: ticket.opex_code || 'Not Assigned'});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Work Tracking
+                                  worksheet.addRow({field: '--- WORK TRACKING ---', value: ''});
+                                  worksheet.addRow({field: 'SLA Hours', value: ticket.sla_hours || 'Not Set'});
+                                  worksheet.addRow({field: 'Work Started', value: ticket.work_started_at ? new Date(ticket.work_started_at).toLocaleString() : 'Not Started'});
+                                  worksheet.addRow({field: 'Work Completed', value: ticket.work_completed_at ? new Date(ticket.work_completed_at).toLocaleString() : 'Not Completed'});
+                                  worksheet.addRow({field: 'Work Duration (Hours)', value: ticket.work_duration_hours ? ticket.work_duration_hours.toFixed(2) : 'N/A'});
+                                  worksheet.addRow({field: '', value: ''});
+                                  
+                                  // Approval History
+                                  if (ticket.status_history) {
+                                    worksheet.addRow({field: '--- APPROVAL HISTORY ---', value: ''});
+                                    const managerApproval = ticket.status_history.match(/\[(.*?)\] MANAGER APPROVED/);
+                                    const tenantApproval = ticket.status_history.match(/\[(.*?)\] TENANT APPROVED/);
+                                    const managerRejection = ticket.status_history.match(/\[(.*?)\] MANAGER REJECTED: (.+)/);
+                                    const tenantRejection = ticket.status_history.match(/\[(.*?)\] TENANT REJECTED: (.+)/);
+                                    if (managerApproval) worksheet.addRow({field: 'Manager Approved', value: managerApproval[1]});
+                                    if (tenantApproval) worksheet.addRow({field: 'Tenant Approved', value: tenantApproval[1]});
+                                    if (managerRejection) worksheet.addRow({field: 'Manager Rejected', value: `${managerRejection[1]} - Reason: ${managerRejection[2]}`});
+                                    if (tenantRejection) worksheet.addRow({field: 'Tenant Rejected', value: `${tenantRejection[1]} - Reason: ${tenantRejection[2]}`});
+                                    worksheet.addRow({field: '', value: ''});
+                                  }
+                                  
+                                  // Feedback
+                                  if (ticket.tenant_satisfaction || ticket.creator_satisfaction) {
+                                    worksheet.addRow({field: '--- FEEDBACK & SATISFACTION ---', value: ''});
+                                    if (ticket.tenant_satisfaction) {
+                                      worksheet.addRow({field: 'Tenant Satisfaction', value: ticket.tenant_satisfaction});
+                                      worksheet.addRow({field: 'Tenant Feedback', value: ticket.tenant_feedback || 'No comments'});
+                                    }
+                                    if (ticket.creator_satisfaction) {
+                                      worksheet.addRow({field: 'Creator Satisfaction', value: ticket.creator_satisfaction});
+                                      worksheet.addRow({field: 'Creator Feedback', value: ticket.creator_feedback || 'No comments'});
+                                    }
+                                    worksheet.addRow({field: '', value: ''});
+                                  }
+                                  
+                                  // Additional Notes
+                                  if (ticket.notes || ticket.additional_notes) {
+                                    worksheet.addRow({field: '--- ADDITIONAL NOTES ---', value: ''});
+                                    worksheet.addRow({field: 'Notes', value: ticket.notes || ticket.additional_notes || 'None'});
+                                  }
+                                  
+                                  // Style header rows
+                                  worksheet.getRow(1).font = {bold: true, size: 14};
+                                  [3, 12, 18, 23, 28, 33].forEach(rowNum => {
+                                    const row = worksheet.getRow(rowNum);
+                                    if (row) row.font = {bold: true, color: {argb: 'FF0066CC'}};
+                                  });
+                                  
+                                  const buffer = await workbook.xlsx.writeBuffer();
+                                  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                  const url = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `ticket_report_${ticket.ticket_number || ticket.id.slice(-6)}.xlsx`;
+                                  a.click();
+                                  window.URL.revokeObjectURL(url);
+                                  toast({ title: "Success", description: "Ticket report downloaded successfully" });
+                                } catch (error) {
+                                  toast({ title: "Error", description: "Failed to download ticket", variant: "destructive" });
+                                }
+                                }}>
+                                  <FileText className="h-4 w-4 mr-2" />Excel (Full Report)
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))

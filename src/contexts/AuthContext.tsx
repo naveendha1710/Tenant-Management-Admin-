@@ -12,6 +12,16 @@ export function AuthProvider({ children }: any) {
   useEffect(() => {
     const savedUser = localStorage.getItem('demo_user');
     const savedRole = localStorage.getItem('demo_role');
+    const loginTime = localStorage.getItem('login_time');
+    
+    // Check if session expired (8 hours)
+    if (loginTime && Date.now() - parseInt(loginTime) > 8 * 60 * 60 * 1000) {
+      localStorage.removeItem('demo_user');
+      localStorage.removeItem('demo_role');
+      localStorage.removeItem('login_time');
+      setLoading(false);
+      return;
+    }
     
     if (savedUser && savedRole) {
       const parsedUser = JSON.parse(savedUser);
@@ -29,30 +39,51 @@ export function AuthProvider({ children }: any) {
 
   const login = async (email: string, password: string) => {
     try {
-      // Try to find user in Supabase, fallback to demo users if connection fails
       let appUser: any = null;
-      let dbPassword = null;
-      try {
-        // First check users table
-        const { data, error } = await supabase
-          .from('users')
+      let passwordValid = false;
+      
+      // Check users table with encrypted password verification
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+      
+      if (!userError && userData) {
+        // Verify password using RPC
+        const { data: isValid } = await supabase
+          .rpc('verify_user_password', { user_email: email, user_password: password });
+        
+        if (isValid) {
+          appUser = {
+            id: userData.id,
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            isActive: userData.is_active,
+            isApprover: userData.is_approver || false,
+            assetMovementApprover: userData.asset_movement_approver || false,
+            permissions: userData.permissions || [],
+            notificationsEnabled: userData.notifications_enabled !== false,
+            userManagementAccess: typeof userData.user_management_access === 'string' 
+              ? JSON.parse(userData.user_management_access) 
+              : (userData.user_management_access || { users: true, tenantUsers: true, otherUsers: true })
+          };
+          passwordValid = true;
+        }
+      } else {
+        // Check tenants table
+        const { data: tenantData, error: tenantError } = await supabase
+          .from('tenants')
           .select('*')
           .eq('email', email)
-          .single();
+          .maybeSingle();
         
-        if (!error && data) {
-          const allUsers = await userService.getAllUsers();
-          appUser = allUsers.find(u => u.email === email);
-          dbPassword = data.password;
-        } else {
-          // If not found in users table, check tenants table
-          const { data: tenantData, error: tenantError } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('email', email)
-            .single();
+        if (!tenantError && tenantData) {
+          const { data: isValid } = await supabase
+            .rpc('verify_tenant_password', { tenant_email: email, tenant_password: password });
           
-          if (!tenantError && tenantData) {
+          if (isValid) {
             appUser = {
               id: tenantData.id,
               name: tenantData.name,
@@ -62,24 +93,11 @@ export function AuthProvider({ children }: any) {
               isApprover: false,
               permissions: [],
               phone: tenantData.phone,
-              department: tenantData.company
+              department: tenantData.company,
+              branchAccess: tenantData.branch_access || []
             };
-            dbPassword = tenantData.password;
+            passwordValid = true;
           }
-        }
-      } catch (supabaseError) {
-        // Fallback demo users
-        const demoUsers = [
-          { id: '1', email: 'admin@rathinam.tec', name: 'Admin User', role: 'Super Admin', isActive: true, isApprover: true, permissions: [], password: 'admin123' },
-          { id: '2', email: 'finance@rathinam.tec', name: 'Finance User', role: 'Accountant', isActive: true, isApprover: false, permissions: [], password: 'admin123' },
-          { id: '3', email: 'crm@rathinam.tec', name: 'CRM User', role: 'CRM', isActive: true, isApprover: false, permissions: [], password: 'admin123' },
-          { id: '4', email: 'maintenance@rathinam.edu', name: 'Maintenance User', role: 'Maintenance Manager', isActive: true, isApprover: false, permissions: [], password: 'admin123' },
-          { id: '5', email: 'tenant@techstart.com', name: 'Tenant User', role: 'Tenant', isActive: true, isApprover: false, permissions: [], password: 'admin123' }
-        ];
-        const demoUser = demoUsers.find(u => u.email === email);
-        if (demoUser) {
-          appUser = demoUser;
-          dbPassword = demoUser.password;
         }
       }
       
@@ -87,8 +105,7 @@ export function AuthProvider({ children }: any) {
         throw new Error('User not found');
       }
       
-      // Verify password from database
-      if (!dbPassword || password !== dbPassword) {
+      if (!passwordValid) {
         throw new Error('Invalid credentials');
       }
       
@@ -96,17 +113,16 @@ export function AuthProvider({ children }: any) {
         throw new Error('Account is inactive. Please contact administrator.');
       }
 
-      // Try to update last login (ignore if fails)
+      // Update last login
       try {
         await userService.updateUser(appUser.id, {
           ...appUser,
           lastLogin: new Date().toISOString()
         });
       } catch (updateError) {
-        // Could not update last login
+        // Ignore
       }
 
-      // Create user object
       const user = {
         id: appUser.id,
         email: appUser.email,
@@ -114,13 +130,14 @@ export function AuthProvider({ children }: any) {
         isApprover: appUser.isApprover,
         appUser: {
           ...appUser,
-          isApprover: appUser.isApprover // Ensure isApprover is in nested object too
+          isApprover: appUser.isApprover,
+          assetMovementApprover: appUser.assetMovementApprover
         }
       };
 
-      // Save to localStorage for persistence
       localStorage.setItem('demo_user', JSON.stringify(user));
       localStorage.setItem('demo_role', appUser.role);
+      localStorage.setItem('login_time', Date.now().toString());
       
       setUser(user);
       setRole(appUser.role);
@@ -134,6 +151,7 @@ export function AuthProvider({ children }: any) {
   const logout = async () => {
     localStorage.removeItem('demo_user');
     localStorage.removeItem('demo_role');
+    localStorage.removeItem('login_time');
     setUser(null);
     setRole(null);
   };
@@ -141,11 +159,12 @@ export function AuthProvider({ children }: any) {
   const clearCache = () => {
     localStorage.removeItem('demo_user');
     localStorage.removeItem('demo_role');
-    localStorage.clear(); // Clear everything
+    localStorage.removeItem('login_time');
+    localStorage.clear();
     setUser(null);
     setRole(null);
     setLoading(false);
-    window.location.href = '/auth'; // Force redirect to login
+    window.location.href = '/auth';
   };
 
   const refreshUser = async () => {
@@ -162,7 +181,11 @@ export function AuthProvider({ children }: any) {
           appUser: {
             ...updatedAppUser,
             isApprover: updatedAppUser.isApprover,
-            permissions: updatedAppUser.permissions
+            assetMovementApprover: updatedAppUser.assetMovementApprover,
+            permissions: updatedAppUser.permissions,
+            branchAccess: updatedAppUser.branchAccess || [],
+            userManagementAccess: updatedAppUser.userManagementAccess,
+            notificationsEnabled: updatedAppUser.notificationsEnabled
           }
         };
         

@@ -22,7 +22,33 @@ const Auth = () => {
 
     try {
       const user = await login(email, password);
-      navigate('/dashboard');
+      
+      // Redirect based on role
+      if (user.appUser.role === 'Tenant') {
+        const permissions = user.appUser.permissions || [];
+        const hasPermission = (module: string) => 
+          permissions.find((p: any) => p.module === module && p.view === true);
+        
+        if (hasPermission('Dashboard')) {
+          navigate('/tenant/dashboard');
+        } else if (hasPermission('My Lease')) {
+          navigate('/tenant/lease');
+        } else if (hasPermission('Invoices')) {
+          navigate('/tenant/invoices');
+        } else if (hasPermission('Documents')) {
+          navigate('/tenant/documents');
+        } else if (hasPermission('Maintenance')) {
+          navigate('/tenant/maintenance-requests');
+        } else if (hasPermission('My Assets')) {
+          navigate('/tenant/my-assets');
+        } else if (hasPermission('Profile')) {
+          navigate('/tenant/profile');
+        } else {
+          navigate('/not-authorized');
+        }
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError('Invalid credentials');
     } finally {
@@ -82,6 +108,7 @@ const Auth = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="off"
                   className="h-14 rounded-full border border-gray-300 px-6 pr-12 text-gray-600 placeholder:text-gray-400 focus:border-gray-400 focus:ring-0 bg-white"
                 />
                 <button

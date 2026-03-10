@@ -8,11 +8,8 @@ import { userService } from '@/data/userData';
 
 export async function syncTenantUsers() {
   try {
-    console.log('Starting tenant user sync...');
-    
     // Get all tenants
     const tenants = await tenantDataService.getAllTenants();
-    console.log(`Found ${tenants.length} tenants`);
     
     // Get all existing users
     const users = await userService.getAllUsers();
@@ -24,7 +21,6 @@ export async function syncTenantUsers() {
     for (const tenant of tenants) {
       // Check if user already exists
       if (existingEmails.has(tenant.email.toLowerCase())) {
-        console.log(`User already exists for: ${tenant.email}`);
         skipped++;
         continue;
       }
@@ -43,14 +39,12 @@ export async function syncTenantUsers() {
           twoFactorEnabled: false,
           userType: 'predefined'
         });
-        console.log(`Created user account for: ${tenant.email}`);
         created++;
       } catch (error) {
         console.error(`Failed to create user for ${tenant.email}:`, error);
       }
     }
     
-    console.log(`Sync complete! Created: ${created}, Skipped: ${skipped}`);
     return { created, skipped, total: tenants.length };
   } catch (error) {
     console.error('Error syncing tenant users:', error);

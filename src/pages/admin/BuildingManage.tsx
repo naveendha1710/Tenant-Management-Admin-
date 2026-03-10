@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Building2, Plus, MapPin, Check, X, Lock, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Building2, Plus, MapPin, Check, X, Lock, Trash2, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,7 +13,92 @@ import { buildingsService, type Building, type Floor } from '@/services/building
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 
-function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDelete, onDelete, assignments }) {
+function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDelete, onDelete, assignments, floorId, buildingId, onRoomsUpdate }) {
+  const [showRooms, setShowRooms] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [addingRoom, setAddingRoom] = useState(false);
+  const [startNumber, setStartNumber] = useState('');
+  const [numberOfRooms, setNumberOfRooms] = useState('');
+  const [prefix, setPrefix] = useState('');
+  const [selectedRooms, setSelectedRooms] = useState([]);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadRooms();
+  }, [floorId]);
+
+  const loadRooms = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('floor_id', floorId)
+        .order('room_number');
+      if (!error && data) setRooms(data);
+    } catch (error) {
+      console.error('Error loading rooms:', error);
+    }
+  };
+
+  const handleAddRooms = async () => {
+    if (!startNumber || !numberOfRooms) return;
+    try {
+      const start = parseInt(startNumber);
+      const count = parseInt(numberOfRooms);
+      const roomsToAdd = [];
+      for (let i = 0; i < count; i++) {
+        roomsToAdd.push({
+          floor_id: floorId,
+          building_id: buildingId,
+          room_number: `${prefix}${start + i}`
+        });
+      }
+      const { error } = await supabase.from('rooms').insert(roomsToAdd);
+      if (error) throw error;
+      toast({ title: 'Success', description: `${count} rooms added successfully` });
+      setStartNumber('');
+      setNumberOfRooms('');
+      setPrefix('');
+      setAddingRoom(false);
+      loadRooms();
+      onRoomsUpdate?.();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to add rooms', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteRoom = async (roomId) => {
+    try {
+      const { error } = await supabase.from('rooms').delete().eq('id', roomId);
+      if (error) throw error;
+      toast({ title: 'Success', description: 'Room deleted successfully' });
+      loadRooms();
+      onRoomsUpdate?.();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to delete room', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedRooms.length === 0) return;
+    try {
+      const { error } = await supabase.from('rooms').delete().in('id', selectedRooms);
+      if (error) throw error;
+      toast({ title: 'Success', description: `${selectedRooms.length} rooms deleted successfully` });
+      setSelectedRooms([]);
+      loadRooms();
+      onRoomsUpdate?.();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to delete rooms', variant: 'destructive' });
+    }
+  };
+
+  const toggleRoomSelection = (roomId) => {
+    setSelectedRooms(prev => 
+      prev.includes(roomId) ? prev.filter(id => id !== roomId) : [...prev, roomId]
+    );
+  };
+
   const totalAssigned = assignments.reduce((sum, a) => sum + (a.assignedSqft || 0), 0);
   const availableSqft = floorData.totalSqft - totalAssigned;
   const occupancyPercent = (totalAssigned / floorData.totalSqft) * 100;
@@ -84,6 +169,83 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
           </div>
         </CardContent>
       )}
+      <CardContent className="pt-0">
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowRooms(!showRooms)}>
+            <Label className="text-xs font-medium">Rooms ({rooms.length})</Label>
+            {showRooms ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </div>
+          {showRooms && (
+            <div className="mt-3 space-y-2">
+              {rooms.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No rooms added</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-0">
+                    {rooms.map((room) => (
+                      <div
+                        key={room.id}
+                        onClick={() => canDelete && toggleRoomSelection(room.id)}
+                        className={`w-12 h-12 flex items-center justify-center rounded text-xs font-medium cursor-pointer transition-colors ${
+                          selectedRooms.includes(room.id)
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 hover:bg-gray-200'
+                        }`}
+                      >
+                        {room.room_number}
+                      </div>
+                    ))}
+                  </div>
+                  {canDelete && selectedRooms.length > 0 && (
+                    <Button size="sm" variant="destructive" onClick={handleDeleteSelected} className="h-7 text-xs">
+                      <Trash2 className="h-3 w-3 mr-1" /> Delete ({selectedRooms.length})
+                    </Button>
+                  )}
+                </>
+              )}
+              {canEdit && (
+                addingRoom ? (
+                  <div className="flex gap-2">
+                    <Input
+                      size="sm"
+                      placeholder="Prefix (optional)"
+                      value={prefix}
+                      onChange={(e) => setPrefix(e.target.value)}
+                      className="h-8 text-xs w-24"
+                    />
+                    <Input
+                      size="sm"
+                      type="number"
+                      placeholder="Start number"
+                      value={startNumber}
+                      onChange={(e) => setStartNumber(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <Input
+                      size="sm"
+                      type="number"
+                      placeholder="Count"
+                      value={numberOfRooms}
+                      onChange={(e) => setNumberOfRooms(e.target.value)}
+                      className="h-8 text-xs w-20"
+                    />
+                    <Button size="sm" onClick={handleAddRooms} className="h-8">
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setAddingRoom(false); setStartNumber(''); setNumberOfRooms(''); setPrefix(''); }} className="h-8">
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setAddingRoom(true)} className="h-8 text-xs">
+                    <Plus className="h-3 w-3 mr-1" /> Add Rooms
+                  </Button>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }
@@ -459,6 +621,9 @@ export default function BuildingManage() {
                   canEdit={canEdit}
                   canDelete={canDelete}
                   assignments={floorAssignments[floor.id] || []}
+                  floorId={floor.id}
+                  buildingId={buildingId}
+                  onRoomsUpdate={() => {}}
                 />
               ))
           )}

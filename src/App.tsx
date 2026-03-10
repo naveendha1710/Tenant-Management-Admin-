@@ -5,6 +5,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { RouteGuard, PermissionGuard } from "./components/RouteGuard";
+
+function TenantPermissionGuard({ children, module }: { children: React.ReactNode; module: string }) {
+  const { user } = useAuth();
+  const hasAccess = user?.appUser?.permissions?.some((p: any) => p.module === module && p.view) ?? true;
+  
+  if (!hasAccess) {
+    return <Navigate to="/not-authorized" replace />;
+  }
+  
+  return <>{children}</>;
+}
 import { NotificationsProvider } from "./contexts/NotificationsContext";
 import { LoadingProvider } from "./contexts/LoadingContext";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -143,7 +154,14 @@ const MODULE_ROUTES: Record<string, string> = {
   'Manage Tickets': '/admin/helpdesk',
   'Users': '/admin/user-management',
   'Settings': '/admin/settings',
-  'Helpdesk': '/admin/helpdesk'
+  'Helpdesk': '/admin/helpdesk',
+  'Assets': '/assets/master',
+  'Asset Master': '/assets/master',
+  'Asset Movement': '/assets/movement',
+  'Inventory': '/assets/inventory',
+  'Configuration': '/assets/configuration',
+  'Preventive Maintenance': '/assets/preventive-maintenance',
+  'Physical Audit': '/assets/physical-audit'
 };
 
 function getRoleDashboardPath(role: string | null, user: any = null): string {
@@ -154,6 +172,13 @@ function getRoleDashboardPath(role: string | null, user: any = null): string {
   }
   
   if (user?.appUser?.permissions && user.appUser.permissions.length > 0) {
+    // Check if Overview is enabled first (default dashboard)
+    const overviewModule = user.appUser.permissions.find((p: any) => p.module === 'Overview' && p.view === true);
+    if (overviewModule) {
+      return '/admin/dashboard';
+    }
+    
+    // Otherwise, find first enabled module
     const firstModule = user.appUser.permissions.find((p: any) => p.view === true);
     if (firstModule && MODULE_ROUTES[firstModule.module]) {
       return MODULE_ROUTES[firstModule.module];
@@ -435,37 +460,51 @@ function AppContent() {
                 {/* Tenant Routes */}
                 <Route path="/tenant/dashboard" element={
                   <ProtectedRoute>
-                    <TenantDashboard />
+                    <TenantPermissionGuard module="Dashboard">
+                      <TenantDashboard />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/lease" element={
                   <ProtectedRoute>
-                    <MyLeasePage />
+                    <TenantPermissionGuard module="My Lease">
+                      <MyLeasePage />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/invoices" element={
                   <ProtectedRoute>
-                    <MyInvoicesPage />
+                    <TenantPermissionGuard module="Invoices">
+                      <MyInvoicesPage />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/documents" element={
                   <ProtectedRoute>
-                    <MyDocumentsPage />
+                    <TenantPermissionGuard module="Documents">
+                      <MyDocumentsPage />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/maintenance-requests" element={
                   <ProtectedRoute>
-                    <MaintenanceRequestsPage />
+                    <TenantPermissionGuard module="Maintenance">
+                      <MaintenanceRequestsPage />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/my-assets" element={
                   <ProtectedRoute>
-                    <MyAssetsPage />
+                    <TenantPermissionGuard module="My Assets">
+                      <MyAssetsPage />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 <Route path="/tenant/profile" element={
                   <ProtectedRoute>
-                    <TenantCompanyProfile />
+                    <TenantPermissionGuard module="Profile">
+                      <TenantCompanyProfile />
+                    </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
                 

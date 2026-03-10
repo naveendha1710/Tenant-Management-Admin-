@@ -68,7 +68,8 @@ export interface Asset {
 export interface AssetMovement {
   id: string;
   request_number: string;
-  asset_id: string;
+  asset_id?: string;
+  assets?: string[]; // Array of asset IDs
   movement_type: 'Location' | 'Maintenance' | 'Disposal';
   movement_date: string;
   movement_time?: string;
@@ -134,6 +135,7 @@ export interface DashboardStats {
   auditDue: number;
   warrantyExpiring: number;
   movementToday: number;
+  assetsByCategory?: Record<string, number>;
 }
 
 export class AssetService {
@@ -269,7 +271,7 @@ export class AssetService {
   // ==================== MOVEMENTS ====================
   
   static async createMovement(movementData: Partial<AssetMovement>): Promise<AssetMovement> {
-    const requestNumber = `MV-${Date.now()}`;
+    const requestNumber = movementData.request_number || `MV-${Date.now()}`;
     
     const { data, error } = await supabase
       .from('asset_movements')
@@ -292,6 +294,80 @@ export class AssetService {
   }
   
   static async updateMovementStatus(id: string, status: string, actualDate?: string): Promise<AssetMovement> {
+    const { data: movement, error: fetchError } = await supabase
+      .from('asset_movements')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    // If approving, update asset locations and create history
+    if (status === 'Approved' && movement) {
+      const savedUser = localStorage.getItem('demo_user');
+      const userName = savedUser ? JSON.parse(savedUser).appUser?.name : 'System';
+      
+      const assetIds = movement.assets || (movement.asset_id ? [movement.asset_id] : []);
+      
+      for (const assetId of assetIds) {
+        const { data: asset } = await supabase.from('assets').select('*').eq('id', assetId).single();
+        if (!asset) continue;
+        
+        const updates: any = {};
+        const historyRecords: any[] = [];
+        
+        // Track location changes
+        if (movement.to_building && asset.building !== movement.to_building) {
+          historyRecords.push({
+            asset_id: assetId,
+            change_type: 'location',
+            field_name: 'building',
+            old_value: asset.building,
+            new_value: movement.to_building,
+            changed_by: userName,
+            movement_request_id: id
+          });
+          updates.building = movement.to_building;
+        }
+        
+        if (movement.to_floor && asset.floor !== movement.to_floor) {
+          historyRecords.push({
+            asset_id: assetId,
+            change_type: 'location',
+            field_name: 'floor',
+            old_value: asset.floor,
+            new_value: movement.to_floor,
+            changed_by: userName,
+            movement_request_id: id
+          });
+          updates.floor = movement.to_floor;
+        }
+        
+        if (movement.to_room && asset.room_rack !== movement.to_room) {
+          historyRecords.push({
+            asset_id: assetId,
+            change_type: 'location',
+            field_name: 'room_rack',
+            old_value: asset.room_rack,
+            new_value: movement.to_room,
+            changed_by: userName,
+            movement_request_id: id
+          });
+          updates.room_rack = movement.to_room;
+        }
+        
+        // Insert history records
+        if (historyRecords.length > 0) {
+          await supabase.from('asset_history').insert(historyRecords);
+        }
+        
+        // Update asset
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('assets').update(updates).eq('id', assetId);
+        }
+      }
+    }
+    
     const { data, error } = await supabase
       .from('asset_movements')
       .update({ movement_status: status, actual_movement_date: actualDate })
@@ -362,6 +438,13 @@ export class AssetService {
     const assetValueNet = assets?.reduce((sum, a) => sum + (a.net_book_value || 0), 0) || 0;
     const dutyForegoneAmount = assets?.filter(a => a.sez_status === 'SEZ').reduce((sum, a) => sum + (a.duty_foregone_amount || 0), 0) || 0;
     
+    const assetsByCategory: Record<string, number> = {};
+    assets?.forEach(a => {
+      if (a.asset_category) {
+        assetsByCategory[a.asset_category] = (assetsByCategory[a.asset_category] || 0) + 1;
+      }
+    });
+    
     const today = new Date().toISOString().split('T')[0];
     const movementToday = movements?.filter(m => m.created_at?.startsWith(today)).length || 0;
     
@@ -375,7 +458,8 @@ export class AssetService {
       underMaintenance: maintenance?.length || 0,
       auditDue: 0,
       warrantyExpiring: 0,
-      movementToday
+      movementToday,
+      assetsByCategory
     };
   }
   
@@ -384,6 +468,17 @@ export class AssetService {
   static async getAuditLogs(assetId: string) {
     const { data, error } = await supabase
       .from('asset_audit_logs')
+      .select('*')
+      .eq('asset_id', assetId)
+      .order('changed_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  }
+  
+  static async getAssetHistory(assetId: string) {
+    const { data, error } = await supabase
+      .from('asset_history')
       .select('*')
       .eq('asset_id', assetId)
       .order('changed_at', { ascending: false });

@@ -14,6 +14,8 @@ import { Upload, Download, Eye, Trash2, FileText, AlertTriangle, CheckCircle, Ca
 import { useToast } from '@/hooks/use-toast';
 import { useTenantProfile } from '@/hooks/useTenantProfile';
 import { supabase } from '@/lib/supabaseClient';
+import { BranchTabs } from '@/components/tenant/BranchTabs';
+import { useAuth } from '@/contexts/AuthContext';
 
 const getDocumentTypes = (isGstCompany: boolean) => {
   const baseTypes = [
@@ -33,19 +35,30 @@ const getDocumentTypes = (isGstCompany: boolean) => {
 
 export default function MyDocumentsPage() {
   const { tenant, loading: tenantLoading } = useTenantProfile();
+  const { user } = useAuth();
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<any>(null);
+  const [activeTenantIds, setActiveTenantIds] = useState<string[]>([]);
   const documentsTableRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const documentTypes = tenant ? getDocumentTypes(tenant.is_gst_company) : [];
 
   useEffect(() => {
-    if (!tenant?.id) {
+    const initTenantIds = async () => {
+      if (!user?.email || activeTenantIds.length > 0) return;
+      const { data } = await supabase.from('tenants').select('id').eq('email', user.email).single();
+      if (data) setActiveTenantIds([data.id]);
+    };
+    initTenantIds();
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (activeTenantIds.length === 0) {
       setLoading(false);
       return;
     }
@@ -54,12 +67,14 @@ export default function MyDocumentsPage() {
       try {
         const { data, error } = await supabase
           .from('tenants')
-          .select('documents')
-          .eq('id', tenant.id)
-          .single();
+          .select('id, company, documents')
+          .in('id', activeTenantIds);
         
         if (error) throw error;
-        setDocuments(data?.documents || []);
+        const allDocs = data?.flatMap(t => 
+          (t.documents || []).map((doc: any) => ({ ...doc, tenantName: t.company }))
+        ) || [];
+        setDocuments(allDocs);
       } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } finally {
@@ -68,7 +83,7 @@ export default function MyDocumentsPage() {
     };
     
     fetchDocuments();
-  }, [tenant?.id, toast]);
+  }, [activeTenantIds, toast]);
 
   const handleUploadDocument = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -255,6 +270,8 @@ export default function MyDocumentsPage() {
   return (
     <DashboardLayout title="My Documents" subtitle="Manage your compliance documents and certificates">
       <div className="space-y-4 sm:space-y-6">
+        <BranchTabs onBranchChange={setActiveTenantIds} />
+        
         {expiringDocuments.length > 0 && (
           <Alert className="border-orange-200 bg-orange-50">
             <AlertTriangle className="h-4 w-4" />
@@ -372,6 +389,7 @@ export default function MyDocumentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Branch</TableHead>
                     <TableHead>Document Type</TableHead>
                     <TableHead>Document Name</TableHead>
                     <TableHead>Status</TableHead>
@@ -384,6 +402,7 @@ export default function MyDocumentsPage() {
                 <TableBody>
                   {documents.map((document) => (
                     <TableRow key={document.id}>
+                      <TableCell className="font-medium">{document.tenantName || 'Main'}</TableCell>
                       <TableCell className="capitalize">
                         {document.document_type.replace('_', ' ')}
                       </TableCell>

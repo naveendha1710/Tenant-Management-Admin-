@@ -6,35 +6,61 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AssetService, Asset } from '@/services/assetService';
 import { buildingService, Building } from '@/services/buildingService';
 import { supabase } from '@/lib/supabaseClient';
-import { Plus, Search, Edit, Trash2, Eye, Printer } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Printer, FileSpreadsheet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import { useAssetExport } from '@/hooks/useAssetExport';
+import { generateAssetExcelReport } from '@/utils/assetExport';
+import { useToast } from '@/hooks/use-toast';
+import ExportFilterDialog from '@/components/assets/ExportFilterDialog';
+import type { ExportFilters } from '@/components/assets/ExportFilterDialog';
 
 interface AssetListProps {
   onCreateNew?: () => void;
   onEdit?: (asset: Asset) => void;
   onView?: (asset: Asset) => void;
+  onDelete?: (asset: Asset) => void;
+  filterCategory?: string;
+  filterSubCategory?: string;
+  filterType?: string;
+  filterStatus?: string;
+  filterBuilding?: string;
+  filterFloor?: string;
+  filterColor?: string;
+  filterMaterial?: string;
+  filterSize?: string;
+  sortOrder?: string;
+  filteredCount?: number;
+  currentPage?: number;
+  itemsPerPage?: number;
+  onPageChange?: (page: number) => void;
+  onItemsPerPageChange?: (items: number) => void;
 }
 
-export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProps) {
+export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterColor, filterMaterial, filterSize, sortOrder, currentPage: propCurrentPage, itemsPerPage: propItemsPerPage, onPageChange, onItemsPerPageChange }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [users, setUsers] = useState<Record<string, string>>({});
+  const [assetCombinations, setAssetCombinations] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(propCurrentPage || 1);
+  const [itemsPerPage, setItemsPerPage] = useState(propItemsPerPage || 10);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const { fetchAssetsForExport, loading: exportLoading } = useAssetExport();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
     loadAssets();
     loadBuildings();
     loadUsers();
+    loadAssetCombinations();
   }, []);
 
   const loadAssets = async () => {
@@ -61,6 +87,25 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
     }
   };
 
+  const loadAssetCombinations = async () => {
+    try {
+      const { data: combinations } = await supabase
+        .from('sub_subcategory_combinations')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (combinations) {
+        const combinationMap = combinations.reduce((acc, combo) => {
+          acc[combo.id] = combo;
+          return acc;
+        }, {} as Record<string, any>);
+        setAssetCombinations(combinationMap);
+      }
+    } catch (error) {
+      console.error('Failed to load asset combinations:', error);
+    }
+  };
+
   const getBuildingName = (buildingId?: string) => {
     if (!buildingId) return 'N/A';
     const building = buildings.find(b => b.id === buildingId);
@@ -78,6 +123,21 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedAssets.length === 0) return;
+    
+    if (confirm(`Delete ${selectedAssets.length} selected assets?`)) {
+      try {
+        await Promise.all(selectedAssets.map(id => AssetService.deleteAsset(id)));
+        setSelectedAssets([]);
+        loadAssets();
+        toast({ title: 'Success', description: `${selectedAssets.length} assets deleted successfully` });
+      } catch (error) {
+        toast({ title: 'Error', description: 'Failed to delete some assets', variant: 'destructive' });
+      }
+    }
+  };
+
   const toggleAssetSelection = (assetId: string) => {
     setSelectedAssets(prev => 
       prev.includes(assetId) ? prev.filter(id => id !== assetId) : [...prev, assetId]
@@ -85,10 +145,10 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
   };
 
   const toggleSelectAll = () => {
-    if (selectedAssets.length === filteredAssets.length) {
-      setSelectedAssets([]);
+    if (selectedAssets.length === paginatedAssets.length && paginatedAssets.every(a => selectedAssets.includes(a.id))) {
+      setSelectedAssets(prev => prev.filter(id => !paginatedAssets.map(a => a.id).includes(id)));
     } else {
-      setSelectedAssets(filteredAssets.map(a => a.id));
+      setSelectedAssets(prev => [...new Set([...prev, ...paginatedAssets.map(a => a.id)])]);
     }
   };
 
@@ -164,14 +224,52 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
     }, 500);
   };
 
+  const handleExportReport = async (filters: ExportFilters) => {
+    try {
+      toast({ title: 'Generating Report', description: 'Please wait while we prepare your Excel report...' });
+      const assets = await fetchAssetsForExport(filters);
+      await generateAssetExcelReport(assets);
+      toast({ title: 'Success', description: 'Excel report downloaded successfully' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to generate report', variant: 'destructive' });
+    }
+  };
 
 
 
 
-  const filteredAssets = assets.filter(a =>
-    a.asset_name.toLowerCase().includes(search.toLowerCase()) ||
-    a.asset_id.toLowerCase().includes(search.toLowerCase())
-  );
+
+  const filteredAssets = assets.filter(a => {
+    const matchesSearch = a.asset_name.toLowerCase().includes(search.toLowerCase()) ||
+      a.asset_id.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = !filterCategory || filterCategory === 'all' || a.asset_category === filterCategory;
+    const matchesSubCategory = !filterSubCategory || filterSubCategory === 'all' || a.asset_sub_category === filterSubCategory;
+    const matchesType = !filterType || filterType === 'all' || a.asset_type === filterType;
+    const matchesStatus = !filterStatus || filterStatus === 'all' || a.asset_status === filterStatus;
+    const matchesBuilding = !filterBuilding || filterBuilding === 'all' || a.building === filterBuilding;
+    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor === filterFloor;
+    
+    // Combination filters
+    let matchesCombination = true;
+    if (a.asset_combination && (filterColor || filterMaterial || filterSize)) {
+      const combination = assetCombinations[a.asset_combination];
+      if (combination) {
+        const matchesColor = !filterColor || filterColor === 'all' || combination.color === filterColor;
+        const matchesMaterial = !filterMaterial || filterMaterial === 'all' || combination.material === filterMaterial;
+        const matchesSize = !filterSize || filterSize === 'all' || combination.size === filterSize;
+        matchesCombination = matchesColor && matchesMaterial && matchesSize;
+      } else {
+        matchesCombination = false;
+      }
+    }
+    
+    return matchesSearch && matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesCombination;
+  }).sort((a, b) => {
+    if (sortOrder === 'desc') {
+      return b.asset_id.localeCompare(a.asset_id);
+    }
+    return a.asset_id.localeCompare(b.asset_id);
+  });
 
   const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -206,10 +304,23 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
               className="pl-10"
             />
           </div>
+          <Button onClick={() => setExportDialogOpen(true)} variant="outline" disabled={exportLoading}>
+            {exportLoading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+            ) : (
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+            )}
+            Export Report
+          </Button>
           {selectedAssets.length > 0 && (
-            <Button onClick={printQRCodes} variant="outline">
-              <Printer className="mr-2 h-4 w-4" /> Print QR ({selectedAssets.length})
-            </Button>
+            <>
+              <Button onClick={handleBulkDelete} variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete ({selectedAssets.length})
+              </Button>
+              <Button onClick={printQRCodes} variant="outline">
+                <Printer className="mr-2 h-4 w-4" /> Print QR ({selectedAssets.length})
+              </Button>
+            </>
           )}
         </div>
 
@@ -224,7 +335,7 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
                 <TableRow className="border-b border-gray-200 hover:bg-transparent bg-gray-50">
                   <TableHead className="w-12 text-gray-600 font-semibold uppercase text-xs">
                     <Checkbox 
-                      checked={selectedAssets.length === paginatedAssets.length && paginatedAssets.length > 0}
+                      checked={paginatedAssets.length > 0 && paginatedAssets.every(a => selectedAssets.includes(a.id))}
                       onCheckedChange={toggleSelectAll}
                     />
                   </TableHead>
@@ -261,7 +372,30 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
                     <TableCell>
                       <div>
                         <p className="font-medium text-gray-900">{asset.asset_category}</p>
-                        <p className="text-sm text-gray-500">{asset.asset_type || 'N/A'}</p>
+                        <div className="flex gap-1 mt-1">
+                          {asset.asset_combination && assetCombinations[asset.asset_combination] && (
+                            <>
+                              {assetCombinations[asset.asset_combination].color && (
+                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
+                                  {assetCombinations[asset.asset_combination].color}
+                                </span>
+                              )}
+                              {assetCombinations[asset.asset_combination].material && (
+                                <span className="px-1.5 py-0.5 bg-green-100 text-green-800 text-xs rounded">
+                                  {assetCombinations[asset.asset_combination].material}
+                                </span>
+                              )}
+                              {assetCombinations[asset.asset_combination].size && (
+                                <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-xs rounded">
+                                  {assetCombinations[asset.asset_combination].size}
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {!asset.asset_combination && (
+                            <p className="text-sm text-gray-500">{asset.asset_type || 'N/A'}</p>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -279,7 +413,7 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
                         <Button size="sm" variant="ghost" onClick={() => onEdit ? onEdit(asset) : navigate(`/assets/edit/${asset.id}`)} title="Edit" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Button size="sm" variant="ghost" onClick={() => onDelete ? onDelete(asset) : handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -290,19 +424,49 @@ export default function AssetList({ onCreateNew, onEdit, onView }: AssetListProp
             </Table>
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                <div className="text-sm text-gray-500">
-                  Showing {startIndex + 1} to {Math.min(endIndex, filteredAssets.length)} of {filteredAssets.length} assets
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-500">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredAssets.length)} of {filteredAssets.length} assets
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500">Per page:</label>
+                    <select 
+                      value={itemsPerPage} 
+                      onChange={(e) => {
+                        const newItemsPerPage = Number(e.target.value);
+                        setItemsPerPage(newItemsPerPage);
+                        setCurrentPage(1);
+                        onItemsPerPageChange?.(newItemsPerPage);
+                        onPageChange?.(1);
+                      }}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
                 </div>
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
-                  onPageChange={setCurrentPage}
+                  onPageChange={(page) => {
+                    setCurrentPage(page);
+                    onPageChange?.(page);
+                  }}
                   showControls
                 />
               </div>
             )}
           </div>
         )}
+
+        <ExportFilterDialog 
+          open={exportDialogOpen} 
+          onOpenChange={setExportDialogOpen}
+          onExport={handleExportReport}
+        />
     </div>
   );
 }

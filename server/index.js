@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
@@ -42,6 +43,30 @@ if (!fs.existsSync(smtpConfigPath)) {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  message: 'Too many requests, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 50, // 50 uploads per hour
+  message: 'Upload limit exceeded, try again later'
+});
+
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // 20 emails per hour
+  message: 'Email limit exceeded, try again later'
+});
+
+// Apply rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 // Security: Sanitize file paths
 const sanitizePath = (filePath) => {
@@ -84,7 +109,7 @@ app.use((req, res, next) => {
 });
 
 // API Routes - MUST be before static file serving
-app.post('/api/upload', upload.single('file'), (req, res) => {
+app.post('/api/upload', uploadLimiter, upload.single('file'), (req, res) => {
   try {
     console.log('[UPLOAD] Received upload request:', {
       category: req.query.category,
@@ -149,7 +174,7 @@ app.delete('/api/delete', (req, res) => {
 });
 
 // Multiple file upload endpoint
-app.post('/api/upload-multiple', upload.array('files', 10), (req, res) => {
+app.post('/api/upload-multiple', uploadLimiter, upload.array('files', 10), (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
@@ -280,7 +305,7 @@ app.post('/api/admin/smtp/save', (req, res) => {
 });
 
 // Send email (for notification system)
-app.post('/api/admin/smtp/send', async (req, res) => {
+app.post('/api/admin/smtp/send', emailLimiter, async (req, res) => {
   try {
     const { to, subject, text, html } = req.body;
     
@@ -309,7 +334,7 @@ app.post('/api/admin/smtp/send', async (req, res) => {
 });
 
 // Send test email
-app.post('/api/admin/smtp/test', async (req, res) => {
+app.post('/api/admin/smtp/test', emailLimiter, async (req, res) => {
   try {
     const { testEmail } = req.body;
     

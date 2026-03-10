@@ -28,6 +28,7 @@ export interface AppUser {
   isApprover: boolean;
   selectedRoles?: UserRole[]; // Store multiple selected roles
   technicianCategory?: string; // Category for technicians (Plumber, Electrician, etc.)
+  branchAccess?: string[]; // Tenant IDs user can access (Tenant role only)
 }
 
 export interface AuditLog {
@@ -80,6 +81,16 @@ const defaultPermissions: Record<Exclude<UserRole, 'Custom'>, Permission[]> = {
     { module: 'Financial Reports', view: true, add: true, edit: true, delete: true },
     { module: 'Manage Tickets', view: true, add: true, edit: true, delete: true },
     { module: 'Assets', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Master', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Movement', view: true, add: true, edit: true, delete: true },
+    { module: 'Inventory', view: true, add: true, edit: true, delete: true },
+    { module: 'Preventive Maintenance', view: true, add: true, edit: true, delete: true },
+    { module: 'Physical Audit', view: true, add: true, edit: true, delete: true },
+    { module: 'Configuration', view: true, add: true, edit: true, delete: true },
+    { module: 'Users', view: true, add: true, edit: true, delete: true },
+    { module: 'Settings', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Form', view: true, add: true, edit: true, delete: true },
+    { module: 'Tenant Form', view: true, add: true, edit: true, delete: true },
     { module: 'Helpdesk', view: true, add: true, edit: true, delete: true }
   ],
   'Accountant': [
@@ -126,39 +137,49 @@ const transformDbUserToAppUser = (dbUser: any): AppUser => ({
   isActive: dbUser.is_active,
   lastLogin: dbUser.last_login,
   createdAt: dbUser.created_at,
-  permissions: dbUser.permissions || [],
+  permissions: typeof dbUser.permissions === 'string' ? JSON.parse(dbUser.permissions) : (dbUser.permissions || []),
   phone: dbUser.phone,
   department: dbUser.department,
   twoFactorEnabled: dbUser.two_factor_enabled,
   isApprover: dbUser.is_approver || false,
-  selectedRoles: dbUser.selected_roles || [],
+  assetMovementApprover: dbUser.asset_movement_approver || false,
+  assetIncharge: dbUser.asset_incharge || false,
+  selectedRoles: typeof dbUser.selected_roles === 'string' ? JSON.parse(dbUser.selected_roles) : (dbUser.selected_roles || []),
   technicianCategory: dbUser.technician_category || '',
+  branchAccess: typeof dbUser.branch_access === 'string' ? JSON.parse(dbUser.branch_access) : (dbUser.branch_access || []),
   notificationsEnabled: dbUser.notifications_enabled !== undefined ? dbUser.notifications_enabled : true,
-  userManagementAccess: dbUser.user_management_access || { users: true, tenantUsers: true }
+  userManagementAccess: typeof dbUser.user_management_access === 'string' 
+    ? JSON.parse(dbUser.user_management_access) 
+    : (dbUser.user_management_access || { users: true, tenantUsers: true, otherUsers: true })
 });
 
 // Helper function to transform AppUser to database format
 const transformAppUserToDb = (user: Partial<AppUser & { password?: string }>) => {
-  const dbUser: any = {
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    user_type: user.userType,
-    is_active: user.isActive,
-    last_login: user.lastLogin,
-    phone: user.phone,
-    department: user.department,
-    two_factor_enabled: user.twoFactorEnabled,
-    permissions: user.permissions,
-    is_approver: user.isApprover,
-    selected_roles: user.selectedRoles || [],
-    technician_category: user.technicianCategory || '',
-    notifications_enabled: (user as any).notificationsEnabled !== undefined ? (user as any).notificationsEnabled : true,
-    user_management_access: (user as any).userManagementAccess || { users: true, tenantUsers: true }
-  };
+  const dbUser: any = {};
+  
+  if (user.name !== undefined) dbUser.name = user.name;
+  if (user.email !== undefined) dbUser.email = user.email;
+  if (user.role !== undefined) dbUser.role = user.role;
+  if (user.userType !== undefined) dbUser.user_type = user.userType;
+  if (user.isActive !== undefined) dbUser.is_active = user.isActive;
+  if (user.lastLogin !== undefined) dbUser.last_login = user.lastLogin;
+  if (user.phone !== undefined) dbUser.phone = user.phone;
+  if (user.department !== undefined) dbUser.department = user.department;
+  if (user.twoFactorEnabled !== undefined) dbUser.two_factor_enabled = user.twoFactorEnabled;
+  if (user.permissions !== undefined) dbUser.permissions = user.permissions;
+  if (user.isApprover !== undefined) dbUser.is_approver = user.isApprover;
+  if ((user as any).assetMovementApprover !== undefined) dbUser.asset_movement_approver = (user as any).assetMovementApprover;
+  if ((user as any).assetIncharge !== undefined) dbUser.asset_incharge = (user as any).assetIncharge;
+  if (user.selectedRoles !== undefined) dbUser.selected_roles = user.selectedRoles;
+  if (user.technicianCategory !== undefined) dbUser.technician_category = user.technicianCategory;
+  if (user.branchAccess !== undefined) dbUser.branch_access = user.branchAccess;
+  if ((user as any).notificationsEnabled !== undefined) dbUser.notifications_enabled = (user as any).notificationsEnabled;
+  if ((user as any).userManagementAccess !== undefined) dbUser.user_management_access = (user as any).userManagementAccess;
+  
   if (user.password && user.password.trim() !== '') {
     dbUser.password = user.password;
   }
+  
   return dbUser;
 };
 
@@ -263,14 +284,17 @@ export const userService = {
       
       let finalUpdates = { ...updates };
       
+      
       // Update permissions if role changed
       if (updates.role && updates.role !== currentUser.role && currentUser.userType === 'predefined' && updates.role !== 'Custom') {
         finalUpdates.permissions = defaultPermissions[updates.role as Exclude<UserRole, 'Custom'>];
       }
       
+      const dbData = transformAppUserToDb(finalUpdates);
+      
       const { data, error } = await supabase
         .from('users')
-        .update(transformAppUserToDb(finalUpdates))
+        .update(dbData)
         .eq('id', id)
         .select()
         .single();

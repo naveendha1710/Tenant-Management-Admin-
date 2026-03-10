@@ -545,7 +545,7 @@ export default function MaintenanceRequestsPage() {
                     </TableRow>
                   ) : (
                     filteredTickets.map((ticket) => (
-                      <TableRow key={ticket.id}>
+                      <TableRow key={ticket.id} className="cursor-pointer" onDoubleClick={() => handleViewTicket(ticket)}>
                         <TableCell className="font-medium">{ticket.ticket_number || ticket.id.slice(0, 8)}</TableCell>
                         <TableCell>
                           <div>
@@ -573,13 +573,80 @@ export default function MaintenanceRequestsPage() {
                         </TableCell>
                         <TableCell>{new Date(ticket.created_at).toLocaleDateString()}</TableCell>
                         <TableCell>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleViewTicket(ticket)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleViewTicket(ticket)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  const ExcelJS = (await import('exceljs')).default;
+                                  const workbook = new ExcelJS.Workbook();
+                                  const worksheet = workbook.addWorksheet('Ticket Details');
+                                  
+                                  worksheet.columns = [
+                                    { header: 'Field', key: 'field', width: 30 },
+                                    { header: 'Value', key: 'value', width: 50 }
+                                  ];
+                                  
+                                  worksheet.addRow({ field: 'Ticket Number', value: ticket.ticket_number || ticket.id.slice(0, 8) });
+                                  worksheet.addRow({ field: 'Title', value: ticket.title });
+                                  worksheet.addRow({ field: 'Description', value: ticket.description });
+                                  worksheet.addRow({ field: 'Category', value: ticket.category });
+                                  worksheet.addRow({ field: 'Priority', value: ticket.priority });
+                                  worksheet.addRow({ field: 'Status', value: getStatusLabel(ticket.status) });
+                                  worksheet.addRow({ field: 'Location', value: ticket.location || 'N/A' });
+                                  worksheet.addRow({ field: 'Building', value: ticket.building || 'N/A' });
+                                  worksheet.addRow({ field: 'Floor', value: ticket.floor || 'N/A' });
+                                  worksheet.addRow({ field: 'Room', value: ticket.room || 'N/A' });
+                                  worksheet.addRow({ field: 'Estimated Cost', value: ticket.cost ? `₹${ticket.cost}` : '₹0' });
+                                  worksheet.addRow({ field: 'Created Date', value: new Date(ticket.created_at).toLocaleString() });
+                                  worksheet.addRow({ field: 'Preferred Date', value: ticket.preferred_date ? new Date(ticket.preferred_date).toLocaleDateString() : 'N/A' });
+                                  worksheet.addRow({ field: 'Preferred Time', value: ticket.preferred_time || 'N/A' });
+                                  worksheet.addRow({ field: 'Safety Risk', value: ticket.safety_risk ? 'Yes' : 'No' });
+                                  worksheet.addRow({ field: 'Previous Occurrence', value: ticket.previous_occurrence ? 'Yes' : 'No' });
+                                  worksheet.addRow({ field: 'SLA Hours', value: ticket.sla_hours || 'N/A' });
+                                  worksheet.addRow({ field: 'Work Started', value: ticket.work_started_at ? new Date(ticket.work_started_at).toLocaleString() : 'N/A' });
+                                  worksheet.addRow({ field: 'Work Completed', value: ticket.work_completed_at ? new Date(ticket.work_completed_at).toLocaleString() : 'N/A' });
+                                  worksheet.addRow({ field: 'Work Duration (Hours)', value: ticket.work_duration_hours || 'N/A' });
+                                  
+                                  if (ticket.assigned_technicians?.length > 0) {
+                                    worksheet.addRow({ field: '', value: '' });
+                                    worksheet.addRow({ field: 'Assigned Technicians', value: '' });
+                                    ticket.assigned_technicians.forEach((tech: any) => {
+                                      worksheet.addRow({ field: `  ${tech.name}`, value: `${tech.contact} - ${tech.specialization}` });
+                                    });
+                                  }
+                                  
+                                  if (ticket.tenant_satisfaction) {
+                                    worksheet.addRow({ field: '', value: '' });
+                                    worksheet.addRow({ field: 'Tenant Satisfaction', value: ticket.tenant_satisfaction });
+                                    worksheet.addRow({ field: 'Tenant Feedback', value: ticket.tenant_feedback || 'N/A' });
+                                  }
+                                  
+                                  const buffer = await workbook.xlsx.writeBuffer();
+                                  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                  const url = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `ticket_${ticket.ticket_number || ticket.id.slice(0, 8)}.xlsx`;
+                                  a.click();
+                                  window.URL.revokeObjectURL(url);
+                                  toast({ title: "Success", description: "Ticket downloaded successfully" });
+                                } catch (error) {
+                                  toast({ title: "Error", description: "Failed to download ticket", variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -720,6 +787,17 @@ export default function MaintenanceRequestsPage() {
                       <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</Label>
                       <p className="mt-2 text-sm text-gray-700 leading-relaxed">{selectedTicket.description}</p>
                     </div>
+                    
+                    {/* Changes Requested Badge */}
+                    {selectedTicket.status_history?.includes('CHANGES REQUESTED BY HELPDESK') && (
+                      <div className="bg-orange-50 rounded-lg border border-orange-200 p-3">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-orange-600" />
+                          <Label className="text-sm font-semibold text-orange-900">Re-submitted Estimation</Label>
+                        </div>
+                        <p className="text-sm text-orange-700 mt-1">This estimation has been modified by helpdesk after previous approval.</p>
+                      </div>
+                    )}
                     
                     {/* Status Messages */}
                     {['pending', 'assigned', 'rca_added', 'pending_approval', 'rejected'].includes(selectedTicket.status) && (
