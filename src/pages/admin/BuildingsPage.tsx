@@ -205,12 +205,19 @@ function FloorsTab({ canAdd, canEdit, canDelete }) {
     })) || [];
   };
 
-  const filteredFloors = floors.filter(floor => {
-    const matchesSearch = floor.floor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         floor.floor_number?.toString().includes(searchTerm);
-    const matchesBuilding = selectedBuilding === 'all' || floor.building_id === selectedBuilding;
-    return matchesSearch && matchesBuilding;
-  });
+  const filteredFloors = floors
+    .filter(floor => {
+      const matchesSearch = floor.floor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           floor.floor_number?.toString().includes(searchTerm);
+      const matchesBuilding = selectedBuilding === 'all' || floor.building_id === selectedBuilding;
+      return matchesSearch && matchesBuilding;
+    })
+    .sort((a, b) => {
+      if (a.building_id !== b.building_id) {
+        return a.building_name?.localeCompare(b.building_name || '') || 0;
+      }
+      return (a.floor_number || 0) - (b.floor_number || 0);
+    });
 
   const handleEditFloor = (floor) => {
     setFloorForm({
@@ -307,7 +314,6 @@ function FloorsTab({ canAdd, canEdit, canDelete }) {
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/admin/building-manage/${floor.building_id}`)}>Manage</Button>
                           {canEdit && <Button size="sm" variant="outline" onClick={() => handleEditFloor(floor)}>Edit</Button>}
                           {canDelete && <Button size="sm" variant="outline" className="text-red-600" onClick={() => handleDeleteFloor(floor.id)}>Delete</Button>}
                         </div>
@@ -442,17 +448,25 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
   const [rooms, setRooms] = useState([]);
   const [buildings, setBuildings] = useState([]);
   const [floors, setFloors] = useState([]);
+  const [roomCategories, setRoomCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBuilding, setSelectedBuilding] = useState('all');
   const [selectedFloor, setSelectedFloor] = useState('all');
   const [isAddRoomOpen, setIsAddRoomOpen] = useState(false);
+  const [editingRoomId, setEditingRoomId] = useState(null);
   const [deleteRoomId, setDeleteRoomId] = useState(null);
   const [roomForm, setRoomForm] = useState({
     building_id: '',
     floor_id: '',
-    room_number: ''
+    rooms: [{ room_number: '', category_id: '' }],
+    use_sequence: false,
+    sequence_start: '',
+    sequence_count: 1,
+    sequence_prefix: ''
   });
+  const [existingRooms, setExistingRooms] = useState([]);
+  const [showSequenceDialog, setShowSequenceDialog] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -462,21 +476,26 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
   const loadData = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
-      const [buildingsData, roomsData] = await Promise.all([
+      const [buildingsData, roomsData, categoriesData] = await Promise.all([
         buildingsService.getBuildings(),
         supabase.from('rooms').select(`
           *,
           buildings(name),
-          floors(floor_number, floor_name)
-        `)
+          floors(floor_number, floor_name),
+          form_dropdowns!rooms_category_id_fkey(name)
+        `),
+        supabase.from('form_dropdowns').select('*').eq('form_type', 'room_categories').order('name')
       ]);
       
       setBuildings(buildingsData);
       setRooms(roomsData.data?.map(room => ({
         ...room,
         building_name: room.buildings?.name,
-        floor_name: room.floors?.floor_name || `Floor ${room.floors?.floor_number}`
+        floor_name: room.floors?.floor_name || `Floor ${room.floors?.floor_number}`,
+        floor_number: room.floors?.floor_number,
+        category_name: room.form_dropdowns?.name || 'Uncategorized'
       })) || []);
+      setRoomCategories(categoriesData.data || []);
       
       const floorsData = await supabase.from('floors').select('*').order('floor_number');
       setFloors(floorsData.data || []);
@@ -492,6 +511,17 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
     const matchesBuilding = selectedBuilding === 'all' || room.building_id === selectedBuilding;
     const matchesFloor = selectedFloor === 'all' || room.floor_id === selectedFloor;
     return matchesSearch && matchesBuilding && matchesFloor;
+  }).sort((a, b) => {
+    // First sort by building name
+    if (a.building_name !== b.building_name) {
+      return a.building_name?.localeCompare(b.building_name || '') || 0;
+    }
+    // Then sort by floor number
+    if (a.floor_number !== b.floor_number) {
+      return (a.floor_number || 0) - (b.floor_number || 0);
+    }
+    // Finally sort by room number (natural sort for alphanumeric)
+    return a.room_number?.localeCompare(b.room_number || '', undefined, { numeric: true, sensitivity: 'base' }) || 0;
   });
 
   const availableFloors = floors.filter(floor => 
@@ -499,10 +529,15 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
   );
 
   const handleEditRoom = (room) => {
+    setEditingRoomId(room.id);
     setRoomForm({
       building_id: room.building_id,
       floor_id: room.floor_id,
-      room_number: room.room_number
+      rooms: [{ room_number: room.room_number, category_id: room.category_id || '' }],
+      use_sequence: false,
+      sequence_start: '',
+      sequence_count: 1,
+      sequence_prefix: ''
     });
     setIsAddRoomOpen(true);
   };
@@ -523,6 +558,100 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
     setDeleteRoomId(null);
   };
 
+  const addRoom = () => {
+    setRoomForm({
+      ...roomForm,
+      rooms: [...roomForm.rooms, { room_number: '', category_id: '' }]
+    });
+  };
+
+  const removeRoom = (index) => {
+    if (roomForm.rooms.length > 1) {
+      setRoomForm({
+        ...roomForm,
+        rooms: roomForm.rooms.filter((_, i) => i !== index)
+      });
+    }
+  };
+
+  const checkExistingRooms = async (floorId) => {
+    if (!floorId) return;
+    
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data } = await supabase
+        .from('rooms')
+        .select('room_number')
+        .eq('floor_id', floorId)
+        .order('room_number');
+      
+      setExistingRooms(data || []);
+      
+      if (data && data.length > 0) {
+        // Try to detect sequence pattern
+        const roomNumbers = data.map(r => r.room_number).sort();
+        const lastRoom = roomNumbers[roomNumbers.length - 1];
+        
+        // Extract numeric part from last room number
+        const match = lastRoom.match(/^(.*?)([0-9]+)$/);
+        if (match) {
+          const prefix = match[1];
+          const lastNumber = parseInt(match[2]);
+          
+          setRoomForm(prev => ({
+            ...prev,
+            sequence_prefix: prefix,
+            sequence_start: (lastNumber + 1).toString()
+          }));
+          
+          setShowSequenceDialog(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking existing rooms:', error);
+    }
+  };
+
+  const generateSequenceRooms = () => {
+    const { sequence_prefix, sequence_start, sequence_count } = roomForm;
+    const startNum = parseInt(sequence_start);
+    const rooms = [];
+    
+    for (let i = 0; i < sequence_count; i++) {
+      const roomNumber = sequence_prefix + (startNum + i).toString().padStart(2, '0');
+      rooms.push({ room_number: roomNumber, category_id: '' });
+    }
+    
+    setRoomForm(prev => ({
+      ...prev,
+      rooms: rooms,
+      use_sequence: false
+    }));
+    setShowSequenceDialog(false);
+  };
+
+  const handleFloorChange = (floorId) => {
+    setRoomForm({...roomForm, floor_id: floorId});
+    checkExistingRooms(floorId);
+  };
+
+  const updateRoom = (index, field, value) => {
+    const newRooms = [...roomForm.rooms];
+    newRooms[index] = { ...newRooms[index], [field]: value };
+    setRoomForm({
+      ...roomForm,
+      rooms: newRooms
+    });
+  };
+
+  const enableSequenceMode = () => {
+    setRoomForm(prev => ({
+      ...prev,
+      use_sequence: true,
+      rooms: [{ room_number: '', category_id: '' }]
+    }));
+  };
+
   return (
     <>
       <div className="flex gap-4 mb-6">
@@ -536,7 +665,7 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
           value={selectedBuilding}
           onChange={(e) => {
             setSelectedBuilding(e.target.value);
-            setSelectedFloor('all');
+            setSelectedFloor('all'); // Reset floor selection when building changes
           }}
           className="px-3 py-2 border rounded-md"
         >
@@ -549,6 +678,7 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
           value={selectedFloor}
           onChange={(e) => setSelectedFloor(e.target.value)}
           className="px-3 py-2 border rounded-md"
+          disabled={selectedBuilding === 'all'}
         >
           <option value="all">All Floors</option>
           {availableFloors.map(floor => (
@@ -574,18 +704,20 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Building</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Floor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Room Number</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
-                  <tr><td colSpan={5} className="text-center py-8">Loading...</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8">Loading...</td></tr>
                 ) : filteredRooms.map(room => (
                   <tr key={room.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm">{room.building_name}</td>
                     <td className="px-6 py-4 text-sm">{room.floor_name}</td>
                     <td className="px-6 py-4 text-sm font-medium">{room.room_number}</td>
+                    <td className="px-6 py-4 text-sm">{room.category_name}</td>
                     <td className="px-6 py-4 text-sm">{new Date(room.created_at).toLocaleDateString()}</td>
                     <td className="px-6 py-4 text-sm">
                       <div className="flex gap-2">
@@ -603,9 +735,9 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
 
       {/* Add Room Dialog */}
       <Dialog open={isAddRoomOpen} onOpenChange={setIsAddRoomOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add New Room</DialogTitle>
+            <DialogTitle>{editingRoomId ? 'Edit Room' : 'Add New Rooms'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -617,6 +749,7 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                 }}
                 className="w-full px-3 py-2 border rounded-md"
                 required
+                disabled={editingRoomId}
               >
                 <option value="">Select Building</option>
                 {buildings.map(building => (
@@ -628,10 +761,10 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
               <Label>Floor</Label>
               <select
                 value={roomForm.floor_id}
-                onChange={(e) => setRoomForm({...roomForm, floor_id: e.target.value})}
+                onChange={(e) => handleFloorChange(e.target.value)}
                 className="w-full px-3 py-2 border rounded-md"
                 required
-                disabled={!roomForm.building_id}
+                disabled={!roomForm.building_id || editingRoomId}
               >
                 <option value="">Select Floor</option>
                 {floors
@@ -644,21 +777,135 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                 }
               </select>
             </div>
+
             <div>
-              <Label>Room Number</Label>
-              <Input
-                value={roomForm.room_number}
-                onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})}
-                placeholder="e.g., 101"
-                required
-              />
+              <div className="flex items-center justify-between mb-2">
+                <Label>Rooms</Label>
+                {!editingRoomId && (
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={enableSequenceMode}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Sequence
+                    </Button>
+                    <Button type="button" size="sm" onClick={addRoom}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add More
+                    </Button>
+                  </div>
+                )}
+              </div>
+              
+              {existingRooms.length > 0 && !editingRoomId && (
+                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-sm text-blue-800 font-medium mb-1">
+                    Existing rooms on this floor:
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {existingRooms.map((room, idx) => (
+                      <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                        {room.room_number}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {roomForm.use_sequence && !editingRoomId ? (
+                <div className="space-y-3 p-4 border border-gray-200 rounded-md bg-gray-50">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Prefix</Label>
+                      <Input
+                        value={roomForm.sequence_prefix}
+                        onChange={(e) => setRoomForm({...roomForm, sequence_prefix: e.target.value})}
+                        placeholder="e.g., R"
+                        className="h-8"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Start Number</Label>
+                      <Input
+                        type="number"
+                        value={roomForm.sequence_start}
+                        onChange={(e) => setRoomForm({...roomForm, sequence_start: e.target.value})}
+                        placeholder="e.g., 101"
+                        className="h-8"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Count</Label>
+                      <Input
+                        type="number"
+                        value={roomForm.sequence_count}
+                        onChange={(e) => setRoomForm({...roomForm, sequence_count: parseInt(e.target.value) || 1})}
+                        min="1"
+                        max="50"
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={generateSequenceRooms}>
+                      Generate {roomForm.sequence_count} Rooms
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setRoomForm({...roomForm, use_sequence: false})}>
+                      Cancel
+                    </Button>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    Preview: {roomForm.sequence_prefix}{roomForm.sequence_start?.padStart(2, '0')} to {roomForm.sequence_prefix}{(parseInt(roomForm.sequence_start || '0') + roomForm.sequence_count - 1).toString().padStart(2, '0')}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {roomForm.rooms.map((room, index) => (
+                    <div key={index} className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <Label className="text-xs text-gray-600">Room Number</Label>
+                        <Input
+                          value={room.room_number}
+                          onChange={(e) => updateRoom(index, 'room_number', e.target.value)}
+                          placeholder={`Room ${index + 1} (e.g., 101)`}
+                          className="h-8"
+                          required
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-xs text-gray-600">Category</Label>
+                        <select
+                          value={room.category_id}
+                          onChange={(e) => updateRoom(index, 'category_id', e.target.value)}
+                          className="w-full px-2 py-1 border rounded text-sm h-8"
+                        >
+                          <option value="">Select Category (Optional)</option>
+                          {roomCategories.map(category => (
+                            <option key={category.id} value={category.id}>{category.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {roomForm.rooms.length > 1 && !editingRoomId && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeRoom(index)}
+                          className="text-red-600 h-8"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-2 pt-4">
               <Button
                 variant="outline"
                 onClick={() => {
                   setIsAddRoomOpen(false);
-                  setRoomForm({ building_id: '', floor_id: '', room_number: '' });
+                  setEditingRoomId(null);
+                  setRoomForm({ building_id: '', floor_id: '', rooms: [{ room_number: '', category_id: '' }], use_sequence: false, sequence_start: '', sequence_count: 1, sequence_prefix: '' });
                 }}
                 className="flex-1"
               >
@@ -668,22 +915,65 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                 onClick={async () => {
                   try {
                     const { supabase } = await import('@/lib/supabase');
-                    await supabase.from('rooms').insert({
-                      building_id: roomForm.building_id,
-                      floor_id: roomForm.floor_id,
-                      room_number: roomForm.room_number
-                    });
-                    toast({ title: 'Success', description: 'Room added successfully' });
+                    
+                    if (editingRoomId) {
+                      // Update existing room
+                      const room = roomForm.rooms[0];
+                      if (!room.room_number.trim()) {
+                        toast({ title: 'Error', description: 'Please enter a room number', variant: 'destructive' });
+                        return;
+                      }
+                      
+                      const { error } = await supabase
+                        .from('rooms')
+                        .update({
+                          building_id: roomForm.building_id,
+                          floor_id: roomForm.floor_id,
+                          room_number: room.room_number.trim(),
+                          category_id: room.category_id || null
+                        })
+                        .eq('id', editingRoomId);
+                      
+                      if (error) {
+                        console.error('Update error:', error);
+                        throw error;
+                      }
+                      
+                      toast({ title: 'Success', description: 'Room updated successfully' });
+                    } else {
+                      // Add new rooms
+                      const validRooms = roomForm.rooms.filter(room => room.room_number.trim());
+                      
+                      if (validRooms.length === 0) {
+                        toast({ title: 'Error', description: 'Please enter at least one room number', variant: 'destructive' });
+                        return;
+                      }
+                      
+                      const roomsToInsert = validRooms.map(room => ({
+                        building_id: roomForm.building_id,
+                        floor_id: roomForm.floor_id,
+                        room_number: room.room_number.trim(),
+                        category_id: room.category_id || null
+                      }));
+                      
+                      await supabase.from('rooms').insert(roomsToInsert);
+                      toast({ 
+                        title: 'Success', 
+                        description: `${validRooms.length} room(s) added successfully` 
+                      });
+                    }
+                    
                     setIsAddRoomOpen(false);
-                    setRoomForm({ building_id: '', floor_id: '', room_number: '' });
+                    setEditingRoomId(null);
+                    setRoomForm({ building_id: '', floor_id: '', rooms: [{ room_number: '', category_id: '' }], use_sequence: false, sequence_start: '', sequence_count: 1, sequence_prefix: '' });
                     loadData();
                   } catch (error) {
-                    toast({ title: 'Error', description: 'Failed to add room', variant: 'destructive' });
+                    toast({ title: 'Error', description: editingRoomId ? 'Failed to update room' : 'Failed to add rooms', variant: 'destructive' });
                   }
                 }}
                 className="flex-1"
               >
-                Add Room
+                {editingRoomId ? 'Update Room' : `Add ${roomForm.rooms.filter(room => room.room_number.trim()).length} Room(s)`}
               </Button>
             </div>
           </div>
@@ -704,6 +994,89 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
             <Button variant="destructive" onClick={confirmDeleteRoom} className="flex-1">
               Delete
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sequence Continuation Dialog */}
+      <Dialog open={showSequenceDialog} onOpenChange={setShowSequenceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Continue Room Sequence?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              This floor already has {existingRooms.length} room(s). Would you like to continue with the existing sequence?
+            </p>
+            
+            <div className="p-3 bg-gray-50 rounded-md">
+              <p className="text-sm font-medium mb-2">Existing rooms:</p>
+              <div className="flex flex-wrap gap-1 mb-3">
+                {existingRooms.slice(0, 10).map((room, idx) => (
+                  <span key={idx} className="px-2 py-1 bg-gray-200 text-gray-800 text-xs rounded">
+                    {room.room_number}
+                  </span>
+                ))}
+                {existingRooms.length > 10 && (
+                  <span className="px-2 py-1 bg-gray-200 text-gray-800 text-xs rounded">
+                    +{existingRooms.length - 10} more
+                  </span>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">Detected Prefix</Label>
+                  <Input
+                    value={roomForm.sequence_prefix}
+                    onChange={(e) => setRoomForm({...roomForm, sequence_prefix: e.target.value})}
+                    className="h-8"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Next Number</Label>
+                  <Input
+                    type="number"
+                    value={roomForm.sequence_start}
+                    onChange={(e) => setRoomForm({...roomForm, sequence_start: e.target.value})}
+                    className="h-8"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">How Many</Label>
+                  <Input
+                    type="number"
+                    value={roomForm.sequence_count}
+                    onChange={(e) => setRoomForm({...roomForm, sequence_count: parseInt(e.target.value) || 1})}
+                    min="1"
+                    max="20"
+                    className="h-8"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSequenceDialog(false);
+                  setRoomForm(prev => ({ ...prev, use_sequence: false }));
+                }}
+                className="flex-1"
+              >
+                Manual Entry
+              </Button>
+              <Button
+                onClick={() => {
+                  setRoomForm(prev => ({ ...prev, use_sequence: true }));
+                  generateSequenceRooms();
+                }}
+                className="flex-1"
+              >
+                Continue Sequence
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

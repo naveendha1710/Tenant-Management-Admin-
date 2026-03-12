@@ -35,7 +35,7 @@ interface Category {
   manufacturers: string[];
 }
 
-type TabType = 'categories' | 'subcategories' | 'sub_subcategories' | 'manufacturers' | 'asset_status' | 'sez_status' | 'customs_category' | 'general_charges' | 'service_charges';
+type TabType = 'categories' | 'subcategories' | 'sub_subcategories' | 'manufacturers' | 'asset_status' | 'sez_status' | 'customs_category' | 'general_charges' | 'service_charges' | 'building_types' | 'amenities' | 'room_categories';
 
 export default function MasterSettings() {
   const [searchParams] = useSearchParams();
@@ -45,6 +45,9 @@ export default function MasterSettings() {
   const getInitialTab = (): TabType => {
     if (formType === 'tenant') {
       return section === 'service_charges' ? 'service_charges' : 'general_charges';
+    }
+    if (formType === 'building') {
+      return section === 'amenities' ? 'amenities' : section === 'room_categories' ? 'room_categories' : 'building_types';
     }
     if (section === 'subcategories') return 'subcategories';
     if (section === 'sub_subcategories') return 'sub_subcategories';
@@ -88,6 +91,9 @@ export default function MasterSettings() {
   const [showLinkedDialog, setShowLinkedDialog] = useState(false);
   const [currentLinkedAssets, setCurrentLinkedAssets] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [existingColors, setExistingColors] = useState<string[]>([]);
+  const [existingBodies, setExistingBodies] = useState<string[]>([]);
+  const [existingSizes, setExistingSizes] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -207,7 +213,7 @@ export default function MasterSettings() {
         })) || [];
 
         setCategories(categoriesData);
-      } else {
+      } else if (activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
         const { data, error } = await supabase
           .from('form_dropdowns')
           .select('*')
@@ -219,7 +225,7 @@ export default function MasterSettings() {
         const simpleData = data?.map(item => ({
           id: item.id,
           name: item.name,
-          shortCode: item.short_code,
+          shortCode: item.short_code || '',
           subTypes: [],
           manufacturers: []
         })) || [];
@@ -242,7 +248,7 @@ export default function MasterSettings() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (currentField === 'name' && formData.name.trim()) {
-        if (activeTab === 'manufacturers' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+        if (activeTab === 'manufacturers' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities') {
           setAddedItems([...addedItems, { name: formData.name }]);
           setFormData({ ...formData, name: '' });
         } else {
@@ -317,7 +323,13 @@ export default function MasterSettings() {
   const handleBulkEdit = () => {
     if (selectedRows.size === 0) return;
     
-    // For sub_subcategories, open edit dialog for first selected item
+    // For sub_subcategories with multiple selections, show error
+    if (activeTab === 'sub_subcategories' && selectedRows.size > 1) {
+      toast({ title: 'Not Allowed', description: 'Bulk editing is not available for multiple sub-categories. Please edit items individually.', variant: 'destructive' });
+      return;
+    }
+    
+    // For sub_subcategories with single selection, open edit dialog
     if (activeTab === 'sub_subcategories') {
       const firstSelectedId = Array.from(selectedRows)[0];
       const item = getCurrentPageData().find((i: any) => i.id === firstSelectedId);
@@ -382,7 +394,7 @@ export default function MasterSettings() {
           const manufacturerName = id.split('-').pop();
           const { error } = await supabase.from('form_options').delete().eq('name', manufacturerName).eq('option_type', 'manufacturer');
           if (error) throw error;
-        } else if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+        } else if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
           const { error } = await supabase.from('form_dropdowns').delete().eq('id', id);
           if (error) throw error;
         } else if (activeTab === 'subcategories') {
@@ -420,7 +432,7 @@ export default function MasterSettings() {
   const handleInlineUpdate = async (id: string) => {
     try {
       const values = editValues[id];
-      if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+      if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
         const { error } = await supabase.from('form_dropdowns').update({ name: values.name, short_code: values.shortCode?.toUpperCase() }).eq('id', id);
         if (error) throw error;
       } else if (activeTab === 'subcategories') {
@@ -445,6 +457,54 @@ export default function MasterSettings() {
   };
 
   const handleEdit = async (id: string, name: string, shortCode?: string) => {
+    // For linked assets, show special edit dialog that allows adding but not deleting
+    if (linkedAssets[name] && activeTab === 'sub_subcategories') {
+      setEditingItem({ id, name, shortCode });
+      
+      // Load existing combinations
+      const { data } = await supabase.from('form_sub_subcategories').select('subcategory_id').eq('id', id).single();
+      const parentId = data?.subcategory_id || '';
+      
+      let existingColors: string[] = [];
+      let existingBodies: string[] = [];
+      let existingSizes: string[] = [];
+      
+      if (id) {
+        const { data: combData } = await supabase
+          .from('sub_subcategory_combinations')
+          .select('color, material, size')
+          .eq('sub_subcategory_id', id)
+          .eq('is_active', true);
+        
+        if (combData) {
+          existingColors = [...new Set(combData.map(c => c.color).filter(Boolean))];
+          existingBodies = [...new Set(combData.map(c => c.material).filter(Boolean))];
+          existingSizes = [...new Set(combData.map(c => c.size).filter(Boolean))];
+        }
+      }
+      
+      setExistingColors(existingColors);
+      setExistingBodies(existingBodies);
+      setExistingSizes(existingSizes);
+      
+      setFormData({ 
+        name, 
+        shortCode: shortCode || '', 
+        parentCategoryId: parentId, 
+        colors: existingColors, 
+        bodies: existingBodies, 
+        sizes: existingSizes 
+      });
+      setCurrentField('name');
+      setCurrentInput('');
+      setColorInput('');
+      setMaterialInput('');
+      setSizeInput('');
+      setIsDialogOpen(true);
+      return;
+    }
+    
+    // Show linked assets dialog for other cases
     if (linkedAssets[name]) {
       setCurrentLinkedAssets(linkedAssets[name]);
       setShowLinkedDialog(true);
@@ -498,7 +558,7 @@ export default function MasterSettings() {
   const handleSaveAll = async () => {
     try {
       if (editingItem) {
-        if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+        if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
           const { error } = await supabase.from('form_dropdowns').update({ name: formData.name, short_code: formData.shortCode?.toUpperCase() }).eq('id', editingItem.id);
           if (error) throw error;
         } else if (activeTab === 'subcategories') {
@@ -634,12 +694,17 @@ export default function MasterSettings() {
         if (uniqueItems.length < addedItems.length) {
           toast({ title: 'Partial Success', description: `${uniqueItems.length} items added, ${addedItems.length - uniqueItems.length} duplicates skipped` });
         }
-      } else if (activeTab === 'general_charges' || activeTab === 'service_charges') {
+      } else if (activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities') {
         const { error } = await supabase.from('form_dropdowns').insert(
           addedItems.map(i => ({ form_type: activeTab, name: i.name }))
         );
         if (error) throw error;
-      } else {
+      } else if (activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'room_categories') {
+        const { error } = await supabase.from('form_dropdowns').insert(
+          addedItems.map(i => ({ form_type: activeTab, name: i.name, short_code: i.shortCode?.toUpperCase() }))
+        );
+        if (error) throw error;
+      } else if (activeTab === 'manufacturers') {
         const { error } = await supabase.from('form_options').insert(
           addedItems.map(i => ({ form_type: 'asset', option_type: 'manufacturer', name: i.name, category_id: formData.parentCategoryId }))
         );
@@ -665,7 +730,7 @@ export default function MasterSettings() {
     }
     
     try {
-      if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+      if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
         const { error } = await supabase.from('form_dropdowns').delete().eq('id', id);
         if (error) throw error;
       } else if (activeTab === 'subcategories') {
@@ -716,7 +781,7 @@ export default function MasterSettings() {
 
   const getCurrentPageData = () => {
     let data: any[] = [];
-    if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') {
+    if (activeTab === 'categories' || activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') {
       data = categories;
     } else if (activeTab === 'subcategories') {
       data = getFilteredSubCategories();
@@ -771,7 +836,14 @@ export default function MasterSettings() {
             />
             {selectedRows.size > 0 && (
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleBulkEdit}>Edit Selected ({selectedRows.size})</Button>
+                <Button 
+                  size="sm" 
+                  onClick={handleBulkEdit}
+                  disabled={activeTab === 'sub_subcategories' && selectedRows.size > 1}
+                  title={activeTab === 'sub_subcategories' && selectedRows.size > 1 ? 'Bulk editing not available for multiple sub-categories' : ''}
+                >
+                  Edit Selected ({selectedRows.size})
+                </Button>
                 {editingRows.size > 0 && <Button size="sm" onClick={handleBulkSave} variant="outline">Save All</Button>}
                 <Button size="sm" onClick={handleBulkDelete} variant="destructive">Delete Selected</Button>
                 <Button size="sm" onClick={() => {setSelectedRows(new Set()); setEditingRows(new Set()); setEditValues({});}} variant="outline">Cancel</Button>
@@ -816,6 +888,9 @@ export default function MasterSettings() {
               setMaterialInput('');
               setSizeInput('');
               setAddedItems([]);
+              setExistingColors([]);
+              setExistingBodies([]);
+              setExistingSizes([]);
             }
           }}>
             <DialogTrigger asChild>
@@ -827,12 +902,18 @@ export default function MasterSettings() {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>
-                  {editingItem ? 'Edit' : 'Add'} {activeTab === 'categories' ? 'Asset Types' : 
+                  {editingItem ? (
+                    linkedAssets[editingItem.name] ? 
+                      `Add Options to ${editingItem.name} (Linked to ${linkedAssets[editingItem.name].length} assets)` : 
+                      'Edit'
+                  ) : 'Add'} {activeTab === 'categories' ? 'Asset Types' : 
                        activeTab === 'subcategories' ? 'Categories' : 
                        activeTab === 'sub_subcategories' ? 'Sub-Categories' :
                        activeTab === 'manufacturers' ? 'Manufacturers' :
                        activeTab === 'general_charges' ? 'General Charges' :
-                       activeTab === 'service_charges' ? 'Service Charges' : activeTab.replace('_', ' ')}
+                       activeTab === 'building_types' ? 'Building Types' :
+                       activeTab === 'amenities' ? 'Amenities' :
+                       activeTab === 'room_categories' ? 'Room Categories' : activeTab.replace('_', ' ')}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
@@ -876,6 +957,31 @@ export default function MasterSettings() {
                 {editingItem ? (
                   // Edit mode: Show both fields at once
                   <>
+                    {linkedAssets[editingItem.name] && (
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <p className="text-sm text-yellow-800 font-medium mb-1">
+                          ⚠️ This item is linked to {linkedAssets[editingItem.name].length} asset(s)
+                        </p>
+                        <div className="mb-2">
+                          <p className="text-xs text-yellow-700 mb-1">Linked Assets:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {linkedAssets[editingItem.name].slice(0, 5).map((assetId, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded font-mono">
+                                {assetId}
+                              </span>
+                            ))}
+                            {linkedAssets[editingItem.name].length > 5 && (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
+                                +{linkedAssets[editingItem.name].length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-yellow-700">
+                          You can add new colors, materials, and sizes, but cannot delete existing ones or change the name/code.
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Name</Label>
                       <Input
@@ -883,8 +989,22 @@ export default function MasterSettings() {
                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                         placeholder="Enter name"
                         autoFocus
+                        disabled={linkedAssets[editingItem.name]} // Disable name editing for linked assets
+                        className={linkedAssets[editingItem.name] ? 'bg-gray-100' : ''}
                       />
                     </div>
+                    {(activeTab !== 'manufacturers' && activeTab !== 'general_charges' && activeTab !== 'service_charges' && activeTab !== 'building_types' && activeTab !== 'amenities') && (
+                      <div className="space-y-2">
+                        <Label>Short Code</Label>
+                        <Input
+                          value={formData.shortCode}
+                          onChange={(e) => setFormData({...formData, shortCode: e.target.value.toUpperCase()})}
+                          placeholder="Enter short code"
+                          disabled={linkedAssets[editingItem.name]} // Disable code editing for linked assets
+                          className={linkedAssets[editingItem.name] ? 'bg-gray-100' : ''}
+                        />
+                      </div>
+                    )}
                     {activeTab === 'sub_subcategories' && (
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
@@ -894,7 +1014,7 @@ export default function MasterSettings() {
                               <Input
                                 value={colorInput}
                                 onChange={(e) => setColorInput(e.target.value)}
-                                onKeyPress={(e) => {
+                                onKeyDown={(e) => {
                                   if (e.key === 'Enter' && colorInput.trim()) {
                                     e.preventDefault();
                                     if (!formData.colors.includes(colorInput.trim())) {
@@ -921,17 +1041,27 @@ export default function MasterSettings() {
                               </Button>
                             </div>
                             <div className="min-h-[60px] max-h-[120px] overflow-y-auto border rounded p-2 space-y-1">
-                              {formData.colors.map((color, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded text-sm">
-                                  <span>{color}</span>
-                                  <button
-                                    onClick={() => setFormData({...formData, colors: formData.colors.filter((_, i) => i !== idx)})}
-                                    className="text-red-500 hover:text-red-700 ml-2"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
+                              {formData.colors.map((color, idx) => {
+                                const isExisting = existingColors.includes(color);
+                                return (
+                                  <div key={idx} className={`flex items-center justify-between px-2 py-1 rounded text-sm ${
+                                    isExisting ? 'bg-blue-100 border border-blue-300' : 'bg-blue-50'
+                                  }`}>
+                                    <span className={isExisting ? 'font-medium' : ''}>{color}</span>
+                                    {!isExisting && (
+                                      <button
+                                        onClick={() => setFormData({...formData, colors: formData.colors.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 ml-2"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                    {isExisting && (
+                                      <span className="text-xs text-blue-600 ml-2">Existing</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                               {formData.colors.length === 0 && (
                                 <div className="text-gray-400 text-sm text-center py-4">No colors added</div>
                               )}
@@ -973,17 +1103,27 @@ export default function MasterSettings() {
                               </Button>
                             </div>
                             <div className="min-h-[60px] max-h-[120px] overflow-y-auto border rounded p-2 space-y-1">
-                              {formData.bodies.map((material, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-green-50 px-2 py-1 rounded text-sm">
-                                  <span>{material}</span>
-                                  <button
-                                    onClick={() => setFormData({...formData, bodies: formData.bodies.filter((_, i) => i !== idx)})}
-                                    className="text-red-500 hover:text-red-700 ml-2"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
+                              {formData.bodies.map((material, idx) => {
+                                const isExisting = existingBodies.includes(material);
+                                return (
+                                  <div key={idx} className={`flex items-center justify-between px-2 py-1 rounded text-sm ${
+                                    isExisting ? 'bg-green-100 border border-green-300' : 'bg-green-50'
+                                  }`}>
+                                    <span className={isExisting ? 'font-medium' : ''}>{material}</span>
+                                    {!isExisting && (
+                                      <button
+                                        onClick={() => setFormData({...formData, bodies: formData.bodies.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 ml-2"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                    {isExisting && (
+                                      <span className="text-xs text-green-600 ml-2">Existing</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                               {formData.bodies.length === 0 && (
                                 <div className="text-gray-400 text-sm text-center py-4">No materials added</div>
                               )}
@@ -1025,17 +1165,27 @@ export default function MasterSettings() {
                               </Button>
                             </div>
                             <div className="min-h-[60px] max-h-[120px] overflow-y-auto border rounded p-2 space-y-1">
-                              {formData.sizes.map((size, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-purple-50 px-2 py-1 rounded text-sm">
-                                  <span>{size}</span>
-                                  <button
-                                    onClick={() => setFormData({...formData, sizes: formData.sizes.filter((_, i) => i !== idx)})}
-                                    className="text-red-500 hover:text-red-700 ml-2"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
+                              {formData.sizes.map((size, idx) => {
+                                const isExisting = existingSizes.includes(size);
+                                return (
+                                  <div key={idx} className={`flex items-center justify-between px-2 py-1 rounded text-sm ${
+                                    isExisting ? 'bg-purple-100 border border-purple-300' : 'bg-purple-50'
+                                  }`}>
+                                    <span className={isExisting ? 'font-medium' : ''}>{size}</span>
+                                    {!isExisting && (
+                                      <button
+                                        onClick={() => setFormData({...formData, sizes: formData.sizes.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 ml-2"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                    {isExisting && (
+                                      <span className="text-xs text-purple-600 ml-2">Existing</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                               {formData.sizes.length === 0 && (
                                 <div className="text-gray-400 text-sm text-center py-4">No sizes added</div>
                               )}
@@ -1145,7 +1295,9 @@ export default function MasterSettings() {
                 )}
 
                 <Button onClick={handleSaveAll} className="w-full" disabled={!editingItem && addedItems.length === 0}>
-                  {editingItem ? 'Update' : `Save All (${addedItems.length})`}
+                  {editingItem ? (
+                    linkedAssets[editingItem.name] ? 'Add New Options' : 'Update'
+                  ) : `Save All (${addedItems.length})`}
                 </Button>
               </div>
             </DialogContent>
@@ -1307,7 +1459,7 @@ export default function MasterSettings() {
                   </td>
                 </tr>
               ))}
-              {(activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges') && getCurrentPageData().map((item: Category) => (
+              {(activeTab === 'asset_status' || activeTab === 'sez_status' || activeTab === 'customs_category' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities' || activeTab === 'room_categories') && getCurrentPageData().map((item: Category) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onDoubleClick={() => handleSelectRow(item.id)}>
                   <td className="px-6 py-1.5">
                     <input type="checkbox" checked={selectedRows.has(item.id)} onChange={() => handleSelectRow(item.id)} className="rounded" />

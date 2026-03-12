@@ -113,6 +113,17 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
             { title: "Service Charges", url: "/admin/master-settings?tab=tenant&section=service_charges", icon: Users },
           ]
         },
+        { 
+          title: "Building Form", 
+          url: "/admin/master-settings?tab=building", 
+          icon: Building2,
+          expandable: true,
+          subItems: [
+            { title: "Building Types", url: "/admin/master-settings?tab=building", icon: Building2 },
+            { title: "Amenities", url: "/admin/master-settings?tab=building&section=amenities", icon: Building2 },
+            { title: "Room Categories", url: "/admin/master-settings?tab=building&section=room_categories", icon: Building2 },
+          ]
+        },
       ]
     }
   ],
@@ -180,6 +191,17 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
           subItems: [
             { title: "General Charges", url: "/admin/master-settings?tab=tenant", icon: Users },
             { title: "Service Charges", url: "/admin/master-settings?tab=tenant&section=service_charges", icon: Users },
+          ]
+        },
+        { 
+          title: "Building Form", 
+          url: "/admin/master-settings?tab=building", 
+          icon: Building2,
+          expandable: true,
+          subItems: [
+            { title: "Building Types", url: "/admin/master-settings?tab=building", icon: Building2 },
+            { title: "Amenities", url: "/admin/master-settings?tab=building&section=amenities", icon: Building2 },
+            { title: "Room Categories", url: "/admin/master-settings?tab=building&section=room_categories", icon: Building2 },
           ]
         },
       ]
