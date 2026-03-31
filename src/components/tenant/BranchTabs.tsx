@@ -28,11 +28,16 @@ export function BranchTabs({ onBranchChange }: BranchTabsProps) {
     if (!user?.email) return;
 
     try {
-      const { data: currentTenant } = await supabase
+      const { data: currentTenant, error: tenantError } = await supabase
         .from('tenants')
         .select('id, company')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
+
+      if (tenantError) {
+        console.error('Error loading current tenant:', tenantError);
+        return;
+      }
 
       if (!currentTenant) return;
       setCurrentTenantId(currentTenant.id);
@@ -45,10 +50,14 @@ export function BranchTabs({ onBranchChange }: BranchTabsProps) {
         return;
       }
 
-      const { data: accessibleBranches } = await supabase
+      const { data: accessibleBranches, error: branchError } = await supabase
         .from('tenants')
         .select('id, company')
         .in('id', branchAccess);
+
+      if (branchError) {
+        console.error('Error loading accessible branches:', branchError);
+      }
 
       const allBranches = [currentTenant, ...(accessibleBranches || [])];
       setBranches(allBranches);

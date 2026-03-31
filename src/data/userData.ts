@@ -29,6 +29,17 @@ export interface AppUser {
   selectedRoles?: UserRole[]; // Store multiple selected roles
   technicianCategory?: string; // Category for technicians (Plumber, Electrician, etc.)
   branchAccess?: string[]; // Tenant IDs user can access (Tenant role only)
+  tenantId?: string; // Links tenant users to their parent tenant
+  assetMovementApprover?: boolean;
+  assetIncharge?: boolean;
+  assetAuditor?: boolean;
+  canManageWorkflows?: boolean;
+  notificationsEnabled?: boolean;
+  userManagementAccess?: {
+    users: boolean;
+    tenantUsers: boolean;
+    otherUsers: boolean;
+  };
 }
 
 export interface AuditLog {
@@ -144,13 +155,16 @@ const transformDbUserToAppUser = (dbUser: any): AppUser => ({
   isApprover: dbUser.is_approver || false,
   assetMovementApprover: dbUser.asset_movement_approver || false,
   assetIncharge: dbUser.asset_incharge || false,
+  assetAuditor: dbUser.asset_auditor || false,
+  canManageWorkflows: dbUser.can_manage_workflows || false,
   selectedRoles: typeof dbUser.selected_roles === 'string' ? JSON.parse(dbUser.selected_roles) : (dbUser.selected_roles || []),
   technicianCategory: dbUser.technician_category || '',
   branchAccess: typeof dbUser.branch_access === 'string' ? JSON.parse(dbUser.branch_access) : (dbUser.branch_access || []),
   notificationsEnabled: dbUser.notifications_enabled !== undefined ? dbUser.notifications_enabled : true,
   userManagementAccess: typeof dbUser.user_management_access === 'string' 
     ? JSON.parse(dbUser.user_management_access) 
-    : (dbUser.user_management_access || { users: true, tenantUsers: true, otherUsers: true })
+    : (dbUser.user_management_access || { users: true, tenantUsers: true, otherUsers: true }),
+  tenantId: dbUser.tenant_id || undefined
 });
 
 // Helper function to transform AppUser to database format
@@ -170,11 +184,14 @@ const transformAppUserToDb = (user: Partial<AppUser & { password?: string }>) =>
   if (user.isApprover !== undefined) dbUser.is_approver = user.isApprover;
   if ((user as any).assetMovementApprover !== undefined) dbUser.asset_movement_approver = (user as any).assetMovementApprover;
   if ((user as any).assetIncharge !== undefined) dbUser.asset_incharge = (user as any).assetIncharge;
+  if ((user as any).assetAuditor !== undefined) dbUser.asset_auditor = (user as any).assetAuditor;
+  if ((user as any).canManageWorkflows !== undefined) dbUser.can_manage_workflows = (user as any).canManageWorkflows;
   if (user.selectedRoles !== undefined) dbUser.selected_roles = user.selectedRoles;
   if (user.technicianCategory !== undefined) dbUser.technician_category = user.technicianCategory;
   if (user.branchAccess !== undefined) dbUser.branch_access = user.branchAccess;
   if ((user as any).notificationsEnabled !== undefined) dbUser.notifications_enabled = (user as any).notificationsEnabled;
   if ((user as any).userManagementAccess !== undefined) dbUser.user_management_access = (user as any).userManagementAccess;
+  if (user.tenantId !== undefined) dbUser.tenant_id = user.tenantId;
   
   if (user.password && user.password.trim() !== '') {
     dbUser.password = user.password;
@@ -328,6 +345,47 @@ export const userService = {
       const user = await userService.getUserById(id);
       if (!user) return false;
       
+      // Check if user is a main tenant user (email matches a tenant in tenants table)
+      if (user.role === 'Tenant') {
+        const { data: tenant, error: tenantError } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('email', user.email)
+          .maybeSingle();
+        
+        if (tenantError) throw tenantError;
+        
+        if (tenant) {
+          throw new Error('Cannot delete main tenant user. Please delete the tenant from Tenant Management instead.');
+        }
+      }
+      
+      // Check if user has workflow actions
+      const { data: workflowActions, error: workflowError } = await supabase
+        .from('workflow_actions')
+        .select('id')
+        .eq('action_by', id)
+        .limit(1);
+      
+      if (workflowError) throw workflowError;
+      
+      if (workflowActions && workflowActions.length > 0) {
+        throw new Error('Cannot delete user who has participated in workflow approvals. User has approval history that must be preserved.');
+      }
+      
+      // Check if user has created any movements
+      const { data: movements, error: movementsError } = await supabase
+        .from('asset_movements')
+        .select('id')
+        .eq('requested_by', id)
+        .limit(1);
+      
+      if (movementsError) throw movementsError;
+      
+      if (movements && movements.length > 0) {
+        throw new Error('Cannot delete user who has created asset movements. User has movement history that must be preserved.');
+      }
+      
       const { error } = await supabase
         .from('users')
         .delete()
@@ -350,7 +408,7 @@ export const userService = {
       return true;
     } catch (error) {
       console.error('Error deleting user:', error);
-      return false;
+      throw error;
     }
   },
   

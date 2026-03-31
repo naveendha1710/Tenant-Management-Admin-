@@ -968,13 +968,13 @@ server {
 - **Bcrypt password hashing** with automatic trigger
 - **Password verification** via secure RPC function
 - **pgcrypto extension** for cryptographic functions
+- **Rate limiting** via `express-rate-limit`: 100 req/min (all API), 50 uploads/hr, 20 emails/hr
 
 ### ⚠️ Concerns
 - Credentials in `.env` files
-- No rate limiting on API endpoints
 - No request validation middleware
 - localStorage for sensitive data
-- Tenant passwords still plain text (not migrated)
+- Tenant users synced to `users` table (role: `Tenant`) — bcrypt hashing applies via same trigger; `tenants` table fallback remains for un-synced tenants
 
 ---
 
@@ -1239,11 +1239,11 @@ The architecture is **modular and extensible**, with clear separation of concern
 - **Authentication**: Role-based with granular permissions
 
 **Security Considerations**:
-- ⚠️ Plain text password storage (should implement bcrypt hashing)
+- ✅ Bcrypt hashing for all users including tenant users (synced to `users` table via `syncTenantUsers`)
 - ✅ Path sanitization for file uploads
 - ✅ CORS enabled with configurable origins
 - ✅ Email validation and input sanitization
-- ⚠️ No rate limiting (should implement for production)
+- ✅ Rate limiting implemented (API, upload, email endpoints)
 - ⚠️ localStorage for session management (consider JWT tokens)
 
 **Scalability Recommendations**:
@@ -1266,9 +1266,518 @@ The architecture is **modular and extensible**, with clear separation of concern
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: 2024  
+**Document Version**: 3.0  
+**Last Updated**: 2025-01-20  
 **Maintained By**: Development Team
+
+---
+
+## 22. Workflow Engine System
+
+### Overview
+Advanced workflow automation engine for multi-step approval processes with graph-based execution, conditional routing, and SLA tracking.
+
+### Core Architecture
+
+**Workflow Components**:
+- **Workflows**: Template definitions with versioning
+- **Workflow Nodes**: Individual steps (Start, Approval, Condition, End)
+- **Workflow Edges**: Connections between nodes with conditional routing
+- **Workflow Instances**: Runtime execution of workflows
+- **Workflow Steps**: Individual step executions with approval tracking
+- **Workflow Actions**: User actions (Approve, Reject, Comment)
+
+**Node Types**:
+- `MOVEMENT_REQUEST`: Start node for asset movement workflows
+- `APPROVAL`: Approval step with configurable approval types
+- `CONDITION_APPROVED`: Conditional routing for approved path
+- `CONDITION_REJECTED`: Conditional routing for rejected path
+- `END`: Terminal node with type (approved/rejected)
+
+**Approval Types**:
+- `SINGLE`: First approver completes the step
+- `ALL`: All approvers must approve
+- `ANY`: Any single approver can complete
+
+### Workflow Execution Flow
+
+**1. Workflow Initiation**:
+```typescript
+// Start workflow for asset movement
+const instance = await workflowEngine.startWorkflow(
+  'asset_movement',  // entity type
+  movementId,        // entity ID
+  tenantId,          // tenant context
+  contextData        // additional data
+);
+```
+
+**2. Graph Traversal**:
+- Load workflow graph (nodes + edges)
+- Find start node (MOVEMENT_REQUEST)
+- Follow edges based on node type and conditions
+- Create approval steps for APPROVAL nodes
+- Auto-traverse CONDITION nodes
+- Complete at END node
+
+**3. Approval Processing**:
+```typescript
+// Approve step
+await workflowEngine.approveStep(
+  stepId,
+  userId,
+  remarks,
+  attachments
+);
+
+// Reject step
+await workflowEngine.rejectStep(
+  stepId,
+  userId,
+  remarks,
+  attachments
+);
+```
+
+**4. Conditional Routing**:
+- Approval → CONDITION_APPROVED → Next approval or END (approved)
+- Rejection → CONDITION_REJECTED → END (rejected)
+- Conditions evaluate context data for dynamic routing
+
+**5. Workflow Completion**:
+- Update workflow instance status (COMPLETED/REJECTED)
+- Update entity based on result
+- For asset movements:
+  - Update asset locations (building, floor, room)
+  - Update handover details (tenant or other)
+  - Create asset history records
+  - Resolve UUIDs to names for history
+
+### Database Schema
+
+**workflows table**:
+```sql
+id, name, description, entity_type, version, is_active, 
+tenant_id, created_by, created_at, updated_at
+```
+
+**workflow_nodes table**:
+```sql
+id, workflow_id, node_id, node_type, node_label, 
+approver_user_ids, approval_type, sla_hours, 
+condition_field, condition_operator, condition_value,
+position_x, position_y, end_type, created_at
+```
+
+**workflow_edges table**:
+```sql
+id, workflow_id, edge_id, source_node_id, target_node_id,
+edge_label, condition_value, created_at
+```
+
+**workflow_instances table**:
+```sql
+id, workflow_id, workflow_version, entity_type, entity_id,
+tenant_id, status, current_node_id, context_data,
+started_at, completed_at, created_at
+```
+
+**workflow_instance_steps table**:
+```sql
+id, instance_id, node_id, step_number, node_type, status,
+assigned_user_ids, approval_type, required_approvals,
+received_approvals, sla_deadline, started_at, completed_at
+```
+
+**workflow_actions table**:
+```sql
+id, instance_id, step_id, action_type, action_by,
+remarks, attachments, action_at
+```
+
+### Integration Points
+
+**Asset Movement Integration**:
+- Workflow triggered on movement creation
+- All approver IDs stored in `workflow_approver_ids` field
+- Approval updates movement status
+- Rejection updates movement status
+- Completion updates asset locations and creates history
+
+**User Permissions**:
+- `asset_movement_approver` flag on users table
+- Only approvers see approve/reject buttons
+- Approvers receive notifications for pending steps
+
+**History Tracking**:
+- Asset history records created on approval
+- Old value → New value mapping
+- Movement request ID linked
+- Changed by user tracked
+- UUIDs resolved to human-readable names
+
+### Workflow Builder UI
+
+**Visual Editor** (`WorkflowBuilder.tsx`):
+- Drag-and-drop node placement
+- Visual edge connections
+- Node configuration panels
+- Real-time validation
+- Save/publish workflows
+
+**Node Configuration**:
+- Approval nodes: Select approvers, approval type, SLA
+- Condition nodes: Field, operator, value
+- End nodes: Type (approved/rejected)
+
+**Pending Approvals Dashboard** (`PendingApprovalsDashboard.tsx`):
+- List of pending approval steps
+- Filter by entity type, status
+- Approve/reject actions
+- Remarks and attachments
+- SLA countdown
+
+### Advanced Features
+
+**Multi-Tenant Support**:
+- Workflows scoped to tenants
+- Global workflows for all tenants
+- Tenant-specific approval chains
+
+**Versioning**:
+- Workflow versions tracked
+- Instances reference specific version
+- Version history maintained
+
+**SLA Tracking**:
+- Configurable SLA hours per approval node
+- SLA deadline calculated on step creation
+- Overdue alerts and notifications
+
+**Parallel Approvals**:
+- ALL approval type requires all approvers
+- Tracks received vs required approvals
+- Completes when threshold met
+
+**Audit Trail**:
+- All actions logged with timestamp
+- Remarks and attachments preserved
+- User attribution for accountability
+
+### Best Practices
+
+**Workflow Design**:
+- Always include MOVEMENT_REQUEST start node
+- Use CONDITION nodes for routing
+- Define clear END nodes for both paths
+- Set realistic SLA hours
+- Assign appropriate approvers
+
+**Error Handling**:
+- Validate graph completeness before activation
+- Handle missing nodes gracefully
+- Log all errors for debugging
+- Provide user-friendly error messages
+
+**Performance**:
+- Cache workflow graphs in memory
+- Batch database operations
+- Use RPC functions for complex queries
+- Index frequently queried fields
+
+---
+
+## 23. PM Task Board System
+
+### Overview
+Date-based preventive maintenance task scheduling and assignment system with automatic task instance generation.
+
+### Core Concepts
+
+**PM Schedules** (preventive_maintenance table):
+- Asset-level PM configuration
+- Start date, end date, frequency in days
+- Next PM date auto-calculated
+- PM enabled flag
+
+**PM Task Instances** (pm_task_instances table):
+- Date-specific task records
+- Generated automatically based on schedules
+- Assignment tracking (user, notes, date)
+- Status tracking (PENDING, OVERDUE, UPCOMING, COMPLETED)
+
+**Key Difference**:
+- PM schedules are templates (one per asset)
+- Task instances are daily tasks (many per asset)
+- Instances generated on-demand for date ranges
+
+### Task Generation Logic
+
+**Automatic Generation**:
+```typescript
+// Generate instances for date range
+await supabase.rpc('generate_pm_task_instances', {
+  p_start_date: '2025-01-20',
+  p_end_date: '2025-01-20'
+});
+```
+
+**Manual Fallback**:
+- If RPC fails, manual generation kicks in
+- Iterates through active PM schedules
+- Calculates task dates based on frequency
+- Creates instances for target date
+- Prevents duplicates with upsert
+
+**Status Auto-Update**:
+- Past dates → OVERDUE
+- Today → PENDING
+- Future dates → UPCOMING
+- Runs on every task fetch
+
+### Task Assignment
+
+**Date-Specific Assignment**:
+```typescript
+// Assign task for specific date
+await pmTaskService.assignTask(
+  assetId,
+  userId,
+  notes,
+  taskDate  // '2025-01-20'
+);
+```
+
+**Bulk Assignment**:
+```typescript
+// Assign multiple tasks for same date
+await pmTaskService.bulkAssignTasks({
+  asset_ids: ['id1', 'id2'],
+  assigned_to: userId,
+  assignment_notes: 'Batch assignment',
+  task_date: '2025-01-20'
+});
+```
+
+### Filtering System
+
+**Available Filters**:
+- Date (default: today)
+- Tenant ID
+- Building ID
+- Floor ID
+- Status (OVERDUE, DUE_TODAY, UPCOMING)
+- Show only unassigned
+- Assigned to specific user
+
+**Hierarchical Filtering**:
+- Filters applied after task instance fetch
+- Asset data joined for location filtering
+- Tenant data joined for tenant filtering
+- User data joined for assignment display
+
+### UI Components
+
+**PMTaskBoard** (`PMTaskBoard.tsx`):
+- Date picker for task date selection
+- Filter panel (tenant, building, floor, status, assignment)
+- Task list with status badges
+- Assign/unassign actions
+- Bulk assignment dialog
+- Export to CSV
+
+**Task Display**:
+- Asset name and code
+- Location (building / floor)
+- Tenant name
+- PM next date
+- Status badge (color-coded)
+- Days overdue (if applicable)
+- Assigned user
+- Last audit date and result
+
+### Database Schema
+
+**pm_task_instances table**:
+```sql
+id, asset_id, pm_schedule_id, task_date, status,
+assigned_to, assigned_at, assignment_notes,
+completed_at, completed_by, completion_notes,
+created_at, updated_at
+```
+
+**Unique Constraint**: `(asset_id, task_date)`
+- Prevents duplicate tasks for same asset on same date
+- Enables upsert operations
+
+### Integration Points
+
+**Asset Management**:
+- PM schedules linked to assets
+- Asset location used for filtering
+- Asset handover (tenant) used for filtering
+
+**User Management**:
+- Auditors/technicians assigned to tasks
+- User names displayed in task list
+- Assignment history tracked
+
+**Physical Audit**:
+- Last audit date displayed
+- Last audit result displayed
+- Audit completion updates PM status
+
+### Best Practices
+
+**Task Generation**:
+- Generate instances on-demand (not in advance)
+- Use RPC function for performance
+- Fallback to manual generation if RPC fails
+- Update statuses before displaying tasks
+
+**Assignment**:
+- Assign tasks for specific dates
+- Use bulk assignment for efficiency
+- Add notes for context
+- Track assignment timestamp
+
+**Status Management**:
+- Auto-update statuses on every fetch
+- Use database status as source of truth
+- Display days overdue for OVERDUE tasks
+- Filter by status for focused views
+
+---
+
+## 24. Asset Movement History System
+
+### Overview
+Comprehensive audit trail for asset location and handover changes with movement request linking.
+
+### History Record Structure
+
+**asset_history table**:
+```sql
+id, asset_id, change_type, field_name, old_value, new_value,
+changed_by, changed_at, movement_request_id, remarks
+```
+
+**Change Types**:
+- `location`: Building, floor, room changes
+- `handover`: Tenant/owner changes
+
+**Field Names**:
+- `building`: Building location
+- `floor_id`: Floor location
+- `room_id`: Room location
+- `handover_to`: Tenant handover
+
+### History Creation Flow
+
+**1. Movement Approval**:
+- Workflow engine approves movement request
+- Asset locations updated in assets table
+- History records created for each change
+
+**2. Field Change Detection**:
+```typescript
+// Compare old vs new values
+if (asset.building !== newBuildingId) {
+  historyRecords.push({
+    asset_id: assetId,
+    change_type: 'location',
+    field_name: 'building',
+    old_value: oldBuildingName,  // Human-readable
+    new_value: newBuildingName,  // Human-readable
+    changed_by: userName,
+    movement_request_id: movementId
+  });
+}
+```
+
+**3. UUID Resolution**:
+- Asset table stores UUIDs (building, floor_id, room_id)
+- History table stores names (for readability)
+- UUIDs resolved to names during history creation
+- Null values displayed as "N/A"
+
+### History Display
+
+**Movement History Tab** (AssetMaster.tsx):
+- Grouped by movement request
+- Table format showing all field changes
+- Old value → New value mapping
+- Movement request number badge
+- Changed by user and timestamp
+- Sorted by date (newest first)
+
+**Grouping Logic**:
+```typescript
+// Group history by movement request
+const grouped = history.reduce((acc, record) => {
+  const key = record.movement_request_id || 'manual';
+  if (!acc[key]) acc[key] = [];
+  acc[key].push(record);
+  return acc;
+}, {});
+```
+
+**Display Format**:
+```
+┌─────────────────────────────────────────────┐
+│ Movement Request: MV-2025-001               │
+│ Changed by: System | 2025-01-20 10:30 AM   │
+├─────────────┬───────────────┬───────────────┤
+│ Field       │ Old Value     │ New Value     │
+├─────────────┼───────────────┼───────────────┤
+│ Building    │ Building A    │ Building B    │
+│ Floor       │ Floor 1       │ Floor 2       │
+│ Room        │ Room 101      │ Room 201      │
+└─────────────┴───────────────┴───────────────┘
+```
+
+### Integration with Workflow Engine
+
+**Automatic History Creation**:
+- Workflow engine creates history on approval
+- Movement request ID linked for traceability
+- All location changes tracked
+- Handover changes tracked
+
+**UUID to Name Resolution**:
+```typescript
+// Resolve building UUID to name
+if (buildingId) {
+  const { data: building } = await supabase
+    .from('buildings')
+    .select('name')
+    .eq('id', buildingId)
+    .single();
+  buildingName = building?.name || buildingId;
+}
+```
+
+### Best Practices
+
+**History Creation**:
+- Always link to movement request
+- Store human-readable values
+- Track changed by user
+- Include timestamp
+- Add remarks for context
+
+**History Display**:
+- Group by movement request
+- Show all changes in single view
+- Use table format for clarity
+- Sort by date (newest first)
+- Display movement request badge
+
+**Performance**:
+- Index movement_request_id
+- Index asset_id
+- Paginate large history lists
+- Cache building/floor/room names
 
 ---
 

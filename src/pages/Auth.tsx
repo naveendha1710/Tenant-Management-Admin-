@@ -12,8 +12,37 @@ const Auth = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login } = useAuth();
+  const authContext = useAuth();
   const navigate = useNavigate();
+
+  // Handle case where auth context is null
+  if (!authContext) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f1f2e]">
+        <div className="text-white">Loading authentication...</div>
+      </div>
+    );
+  }
+
+  const { login, error: authError } = authContext;
+
+  // Show auth initialization error if present
+  if (authError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f1f2e]">
+        <div className="text-center text-white">
+          <div className="text-red-400 mb-4">Authentication Error</div>
+          <div className="text-sm">{authError}</div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +112,7 @@ const Auth = () => {
         {/* Login Form Card */}
         <div className="w-full max-w-md">
           <div className="bg-white rounded-3xl p-6 md:p-10 shadow-2xl">
-            <h1 className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl md:text-3xl font-bold text-[#2c5282] text-center mb-6 md:mb-8">login</h1>
+            <h1 className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl md:text-3xl font-bold text-[#2c5282] text-center mb-6 md:mb-8">Login</h1>
 
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-4 sm:space-y-6">
               {error && (
@@ -134,7 +163,8 @@ const Auth = () => {
                 href="mailto:itsupport@rathinam.in?subject=Account Access Request&body=Hello,%0D%0A%0D%0AI would like to request access to the Rathinam Techpark portal.%0D%0A%0D%0AThank you."
                 className="text-[#2563eb] font-medium hover:underline"
               >
-                Contact @ itsupport@rathinam.in
+              E-mail: itsupport@rathinam.in
+                   
               </a>
             </div>
           </div>

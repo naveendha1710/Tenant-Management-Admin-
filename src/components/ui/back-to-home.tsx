@@ -2,6 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Home, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { hasPermission } from "@/utils/permissionUtils";
+import { getMenusForRole } from "@/utils/roleBasedMenus";
 
 interface BackToHomeProps {
   variant?: "default" | "outline" | "ghost";
@@ -12,7 +14,7 @@ interface BackToHomeProps {
 const MODULE_ROUTES: Record<string, string> = {
   'Overview': '/admin/dashboard',
   'Buildings': '/admin/buildings',
-  'Tenants': '/admin/tenants',
+  'Tenants': '/admin/tenant-management',
   'Companies': '/admin/companies',
   'Rent Collection': '/admin/rent-collection',
   'Invoices': '/admin/invoices',
@@ -20,59 +22,104 @@ const MODULE_ROUTES: Record<string, string> = {
   'Deposits': '/admin/deposits',
   'Financial Reports': '/admin/reports',
   'Maintenance': '/admin/maintenance',
-  'Users': '/admin/users',
+  'Users': '/admin/user-management',
   'Settings': '/admin/settings',
   'Helpdesk': '/admin/helpdesk',
   'Manage Tickets': '/admin/manage-tickets',
-  'Technician': '/admin/technician'
+  'Technician': '/admin/technician',
+  'Assets': '/assets/master',
+  'Asset Master': '/assets/master',
+  'Accounts': '/admin/accounts'
 };
 
 export function BackToHome({ variant = "outline", size = "default", className = "" }: BackToHomeProps) {
   const navigate = useNavigate();
   const { role, user } = useAuth();
 
-  const handleBackToHome = () => {
-    let dashboardPath = '/dashboard';
-    
-    // For custom users, redirect to first available module
-    if (role?.toLowerCase() === 'custom' && user?.appUser?.permissions) {
-      const firstModule = user.appUser.permissions.find((p: any) => p.view === true);
-      if (firstModule && MODULE_ROUTES[firstModule.module]) {
-        dashboardPath = MODULE_ROUTES[firstModule.module];
-        navigate(dashboardPath);
-        return;
+  const getFirstAvailableRoute = () => {
+    // For Super Admin, always go to overview
+    if (role === 'Super Admin') {
+      return '/admin/dashboard';
+    }
+
+    // For Tenant, check tenant permissions
+    if (role === 'Tenant') {
+      const menus = getMenusForRole('Tenant', false, user?.appUser?.permissions);
+      if (menus.length > 0 && menus[0].items.length > 0) {
+        return menus[0].items[0].url;
+      }
+      return '/tenant/dashboard';
+    }
+
+    // For Admin and Custom roles, check permissions
+    if (role === 'Admin' || role === 'Custom') {
+      // Check if user has Overview permission
+      if (hasPermission(user?.appUser, 'Overview', 'view')) {
+        return '/admin/dashboard';
+      }
+
+      // Get all menus for the user
+      const menus = getMenusForRole('Admin', user?.isApprover || user?.appUser?.isApprover, user?.appUser?.permissions);
+      
+      // Find first available menu item
+      for (const group of menus) {
+        if (group.items && group.items.length > 0) {
+          for (const item of group.items) {
+            // Check permission for this item
+            if (item.title === 'Buildings' && hasPermission(user?.appUser, 'Buildings', 'view')) {
+              return item.url;
+            }
+            if (item.title === 'Tenants' && hasPermission(user?.appUser, 'Tenants', 'view')) {
+              return item.url;
+            }
+            if (item.title === 'Accounts' && hasPermission(user?.appUser, 'Invoices', 'view')) {
+              return item.url;
+            }
+            if (item.title === 'Helpdesk' && (hasPermission(user?.appUser, 'Helpdesk', 'view') || hasPermission(user?.appUser, 'Manage Tickets', 'view'))) {
+              return item.url;
+            }
+          }
+        }
+        
+        // Check expandable groups
+        if (group.expandable && group.items && group.items.length > 0) {
+          const firstItem = group.items[0];
+          if (firstItem) {
+            return firstItem.url;
+          }
+        }
+      }
+
+      // Fallback to first permission module route
+      if (user?.appUser?.permissions) {
+        const firstModule = user.appUser.permissions.find((p: any) => p.view === true);
+        if (firstModule && MODULE_ROUTES[firstModule.module]) {
+          return MODULE_ROUTES[firstModule.module];
+        }
       }
     }
-    
+
+    // Role-based fallbacks
     switch (role?.toLowerCase()) {
-      case 'admin':
-      case 'super admin':
-        dashboardPath = '/admin/dashboard';
-        break;
-      case 'finance':
       case 'accountant':
-        dashboardPath = '/admin/dashboard';
-        break;
-      case 'crm':
-        dashboardPath = '/crm/dashboard';
-        break;
-      case 'tenant':
-        dashboardPath = '/tenant/dashboard';
-        break;
-      case 'maintenance':
+      case 'finance':
+        return '/admin/accounts';
       case 'maintenance manager':
-        dashboardPath = '/maintenance/dashboard';
-        break;
+      case 'maintenance':
+        return '/admin/helpdesk';
       case 'helpdesk':
       case 'technician':
-        dashboardPath = '/admin/helpdesk';
-        break;
+        return '/admin/helpdesk';
       case 'viewer':
-        dashboardPath = '/admin/dashboard';
-        break;
+        return '/admin/buildings';
+      default:
+        return '/admin/dashboard';
     }
-    
-    navigate(dashboardPath);
+  };
+
+  const handleBackToHome = () => {
+    const route = getFirstAvailableRoute();
+    navigate(route);
   };
 
   return (

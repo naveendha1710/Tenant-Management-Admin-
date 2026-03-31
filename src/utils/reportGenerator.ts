@@ -187,7 +187,7 @@ export const generateOverallReport = async (tickets: any[], filters: ReportFilte
       : 'N/A';
 
     detailSheet.addRow({
-      id: ticket.id.slice(-8),
+      id: ticket.ticket_number || ticket.id,
       tenant: ticket.tenant?.company_name || 'N/A',
       title: ticket.title,
       category: ticket.category,
@@ -611,7 +611,7 @@ export const generatePDFReport = async (tickets: any[], filters: ReportFilters =
         <tbody>
           ${filteredTickets.slice(0, 20).map(t => `
             <tr>
-              <td>#${t.id.slice(-6)}</td>
+              <td>${t.ticket_number || t.id}</td>
               <td>${t.tenant?.company_name || 'N/A'}</td>
               <td>${t.title}</td>
               <td>${t.status.replace(/_/g, ' ').toUpperCase()}</td>
@@ -758,7 +758,7 @@ export const generateTenantWiseReport = async (tickets: any[], filters: ReportFi
     
     tenantTickets.forEach((ticket: any) => {
       sheet.addRow([
-        ticket.id.slice(-8),
+        ticket.ticket_number || ticket.id,
         ticket.title,
         ticket.category,
         ticket.priority,
@@ -952,7 +952,7 @@ export const generateTenantWisePDF = async (tickets: any[], filters: ReportFilte
               <tbody>
                 ${tenantTickets.slice(0, 10).map((t: any) => `
                   <tr>
-                    <td>#${t.id.slice(-6)}</td>
+                    <td>${t.ticket_number || t.id}</td>
                     <td>${t.title}</td>
                     <td>${t.category}</td>
                     <td>${t.priority}</td>

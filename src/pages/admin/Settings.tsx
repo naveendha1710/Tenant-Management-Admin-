@@ -28,8 +28,7 @@ import {
   Lock,
   Bell
 } from 'lucide-react';
-import { CustomNotificationForm } from '@/components/admin/CustomNotificationForm';
-import { NotificationEventManager } from '@/components/admin/NotificationEventManager';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissionUtils';
 
@@ -102,7 +101,7 @@ const Settings: React.FC = () => {
     <DashboardLayout title="Settings" subtitle="System Configuration & Management">
       <div className="space-y-4 sm:space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="organization" className="flex items-center gap-2">
               <Building className="h-4 w-4" />
               Organization
@@ -114,10 +113,6 @@ const Settings: React.FC = () => {
             <TabsTrigger value="email" className="flex items-center gap-2">
               <Mail className="h-4 w-4" />
               Email Settings
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <Bell className="h-4 w-4" />
-              Notifications
             </TabsTrigger>
             <TabsTrigger value="invoice" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
@@ -276,24 +271,6 @@ const Settings: React.FC = () => {
                 </Button>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Notification System */}
-          <TabsContent value="notifications">
-            <Tabs defaultValue="events" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="events">Event Management</TabsTrigger>
-                <TabsTrigger value="custom">Send Custom</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="events">
-                <NotificationEventManager />
-              </TabsContent>
-
-              <TabsContent value="custom">
-                <CustomNotificationForm />
-              </TabsContent>
-            </Tabs>
           </TabsContent>
 
           {/* Email Settings */}

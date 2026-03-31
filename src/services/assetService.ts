@@ -23,7 +23,8 @@ export interface Asset {
   depreciation_percentage?: number;
   last_depreciation_date?: string;
   comments?: string;
-  asset_picture?: string;
+  asset_picture?: string; // Legacy single image
+  asset_pictures?: string; // JSON array of image URLs
   contract?: 'Yes' | 'No';
   vendor_id?: string;
   
@@ -55,7 +56,7 @@ export interface Asset {
   unit?: string;
   building?: string;
   floor?: string;
-  room_rack?: string;
+  room_id?: string;
   handover_to?: string;
   decommission_date?: string;
   
@@ -88,9 +89,13 @@ export interface AssetMovement {
   movement_reason?: string;
   other_reason?: string;
   remarks?: string;
-  approval_status?: 'Pending' | 'Approved' | 'Rejected';
+  approval_required: boolean;
+  approval_status: 'Pending' | 'Approved' | 'Rejected';
   movement_status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
   actual_movement_date?: string;
+  from_tenant?: string;
+  to_tenant?: string;
+  requested_by?: string;
   created_at: string;
 }
 
@@ -191,9 +196,18 @@ export class AssetService {
     const savedUser = localStorage.getItem('demo_user');
     const userName = savedUser ? JSON.parse(savedUser).appUser?.name : null;
     
+    // Convert empty strings to null for UUID fields
+    const cleanedUpdates = { ...updates };
+    const uuidFields = ['building', 'floor_id', 'room_id', 'vendor_id', 'handover_to'];
+    uuidFields.forEach(field => {
+      if (cleanedUpdates[field as keyof Asset] === '') {
+        cleanedUpdates[field as keyof Asset] = null as any;
+      }
+    });
+    
     const { data, error } = await supabase
       .from('assets')
-      .update({ ...updates, updated_by: userName })
+      .update({ ...cleanedUpdates, updated_by: userName })
       .eq('id', id)
       .select()
       .single();
@@ -316,52 +330,215 @@ export class AssetService {
         const updates: any = {};
         const historyRecords: any[] = [];
         
-        // Track location changes
-        if (movement.to_building && asset.building !== movement.to_building) {
-          historyRecords.push({
-            asset_id: assetId,
-            change_type: 'location',
-            field_name: 'building',
-            old_value: asset.building,
-            new_value: movement.to_building,
-            changed_by: userName,
-            movement_request_id: id
-          });
-          updates.building = movement.to_building;
+        // Helper function to check if string is a valid UUID
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        
+        // Update building
+        if (movement.to_building) {
+          let buildingId = movement.to_building;
+          let buildingName = movement.to_building;
+          
+          // If it's a UUID, get the name for history
+          if (isUUID(movement.to_building)) {
+            const { data: bldg } = await supabase
+              .from('buildings')
+              .select('id, name')
+              .eq('id', movement.to_building)
+              .maybeSingle();
+            if (bldg) {
+              buildingId = bldg.id;
+              buildingName = bldg.name;
+            }
+          } else {
+            // If it's a name, get the UUID for asset table
+            const { data: bldg } = await supabase
+              .from('buildings')
+              .select('id, name')
+              .eq('name', movement.to_building)
+              .maybeSingle();
+            if (bldg) {
+              buildingId = bldg.id;
+              buildingName = bldg.name;
+            }
+          }
+          
+          if (asset.building !== buildingId) {
+            // Get old building name for history
+            let oldBuildingName = asset.building || 'N/A';
+            if (asset.building && isUUID(asset.building)) {
+              const { data: oldBldg } = await supabase
+                .from('buildings')
+                .select('name')
+                .eq('id', asset.building)
+                .maybeSingle();
+              oldBuildingName = oldBldg?.name || asset.building;
+            }
+            
+            historyRecords.push({
+              asset_id: assetId,
+              change_type: 'location',
+              field_name: 'building',
+              old_value: oldBuildingName,
+              new_value: buildingName,
+              changed_by: userName,
+              movement_request_id: id
+            });
+            updates.building = buildingId; // Store UUID in assets table
+          }
         }
         
-        if (movement.to_floor && asset.floor !== movement.to_floor) {
-          historyRecords.push({
-            asset_id: assetId,
-            change_type: 'location',
-            field_name: 'floor',
-            old_value: asset.floor,
-            new_value: movement.to_floor,
-            changed_by: userName,
-            movement_request_id: id
-          });
-          updates.floor = movement.to_floor;
+        // Update floor
+        if (movement.to_floor) {
+          let floorId = movement.to_floor;
+          let floorName = movement.to_floor;
+          
+          // If it's a UUID, get the name for history
+          if (isUUID(movement.to_floor)) {
+            const { data: flr } = await supabase
+              .from('floors')
+              .select('id, floor_name, floor_number')
+              .eq('id', movement.to_floor)
+              .maybeSingle();
+            if (flr) {
+              floorId = flr.id;
+              floorName = flr.floor_name || `Floor ${flr.floor_number}`;
+            }
+          } else {
+            // If it's a name/number, get the UUID for asset table
+            const { data: flr } = await supabase
+              .from('floors')
+              .select('id, floor_name, floor_number')
+              .or(`floor_name.eq.${movement.to_floor},floor_number.eq.${movement.to_floor}`)
+              .maybeSingle();
+            if (flr) {
+              floorId = flr.id;
+              floorName = flr.floor_name || `Floor ${flr.floor_number}`;
+            }
+          }
+          
+          if (asset.floor_id !== floorId) {
+            // Get old floor name for history
+            let oldFloorName = asset.floor_id || 'N/A';
+            if (asset.floor_id && isUUID(asset.floor_id)) {
+              const { data: oldFlr } = await supabase
+                .from('floors')
+                .select('floor_name, floor_number')
+                .eq('id', asset.floor_id)
+                .maybeSingle();
+              oldFloorName = oldFlr?.floor_name || `Floor ${oldFlr?.floor_number}` || asset.floor_id;
+            }
+            
+            historyRecords.push({
+              asset_id: assetId,
+              change_type: 'location',
+              field_name: 'floor_id',
+              old_value: oldFloorName,
+              new_value: floorName,
+              changed_by: userName,
+              movement_request_id: id
+            });
+            updates.floor_id = floorId; // Store UUID in assets table
+          }
         }
         
-        if (movement.to_room && asset.room_rack !== movement.to_room) {
-          historyRecords.push({
-            asset_id: assetId,
-            change_type: 'location',
-            field_name: 'room_rack',
-            old_value: asset.room_rack,
-            new_value: movement.to_room,
-            changed_by: userName,
-            movement_request_id: id
-          });
-          updates.room_rack = movement.to_room;
+        // Update room
+        if (movement.to_room) {
+          let roomId = movement.to_room;
+          let roomName = movement.to_room;
+          
+          // If it's a UUID, get the name for history
+          if (isUUID(movement.to_room)) {
+            const { data: rm } = await supabase
+              .from('rooms')
+              .select('id, room_number')
+              .eq('id', movement.to_room)
+              .maybeSingle();
+            if (rm) {
+              roomId = rm.id;
+              roomName = rm.room_number;
+            }
+          } else {
+            // If it's a name, get the UUID for asset table
+            const { data: rm } = await supabase
+              .from('rooms')
+              .select('id, room_number')
+              .eq('room_number', movement.to_room)
+              .maybeSingle();
+            if (rm) {
+              roomId = rm.id;
+              roomName = rm.room_number;
+            }
+          }
+          
+          if (asset.room_id !== roomId) {
+            // Get old room name for history
+            let oldRoomName = asset.room_id || 'N/A';
+            if (asset.room_id && isUUID(asset.room_id)) {
+              const { data: oldRm } = await supabase
+                .from('rooms')
+                .select('room_number')
+                .eq('id', asset.room_id)
+                .maybeSingle();
+              oldRoomName = oldRm?.room_number || asset.room_id;
+            }
+            
+            historyRecords.push({
+              asset_id: assetId,
+              change_type: 'location',
+              field_name: 'room_id',
+              old_value: oldRoomName,
+              new_value: roomName,
+              changed_by: userName,
+              movement_request_id: id
+            });
+            updates.room_id = roomId; // Store UUID in assets table
+          }
         }
         
-        // Insert history records
+        // Update handover_to
+        if ((movement as any).handover_to === 'Tenant' && (movement as any).handover_name) {
+          const newHandoverToId = (movement as any).handover_name;
+          
+          if (asset.handover_to !== newHandoverToId) {
+            // Get tenant names for history
+            let oldTenantName = 'N/A';
+            let newTenantName = 'N/A';
+            
+            if (asset.handover_to) {
+              const { data: oldTenant } = await supabase
+                .from('tenants')
+                .select('company, name')
+                .eq('id', asset.handover_to)
+                .maybeSingle();
+              oldTenantName = oldTenant?.company || oldTenant?.name || asset.handover_to;
+            }
+            
+            const { data: newTenant } = await supabase
+              .from('tenants')
+              .select('company, name')
+              .eq('id', newHandoverToId)
+              .maybeSingle();
+            newTenantName = newTenant?.company || newTenant?.name || newHandoverToId;
+            
+            historyRecords.push({
+              asset_id: assetId,
+              change_type: 'handover',
+              field_name: 'handover_to',
+              old_value: oldTenantName,
+              new_value: newTenantName,
+              changed_by: userName,
+              movement_request_id: id
+            });
+            updates.handover_to = newHandoverToId; // Store UUID in assets table
+          }
+        }
+        
+        // Insert history records (with names/text)
         if (historyRecords.length > 0) {
           await supabase.from('asset_history').insert(historyRecords);
         }
         
-        // Update asset
+        // Update asset (with UUIDs)
         if (Object.keys(updates).length > 0) {
           await supabase.from('assets').update(updates).eq('id', assetId);
         }

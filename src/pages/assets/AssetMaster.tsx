@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,15 +9,107 @@ import { AssetService, DashboardStats, Asset } from '@/services/assetService';
 import { buildingService, Building, Floor } from '@/services/buildingService';
 import { AppSettingsService } from '@/services/appSettingsService';
 import { supabase } from '@/lib/supabaseClient';
-import { Package, DollarSign, Wrench, TrendingUp, Bell, X, Save, Ticket, Check, ChevronsUpDown, FileSpreadsheet, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Package, Wrench, X, Save, Ticket, Check, ChevronsUpDown, Filter, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Camera, Upload, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AssetList from './AssetList';
 import { QRCodeSVG } from 'qrcode.react';
 import { Combobox } from '@/components/ui/combobox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useAssetExport } from '@/hooks/useAssetExport';
-import { generateAssetExcelReport } from '@/utils/assetExport';
+import { generateAssetLabelsPDF } from '@/utils/thermalPdfGenerator';
+
+// Component to display room with category
+function RoomDisplay({ roomId, floorId }: { roomId: string; floorId?: string }) {
+  const [roomInfo, setRoomInfo] = useState<{ room_number: string; category_name: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRoomInfo = async () => {
+      if (!roomId) {
+        setRoomInfo(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select(`
+            room_number,
+            category_id,
+            form_dropdowns!rooms_category_id_fkey(name)
+          `)
+          .eq('id', roomId)
+          .single();
+
+        if (!error && data) {
+          const categoryName = data.form_dropdowns?.name || '';
+          const roomData = {
+            room_number: data.room_number,
+            category_name: categoryName
+          };
+          setRoomInfo(roomData);
+        } else {
+          setRoomInfo({ room_number: '', category_name: '' });
+        }
+      } catch (error) {
+        console.error('Error fetching room info:', error);
+        setRoomInfo({ room_number: '', category_name: '' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRoomInfo();
+  }, [roomId, floorId]);
+
+  if (loading) {
+    return <span className="text-gray-500">Loading...</span>;
+  }
+
+  if (!roomInfo || !roomInfo.room_number) {
+    return <span>N/A</span>;
+  }
+  
+  // If category is empty, show only room number/name
+  if (!roomInfo.category_name) {
+    return <span>{roomInfo.room_number}</span>;
+  }
+  
+  // Show room number/name with category
+  return <span>{roomInfo.room_number} | {roomInfo.category_name}</span>;
+}
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB
+
+async function compressImage(file: File, maxBytes = MAX_IMAGE_BYTES): Promise<File> {
+  if (file.size <= maxBytes) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0);
+      let quality = 0.9;
+      const tryCompress = () => {
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(file);
+          if (blob.size <= maxBytes || quality <= 0.1) {
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+          } else {
+            quality = Math.max(quality - 0.1, 0.1);
+            tryCompress();
+          }
+        }, 'image/jpeg', quality);
+      };
+      tryCompress();
+    };
+    img.src = url;
+  });
+}
 
 const ASSET_TYPE_MAPPING: Record<string, string[]> = {
   'IT Equipment': ['Laptop', 'Desktop', 'Monitor', 'Printer', 'Server'],
@@ -34,6 +126,7 @@ export default function AssetMaster() {
   const [viewMode, setViewMode] = useState(false);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [floors, setFloors] = useState<Floor[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
   const [allAssetTypes, setAllAssetTypes] = useState<string[]>([]);
   const [allManufacturers, setAllManufacturers] = useState<string[]>([]);
@@ -47,6 +140,8 @@ export default function AssetMaster() {
   const [vendorSearch, setVendorSearch] = useState('');
   const [tenants, setTenants] = useState<any[]>([]);
   const [tenantSearch, setTenantSearch] = useState('');
+  const [filterTenantSearch, setFilterTenantSearch] = useState('');
+  const filterTenantSearchRef = useRef<HTMLInputElement>(null);
   const [handoverType, setHandoverType] = useState<'tenant' | 'other'>('tenant');
   const [activeTab, setActiveTab] = useState('status');
   const [generatedAssetId, setGeneratedAssetId] = useState('');
@@ -66,6 +161,7 @@ export default function AssetMaster() {
   const [assetInchargeUsers, setAssetInchargeUsers] = useState<any[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [sortOrder, setSortOrder] = useState('asc');
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterSubCategory, setFilterSubCategory] = useState('');
   const [filterSubCategories, setFilterSubCategories] = useState<string[]>([]);
@@ -75,15 +171,26 @@ export default function AssetMaster() {
   const [filterBuilding, setFilterBuilding] = useState('');
   const [filterFloor, setFilterFloor] = useState('');
   const [filterFloors, setFilterFloors] = useState<Floor[]>([]);
+  const [filterRoom, setFilterRoom] = useState('');
+  const [filterRooms, setFilterRooms] = useState<any[]>([]);
   const [filterCombinations, setFilterCombinations] = useState<any[]>([]);
   const [filterColor, setFilterColor] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filterSize, setFilterSize] = useState('');
+  const [filterTenant, setFilterTenant] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showCategoryCards, setShowCategoryCards] = useState(false);
-  const { fetchAssetsForExport, loading: exportLoading } = useAssetExport();
+  const [assetImages, setAssetImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showImageLightbox, setShowImageLightbox] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
+  const [showLabelOptions, setShowLabelOptions] = useState(false);
   const { toast } = useToast();
+  const [showAddRoomForm, setShowAddRoomForm] = useState(false);
+  const [newRoomNumber, setNewRoomNumber] = useState('');
+  const [newRoomCategory, setNewRoomCategory] = useState('');
+  const [roomCategories, setRoomCategories] = useState<any[]>([]);
   const [formData, setFormData] = useState<Partial<Asset>>({
     asset_name: '',
     asset_category: '',
@@ -99,6 +206,7 @@ export default function AssetMaster() {
     loadTenants();
     loadAssetInchargeUsers();
     loadAssets();
+    loadRoomCategories();
   }, []);
 
   useEffect(() => {
@@ -121,10 +229,21 @@ export default function AssetMaster() {
   }, [formData.contract]);
 
   useEffect(() => {
+    if (viewMode) return;
     if (formData.building) {
       loadFloors(formData.building);
     }
   }, [formData.building]);
+
+  useEffect(() => {
+    if (viewMode) return;
+    if (formData.floor_id) {
+      loadRooms(formData.floor_id);
+    } else {
+      setRooms([]);
+      updateField('room_id', '');
+    }
+  }, [formData.floor_id]);
 
   useEffect(() => {
     if (filterBuilding && filterBuilding !== 'all') {
@@ -132,8 +251,19 @@ export default function AssetMaster() {
     } else {
       setFilterFloors([]);
       setFilterFloor('');
+      setFilterRooms([]);
+      setFilterRoom('');
     }
   }, [filterBuilding]);
+
+  useEffect(() => {
+    if (filterFloor && filterFloor !== 'all') {
+      loadFilterRooms(filterFloor);
+    } else {
+      setFilterRooms([]);
+      setFilterRoom('');
+    }
+  }, [filterFloor]);
 
   useEffect(() => {
     if (filterCategory && filterCategory !== 'all') {
@@ -197,8 +327,18 @@ export default function AssetMaster() {
       const subCategory = category?.subTypes?.find((st: any) => st.name === formData.asset_sub_category);
       const subSubTypes = subCategory?.subTypes?.map((sst: any) => sst.name) || [];
       setAssetTypes(subSubTypes);
+      
+      // If current asset_type is not in the new list, clear it and combination
       if (!subSubTypes.includes(formData.asset_type || '')) {
         updateField('asset_type', '');
+        setAssetCombinations([]);
+        updateField('asset_combination', '');
+      }
+      
+      // If no sub-sub types available, clear asset_type and combination
+      if (subSubTypes.length === 0) {
+        updateField('asset_type', '');
+        setAssetCombinations([]);
         updateField('asset_combination', '');
       }
     }
@@ -212,6 +352,18 @@ export default function AssetMaster() {
       updateField('asset_combination', '');
     }
   }, [formData.asset_type]);
+
+  // Clear combination if it's not in the available combinations list
+  useEffect(() => {
+    if (formData.asset_combination && assetCombinations.length > 0) {
+      const isValid = assetCombinations.some(combo => combo.value === formData.asset_combination);
+      if (!isValid) {
+        updateField('asset_combination', '');
+      }
+    } else if (formData.asset_combination && assetCombinations.length === 0) {
+      updateField('asset_combination', '');
+    }
+  }, [assetCombinations]);
 
   useEffect(() => {
     if (bulkGeneration && formData.asset_category && formData.asset_sub_category && bulkQuantity && parseInt(bulkQuantity) > 0) {
@@ -326,11 +478,103 @@ export default function AssetMaster() {
   const loadFloors = async (buildingId: string) => {
     const data = await buildingService.getFloorsByBuilding(buildingId);
     setFloors(data);
+    // Clear rooms when building changes
+    setRooms([]);
+    updateField('room_id', '');
+  };
+
+  const loadRooms = async (floorId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select(`
+          id,
+          room_number,
+          form_dropdowns!rooms_category_id_fkey(name)
+        `)
+        .eq('floor_id', floorId)
+        .order('room_number');
+      
+      if (!error && data) {
+        const roomsWithCategory = data.map(room => ({
+          ...room,
+          category_name: room.form_dropdowns?.name || 'Uncategorized',
+          display_name: `${room.room_number} | ${room.form_dropdowns?.name || 'Uncategorized'}`
+        }));
+        setRooms(roomsWithCategory);
+      } else {
+        setRooms([]);
+      }
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+      setRooms([]);
+    }
+  };
+
+  const loadRoomCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('form_dropdowns')
+        .select('id, name')
+        .eq('form_type', 'room_categories')
+        .order('name');
+      
+      if (!error && data) {
+        setRoomCategories(data);
+      }
+    } catch (error) {
+      console.error('Failed to load room categories:', error);
+    }
+  };
+
+  const handleAddSingleRoom = async () => {
+    if (!formData.building || !formData.floor_id) {
+      toast({ title: 'Error', description: 'Please select building and floor first', variant: 'destructive' });
+      return;
+    }
+
+    if (!newRoomNumber.trim()) {
+      toast({ title: 'Error', description: 'Room number is required', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .insert({
+          building_id: formData.building,
+          floor_id: formData.floor_id,
+          room_number: newRoomNumber.trim(),
+          category_id: newRoomCategory || null
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({ title: 'Success', description: `Room "${newRoomNumber}" added successfully` });
+      
+      await loadRooms(formData.floor_id);
+      updateField('room_id', data.id);
+      
+      setShowAddRoomForm(false);
+      setNewRoomNumber('');
+      setNewRoomCategory('');
+    } catch (error: any) {
+      console.error('Failed to add room:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to add room', variant: 'destructive' });
+    }
   };
 
   const loadFilterFloors = async (buildingId: string) => {
     const data = await buildingService.getFloorsByBuilding(buildingId);
     setFilterFloors(data);
+  };
+
+  const loadFilterRooms = async (floorId: string) => {
+    const { data, error } = await supabase.from('rooms').select('id, room_number').eq('floor_id', floorId).order('room_number');
+    if (!error && data) setFilterRooms(data);
+    else setFilterRooms([]);
   };
 
   const loadAssetSettings = async () => {
@@ -460,6 +704,7 @@ export default function AssetMaster() {
       
       if (!subSubCategory) {
         setAssetCombinations([]);
+        updateField('asset_combination', '');
         return;
       }
       
@@ -470,7 +715,7 @@ export default function AssetMaster() {
         .eq('sub_subcategory_id', subSubCategory.id)
         .eq('is_active', true);
       
-      if (combinations) {
+      if (combinations && combinations.length > 0) {
         // Format combinations for display
         const formattedCombinations = combinations.map(combo => ({
           id: combo.id,
@@ -483,10 +728,12 @@ export default function AssetMaster() {
         setAssetCombinations(formattedCombinations);
       } else {
         setAssetCombinations([]);
+        updateField('asset_combination', '');
       }
     } catch (error) {
       console.error('Failed to load asset combinations:', error);
       setAssetCombinations([]);
+      updateField('asset_combination', '');
     }
   };
 
@@ -641,6 +888,8 @@ export default function AssetMaster() {
     setGeneratedAssetId('');
     setBulkGeneration(false);
     setBulkQuantity('');
+    setAssetImages([]);
+    setCurrentImageIndex(0);
     setShowForm(true);
   };
 
@@ -648,14 +897,54 @@ export default function AssetMaster() {
     setFormData(asset);
     setEditingAsset(asset);
     setViewMode(false);
+    setAssetImages(asset.asset_pictures ? JSON.parse(asset.asset_pictures) : []);
+    setCurrentImageIndex(0);
     setShowForm(true);
   };
 
   const handleView = async (asset: Asset) => {
+    
+    // Load floors and rooms for view mode BEFORE setting form data
+    try {
+      if (asset.building) {
+        const floorsData = await buildingService.getFloorsByBuilding(asset.building);
+        setFloors(floorsData);
+      }
+      
+      if (asset.floor_id) {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select(`
+            id,
+            room_number,
+            form_dropdowns!rooms_category_id_fkey(name)
+          `)
+          .eq('floor_id', asset.floor_id)
+          .order('room_number');
+        
+        if (!error && data) {
+          const roomsWithCategory = data.map(room => ({
+            ...room,
+            category_name: room.form_dropdowns?.name || 'Uncategorized',
+            display_name: `${room.room_number} | ${room.form_dropdowns?.name || 'Uncategorized'}`
+          }));
+          setRooms(roomsWithCategory);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading location data for view:', error);
+    }
+    
+    // Set form data and other states AFTER loading location data
     setFormData(asset);
     setEditingAsset(asset);
     setViewMode(true);
+    setAssetImages(asset.asset_pictures ? JSON.parse(asset.asset_pictures) : []);
+    setCurrentImageIndex(0);
+    
+    // Show form after everything is loaded
     setShowForm(true);
+    
     loadAssetTickets(asset.id);
     loadAssetAudits(asset.asset_id);
     loadAssetHistory(asset.id);
@@ -814,6 +1103,24 @@ export default function AssetMaster() {
 
   const handleSave = async () => {
     try {
+      // Validation for required fields
+      if (!formData.asset_name?.trim()) {
+        toast({ title: 'Validation Error', description: 'Asset Name is required', variant: 'destructive' });
+        return;
+      }
+      if (!formData.asset_category?.trim()) {
+        toast({ title: 'Validation Error', description: 'Asset Type is required', variant: 'destructive' });
+        return;
+      }
+      if (!formData.asset_sub_category?.trim()) {
+        toast({ title: 'Validation Error', description: 'Category is required', variant: 'destructive' });
+        return;
+      }
+      if (!formData.asset_type?.trim()) {
+        toast({ title: 'Validation Error', description: 'Sub Category is required', variant: 'destructive' });
+        return;
+      }
+      
       const cleanData = { ...formData };
       if (cleanData.contract === 'No' || !cleanData.vendor_id) {
         delete cleanData.vendor_id;
@@ -821,8 +1128,16 @@ export default function AssetMaster() {
       if (!cleanData.customs_category) {
         delete cleanData.customs_category;
       }
+      // Set asset_combination to null if empty, don't delete it
       if (!cleanData.asset_combination) {
-        delete cleanData.asset_combination;
+        cleanData.asset_combination = null;
+      }
+      
+      // Save images as JSON array
+      if (assetImages.length > 0) {
+        cleanData.asset_pictures = JSON.stringify(assetImages);
+      } else {
+        cleanData.asset_pictures = null;
       }
       
       // Handle handover_to field - set to null if handoverType is 'other'
@@ -848,6 +1163,21 @@ export default function AssetMaster() {
         } else {
           // Single creation
           cleanData.asset_id = generatedAssetId;
+          // Fix temp image paths if images were uploaded before asset ID was generated
+          if (assetImages.some(url => url.includes('/asset_pictures/temp/'))) {
+            const fixedImages = await Promise.all(assetImages.map(async (url) => {
+              if (!url.includes('/asset_pictures/temp/')) return url;
+              const filename = url.split('/').pop();
+              const fd = new FormData();
+              const res = await fetch(url);
+              const blob = await res.blob();
+              fd.append('file', new File([blob], filename!, { type: blob.type }));
+              const uploadRes = await fetch(`/api/upload?category=asset_pictures&assetId=${encodeURIComponent(generatedAssetId)}`, { method: 'POST', body: fd });
+              const result = await uploadRes.json();
+              return result.success ? result.file.url : url;
+            }));
+            cleanData.asset_pictures = JSON.stringify(fixedImages);
+          }
           await AssetService.createAsset(cleanData);
           toast({ title: 'Success', description: 'Asset created successfully' });
         }
@@ -863,15 +1193,86 @@ export default function AssetMaster() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleExportReport = async () => {
+  const handleGenerateThermalLabels = async () => {
     try {
-      toast({ title: 'Generating Report', description: 'Please wait while we prepare your Excel report...' });
-      const assets = await fetchAssetsForExport();
-      await generateAssetExcelReport(assets);
-      toast({ title: 'Success', description: 'Excel report downloaded successfully' });
+      if (selectedAssets.size === 0) {
+        toast({ title: 'No Assets Selected', description: 'Please select assets to generate labels for', variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Generating Labels', description: 'Please wait while we prepare your thermal labels...' });
+      
+      // Get selected asset data
+      const selectedAssetData = assets.filter(asset => selectedAssets.has(asset.id));
+      
+      // Convert to AssetForPrint format
+      const assetsForPrint = selectedAssetData.map(asset => ({
+        asset_id: asset.asset_id,
+        name: asset.asset_name || asset.asset_description || 'Asset'
+      }));
+      
+      // Generate QR codes for selected assets
+      const qrCodes: Record<string, string> = {};
+      for (const asset of selectedAssetData) {
+        // Try to get existing QR code from DOM or generate placeholder
+        const existingQRElement = document.querySelector(`[data-asset-id="${asset.asset_id}"] canvas`);
+        if (existingQRElement && existingQRElement instanceof HTMLCanvasElement) {
+          qrCodes[asset.asset_id] = existingQRElement.toDataURL();
+        }
+      }
+      
+      // Generate thermal PDF
+      await generateAssetLabelsPDF(
+        assetsForPrint,
+        qrCodes,
+        `Asset_Labels_${new Date().toISOString().split('T')[0]}.pdf`
+      );
+      
+      toast({ 
+        title: 'Success', 
+        description: `Thermal labels generated for ${selectedAssets.size} asset(s)` 
+      });
+      
+      // Clear selection
+      setSelectedAssets(new Set());
+      setShowLabelOptions(false);
+      
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Failed to generate report', variant: 'destructive' });
+      toast({ 
+        title: 'Error', 
+        description: error.message || 'Failed to generate thermal labels', 
+        variant: 'destructive' 
+      });
     }
+  };
+
+  const handleSelectAsset = (assetId: string) => {
+    setSelectedAssets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(assetId)) {
+        newSet.delete(assetId);
+      } else {
+        newSet.add(assetId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllAssets = (pageAssetIds: string[]) => {
+    const allPageSelected = pageAssetIds.every(id => selectedAssets.has(id));
+    setSelectedAssets(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        pageAssetIds.forEach(id => next.delete(id));
+      } else {
+        pageAssetIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = () => {
+    setSelectedAssets(new Set(filteredAssets.map(a => a.id)));
   };
 
   // Calculate filtered assets for count display
@@ -881,7 +1282,9 @@ export default function AssetMaster() {
     const matchesType = !filterType || filterType === 'all' || a.asset_type === filterType;
     const matchesStatus = !filterStatus || filterStatus === 'all' || a.asset_status === filterStatus;
     const matchesBuilding = !filterBuilding || filterBuilding === 'all' || a.building === filterBuilding;
-    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor === filterFloor;
+    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor_id === filterFloor;
+    const matchesRoom = !filterRoom || filterRoom === 'all' || a.room_id === filterRoom;
+    const matchesTenant = !filterTenant || filterTenant === 'all' || a.handover_to === filterTenant;
     
     // Combination filters
     let matchesCombination = true;
@@ -898,8 +1301,13 @@ export default function AssetMaster() {
       }
     }
     
-    return matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesCombination;
+    return matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesRoom && matchesTenant && matchesCombination;
   });
+
+  const activeCount    = filteredAssets.filter(a => a.asset_status === 'Active').length;
+  const idleCount      = filteredAssets.filter(a => a.asset_status === 'Idle').length;
+  const repairCount    = filteredAssets.filter(a => a.asset_status === 'Repair').length;
+  const scrapCount     = filteredAssets.filter(a => a.asset_status === 'Scrap' || a.asset_status === 'Disposed').length;
 
   return (
     <DashboardLayout title="Asset Master" subtitle="Manage assets and inventory">
@@ -909,93 +1317,80 @@ export default function AssetMaster() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Total Assets</CardTitle>
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats?.totalAssets || 0}</div>
+                <div className="text-2xl font-bold">{filteredAssets.length}</div>
+                {(filterCategory || filterSubCategory || filterType || filterStatus || filterBuilding || filterFloor || filterTenant || filterColor || filterMaterial || filterSize) && (
+                  <p className="text-xs text-muted-foreground mt-1">of {stats?.totalAssets || 0} total</p>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Asset Value (Gross)</CardTitle>
-                <DollarSign className="h-4 w-4 text-green-600" />
+                <CardTitle className="text-sm font-medium">Active</CardTitle>
+                <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(stats?.assetValueGross || 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold text-green-600">{activeCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">In service</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Asset Value (Net)</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <CardTitle className="text-sm font-medium">Under Repair</CardTitle>
+                <Wrench className="h-4 w-4 text-orange-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(stats?.assetValueNet || 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold text-orange-500">{repairCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Under maintenance</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
-                <Wrench className="h-4 w-4 text-red-600" />
+                <CardTitle className="text-sm font-medium">Idle</CardTitle>
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats?.underMaintenance || 0}</div>
+                <div className="text-2xl font-bold text-yellow-500">{idleCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Not in use</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Scrap / Disposed</CardTitle>
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-500">{scrapCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Decommissioned</p>
               </CardContent>
             </Card>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowCategoryCards(!showCategoryCards)}>
-              <h3 className="text-sm font-medium text-gray-700">Asset Categories</h3>
-              {showCategoryCards ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
-            </div>
-            {showCategoryCards && (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {assetCategories.map((cat, idx) => {
-                  const count = stats?.assetsByCategory?.[cat] || 0;
-                  const colors = [
-                    'bg-blue-100 border-blue-300 hover:bg-blue-200',
-                    'bg-green-100 border-green-300 hover:bg-green-200',
-                    'bg-purple-100 border-purple-300 hover:bg-purple-200',
-                    'bg-orange-100 border-orange-300 hover:bg-orange-200',
-                    'bg-pink-100 border-pink-300 hover:bg-pink-200',
-                    'bg-cyan-100 border-cyan-300 hover:bg-cyan-200'
-                  ];
-                  return (
-                    <Card key={cat} className={`cursor-pointer hover:shadow-md transition-shadow border ${colors[idx % colors.length]}`} onClick={() => { setFilterCategory(cat); setFilterSubCategory(''); setFilterType(''); }}>
-                      <CardHeader className="p-3 pb-1">
-                        <CardTitle className="text-xs font-medium text-muted-foreground">{cat}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-3 pt-0">
-                        <div className="text-lg font-bold">{count}</div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+
 
           {showForm ? (
             <div className="bg-gray-50 -m-6 p-6">
               <div className="max-w-7xl mx-auto">
-                <div className="mb-6 flex items-center justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">{editingAsset ? (viewMode ? 'View Asset' : 'Edit Asset') : 'Create New Asset'}</h1>
+                <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{editingAsset ? (viewMode ? 'View Asset' : 'Edit Asset') : 'Create New Asset'}</h1>
                     <p className="text-sm text-gray-500 mt-1">{viewMode ? 'Asset details' : 'Update asset information'}</p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
                     {!editingAsset && generatedAssetId && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-700">Asset ID:</span>
-                        <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded font-mono text-sm text-blue-600 font-semibold">
+                      <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                        <span className="text-xs sm:text-sm font-medium text-gray-700 hidden sm:inline">Asset ID:</span>
+                        <div className="px-2 sm:px-4 py-1 sm:py-2 bg-blue-50 border border-blue-200 rounded font-mono text-xs sm:text-sm text-blue-600 font-semibold truncate">
                           {generatedAssetId}
                         </div>
                       </div>
@@ -1005,13 +1400,13 @@ export default function AssetMaster() {
                     </Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
                   <div className="lg:col-span-3">
                     {viewMode ? (
                       <div className="space-y-4">
                         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Basic Information</h2>
-                          <div className="grid grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Name</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_name || 'N/A'}</p>
@@ -1053,18 +1448,20 @@ export default function AssetMaster() {
                         
                         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Location</h2>
-                          <div className="grid grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Building</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{buildings.find(b => b.id === formData.building)?.name || 'N/A'}</p>
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Floor</label>
-                              <p className="text-sm font-medium text-gray-900 mt-2">{floors.find(f => f.id === formData.floor)?.floor_name || floors.find(f => f.id === formData.floor)?.floor_number || 'N/A'}</p>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{floors.find(f => f.id === formData.floor_id)?.floor_name || floors.find(f => f.id === formData.floor_id)?.floor_number || 'N/A'}</p>
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Room/Rack</label>
-                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.room_rack || 'N/A'}</p>
+                              <p className="text-sm font-medium text-gray-900 mt-2">
+                                {formData.room_id ? (rooms.find(r => r.id === formData.room_id)?.room_number || formData.room_id) : 'N/A'}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -1095,17 +1492,17 @@ export default function AssetMaster() {
                         </div>
                         
                         <Tabs value={activeTab} onValueChange={setActiveTab}>
-                          <TabsList>
-                            <TabsTrigger value="status">Status & Maintenance</TabsTrigger>
-                            <TabsTrigger value="sez">SEZ & Customs</TabsTrigger>
-                            <TabsTrigger value="tickets">Tickets</TabsTrigger>
-                            <TabsTrigger value="history">Movement History</TabsTrigger>
-                            <TabsTrigger value="audits">Physical Audits</TabsTrigger>
+                          <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-full overflow-x-auto">
+                            <TabsTrigger value="status" className="text-xs sm:text-sm whitespace-nowrap">Status</TabsTrigger>
+                            <TabsTrigger value="sez" className="text-xs sm:text-sm whitespace-nowrap">SEZ</TabsTrigger>
+                            <TabsTrigger value="tickets" className="text-xs sm:text-sm whitespace-nowrap">Tickets</TabsTrigger>
+                            <TabsTrigger value="history" className="text-xs sm:text-sm whitespace-nowrap">History</TabsTrigger>
+                            <TabsTrigger value="audits" className="text-xs sm:text-sm whitespace-nowrap">Audits</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="status" className="mt-4">
                             <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-                              <div className="grid grid-cols-3 gap-6">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Working Status</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.status || 'Working'}</p>
@@ -1149,7 +1546,7 @@ export default function AssetMaster() {
 
                           <TabsContent value="sez" className="mt-4">
                             <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-                              <div className="grid grid-cols-3 gap-6">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">SEZ Status</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.sez_status || 'N/A'}</p>
@@ -1191,7 +1588,7 @@ export default function AssetMaster() {
                                   <p className="text-sm text-gray-500">No tickets found for this asset</p>
                                 </div>
                               ) : (
-                                <div className="overflow-x-auto">
+                                <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
                                   <table className="w-full">
                                     <thead>
                                       <tr className="border-b border-gray-200">
@@ -1283,13 +1680,13 @@ export default function AssetMaster() {
                                       {expandedMovement === movement.id && (
                                         <div className="p-4 bg-white border-t border-gray-200">
                                           <Tabs defaultValue="location" className="w-full">
-                                            <TabsList className="grid w-full grid-cols-3">
+                                            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
                                               <TabsTrigger value="location">Location</TabsTrigger>
                                               <TabsTrigger value="handover">Tenant/Handover</TabsTrigger>
                                               <TabsTrigger value="details">Details</TabsTrigger>
                                             </TabsList>
                                             <TabsContent value="location" className="mt-4">
-                                              <div className="grid grid-cols-2 gap-6">
+                                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                 <div className="space-y-3">
                                                   <h4 className="text-xs font-semibold text-gray-500 uppercase">From Location</h4>
                                                   <div className="space-y-2">
@@ -1432,7 +1829,7 @@ export default function AssetMaster() {
                               ) : assetAudits.length === 0 ? (
                                 <p className="text-sm text-gray-500">No physical audit records found</p>
                               ) : (
-                                <div className="overflow-x-auto">
+                                <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
                                   <table className="w-full">
                                     <thead>
                                       <tr className="border-b border-gray-200">
@@ -1511,12 +1908,12 @@ export default function AssetMaster() {
                         )}
                       </div>
                     ) : (
-                      <div className="space-y-6">
+                      <div className="space-y-4 lg:space-y-6">
                         <div className="bg-white rounded-lg shadow-sm p-6">
                           <div className="border-l-4 border-blue-700 pl-3 mb-6">
                             <h2 className="text-lg font-semibold text-gray-800">Basic Information</h2>
                           </div>
-                          <div className="grid grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Asset Name <span className="text-red-500">*</span></label>
                             <Input 
@@ -1538,28 +1935,30 @@ export default function AssetMaster() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Category</label>
+                            <label className="text-sm font-medium text-gray-700">Category <span className="text-red-500">*</span></label>
                             <Combobox
                               value={formData.asset_sub_category || ''}
                               onValueChange={(v) => updateField('asset_sub_category', v)}
                               options={assetSubCategories.map(sub => ({ value: sub, label: sub }))}
                               placeholder="Select category"
                               searchPlaceholder="Search category..."
+                              required
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Sub Category</label>
+                            <label className="text-sm font-medium text-gray-700">Sub Category <span className="text-red-500">*</span></label>
                             <Combobox
                               value={formData.asset_type || ''}
                               onValueChange={(v) => updateField('asset_type', v)}
                               options={assetTypes.map(type => ({ value: type, label: type }))}
                               placeholder="Select sub category"
                               searchPlaceholder="Search sub category..."
+                              required
                             />
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Combination (Color | Material | Size)</label>
-                            <Popover>
+                            <Popover key={`combo-${formData.asset_type}-${assetCombinations.length}`}>
                               <PopoverTrigger asChild>
                                 <Button
                                   variant="outline"
@@ -1567,8 +1966,8 @@ export default function AssetMaster() {
                                   className="w-full justify-between h-11 border-gray-300 focus:border-primary focus:ring-primary/20"
                                   disabled={!formData.asset_type || assetCombinations.length === 0}
                                 >
-                                  {formData.asset_combination ? 
-                                    assetCombinations.find(combo => combo.value === formData.asset_combination)?.label || 'Select combination'
+                                  {formData.asset_combination && assetCombinations.find(combo => combo.value === formData.asset_combination) ? 
+                                    assetCombinations.find(combo => combo.value === formData.asset_combination)?.label
                                     : 'Select combination'
                                   }
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1707,7 +2106,7 @@ export default function AssetMaster() {
                           <div className="border-l-4 border-blue-700 pl-3 mb-6">
                             <h2 className="text-lg font-semibold text-gray-800">Location</h2>
                           </div>
-                          <div className="grid grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Building</label>
                               <Select value={formData.building || ''} onValueChange={(v) => updateField('building', v)} disabled={viewMode}>
@@ -1721,7 +2120,7 @@ export default function AssetMaster() {
                             </div>
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Floor</label>
-                              <Select value={formData.floor || ''} onValueChange={(v) => updateField('floor', v)} disabled={viewMode || !formData.building}>
+                              <Select value={formData.floor_id || ''} onValueChange={(v) => updateField('floor_id', v)} disabled={viewMode || !formData.building}>
                                 <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
                                   <SelectValue placeholder="Select floor" />
                                 </SelectTrigger>
@@ -1731,8 +2130,89 @@ export default function AssetMaster() {
                               </Select>
                             </div>
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-gray-700">Room/Rack</label>
-                              <Input value={formData.room_rack || ''} onChange={(e) => updateField('room_rack', e.target.value)} placeholder="Enter room/rack" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                              <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium text-gray-700">Room/Rack</label>
+                                {!viewMode && formData.floor_id && !showAddRoomForm && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setShowAddRoomForm(true)}
+                                    className="h-7 text-xs"
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add Room
+                                  </Button>
+                                )}
+                              </div>
+                              
+                              {showAddRoomForm ? (
+                                <div className="p-3 border border-blue-200 rounded-lg bg-blue-50 space-y-3">
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-700">Room Number *</label>
+                                    <Input
+                                      value={newRoomNumber}
+                                      onChange={(e) => setNewRoomNumber(e.target.value)}
+                                      placeholder="Enter room number"
+                                      className="h-9 border-gray-300"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-700">Category</label>
+                                    <Select value={newRoomCategory} onValueChange={setNewRoomCategory}>
+                                      <SelectTrigger className="h-9 border-gray-300">
+                                        <SelectValue placeholder="Select category (optional)" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {roomCategories.map(cat => (
+                                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={handleAddSingleRoom}
+                                      className="flex-1 h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      <Plus className="h-3 w-3 mr-1" />
+                                      Add
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setShowAddRoomForm(false);
+                                        setNewRoomNumber('');
+                                        setNewRoomCategory('');
+                                      }}
+                                      className="flex-1 h-8 text-xs"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <Select value={formData.room_id || ''} onValueChange={(v) => updateField('room_id', v)} disabled={viewMode || !formData.floor_id}>
+                                  <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
+                                    <SelectValue placeholder={
+                                      !formData.floor_id ? "Select floor first" : 
+                                      rooms.length === 0 ? "No rooms available" : 
+                                      "Select room"
+                                    } />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {rooms.map(room => (
+                                      <SelectItem key={room.id} value={room.id}>
+                                        {room.display_name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1841,14 +2321,14 @@ export default function AssetMaster() {
                         </div>
 
                         <Tabs value={activeTab} onValueChange={setActiveTab}>
-                          <TabsList>
-                            <TabsTrigger value="status">Status & Maintenance</TabsTrigger>
-                            <TabsTrigger value="sez">SEZ & Customs</TabsTrigger>
+                          <TabsList className="grid grid-cols-2 w-full">
+                            <TabsTrigger value="status" className="text-xs sm:text-sm">Status & Maintenance</TabsTrigger>
+                            <TabsTrigger value="sez" className="text-xs sm:text-sm">SEZ & Customs</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="status" className="mt-4">
                             <div className="bg-white rounded-lg shadow-sm p-6">
-                              <div className="grid grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Working Status</label>
                         <Select value={formData.status || 'Working'} onValueChange={(v) => updateField('status', v)} disabled={viewMode}>
@@ -1914,7 +2394,7 @@ export default function AssetMaster() {
 
                           <TabsContent value="sez" className="mt-4">
                             <div className="bg-white rounded-lg shadow-sm p-6">
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">SEZ Status</label>
                         <Select value={formData.sez_status} onValueChange={(v) => updateField('sez_status', v)} disabled={viewMode}>
@@ -2025,60 +2505,137 @@ export default function AssetMaster() {
 
                   <div className="lg:col-span-1 space-y-6">
                   <div className="bg-white rounded-lg shadow-sm p-6">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-4">ASSET PICTURE</h3>
-                    {viewMode ? (
-                      formData.asset_picture ? (
-                        <img src={formData.asset_picture} alt="Asset" className="w-full h-40 object-cover rounded-md" />
-                      ) : (
-                        <div className="flex items-center justify-center w-full h-40 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-400">No image</p>
-                        </div>
-                      )
-                    ) : (
-                      <>
-                        {formData.asset_picture ? (
-                          <div className="relative">
-                            <img src={formData.asset_picture} alt="Asset" className="w-full h-40 object-cover rounded-md" />
-                            <button
-                              onClick={() => updateField('asset_picture', '')}
-                              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">ASSET PICTURES</h3>
+
+                    {/* Image scroll strip */}
+                    {assetImages.length > 0 ? (
+                      <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+                        {assetImages.map((img, idx) => (
+                          <div key={idx} className="relative shrink-0 w-28 h-28 rounded-lg overflow-hidden border border-gray-200 group">
+                            <img
+                              src={img}
+                              alt={`Asset ${idx + 1}`}
+                              className="w-full h-full object-cover cursor-pointer"
+                              onClick={() => setCurrentImageIndex(idx)}
+                            />
+                            {/* Fullscreen overlay on click */}
+                            <div
+                              className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition cursor-pointer"
+                              onClick={() => {
+                                setCurrentImageIndex(idx);
+                                setShowImageLightbox(true);
+                              }}
+                            />
+                            {!viewMode && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newImages = assetImages.filter((_, i) => i !== idx);
+                                  setAssetImages(newImages);
+                                  if (currentImageIndex >= newImages.length) setCurrentImageIndex(Math.max(0, newImages.length - 1));
+                                }}
+                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition hover:bg-red-600"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <label className="flex flex-col items-center justify-center w-full h-40 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-lg cursor-pointer hover:border-blue-500">
-                            <div className="flex flex-col items-center space-y-2">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-gray-400">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="17 8 12 3 7 8"/>
-                                <line x1="12" x2="12" y1="3" y2="15"/>
-                              </svg>
-                              <span className="text-xs text-gray-600 text-center">Drop image or click</span>
-                            </div>
-                            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                try {
-                                  const uploadFormData = new FormData();
-                                  uploadFormData.append('file', file);
-                                  const response = await fetch(`/api/upload?category=asset_pictures`, { method: 'POST', body: uploadFormData });
-                                  const result = await response.json();
-                                  if (result.success) {
-                                    updateField('asset_picture', result.file.url);
-                                    toast({ title: 'Success', description: 'Image uploaded successfully' });
-                                  } else {
-                                    toast({ title: 'Error', description: 'Failed to upload image', variant: 'destructive' });
-                                  }
-                                } catch (error) {
-                                  toast({ title: 'Error', description: 'Failed to upload image', variant: 'destructive' });
-                                }
-                              }
-                            }} />
-                          </label>
-                        )}
-                      </>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center w-full h-28 bg-gray-50 rounded-lg border border-dashed border-gray-200 mb-3">
+                        <p className="text-sm text-gray-400">No images</p>
+                      </div>
                     )}
+
+                    {/* Upload button — only when < 2 images and not viewMode */}
+                    {!viewMode && assetImages.length < 2 && (() => {
+                      const handleFiles = async (fileList: FileList | null) => {
+                        const files = Array.from(fileList || []).slice(0, 2 - assetImages.length);
+                        if (files.length === 0) return;
+                        try {
+                          const assetId = editingAsset?.asset_id || generatedAssetId || 'temp';
+                          const urls = await Promise.all(files.map(async (rawFile) => {
+                            const file = await compressImage(rawFile);
+                            const fd = new FormData();
+                            fd.append('file', file);
+                            const res = await fetch(`/api/upload?category=asset_pictures&assetId=${encodeURIComponent(assetId)}`, { method: 'POST', body: fd });
+                            const result = await res.json();
+                            return result.success ? result.file.url : null;
+                          }));
+                          const valid = urls.filter(Boolean) as string[];
+                          if (valid.length > 0) {
+                            setAssetImages(prev => [...prev, ...valid].slice(0, 2));
+                            toast({ title: 'Success', description: `${valid.length} image(s) uploaded` });
+                          } else {
+                            toast({ title: 'Error', description: 'Upload failed', variant: 'destructive' });
+                          }
+                        } catch {
+                          toast({ title: 'Error', description: 'Upload failed', variant: 'destructive' });
+                        }
+                      };
+                      return (
+                        <>
+                          {/* Desktop: single upload button */}
+                          <label className="hidden md:flex flex-col items-center justify-center w-full h-16 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition cursor-pointer">
+                            <Upload className="w-5 h-5 text-gray-400" />
+                            <span className="text-xs text-gray-500 mt-1">Add Image</span>
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+                          </label>
+                          {/* Mobile: Camera + Gallery buttons */}
+                          <div className="flex md:hidden gap-2">
+                            <label className="flex flex-col items-center justify-center flex-1 h-16 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition cursor-pointer">
+                              <Camera className="w-5 h-5 text-gray-400" />
+                              <span className="text-xs text-gray-500 mt-1">Camera</span>
+                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+                            </label>
+                            <label className="flex flex-col items-center justify-center flex-1 h-16 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition cursor-pointer">
+                              <Upload className="w-5 h-5 text-gray-400" />
+                              <span className="text-xs text-gray-500 mt-1">Gallery</span>
+                              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+                            </label>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    {!viewMode && assetImages.length >= 2 && (
+                      <p className="text-xs text-gray-400 text-center">Max 2 images. Remove one to upload another.</p>
+                    )}
+
+                    {/* Lightbox */}
+                    {showImageLightbox && assetImages.length > 0 && (
+                      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setShowImageLightbox(false)}>
+                        <button className="absolute top-4 right-4 text-white hover:text-gray-300" onClick={() => setShowImageLightbox(false)}>
+                          <X className="h-6 w-6" />
+                        </button>
+                        {assetImages.length > 1 && (
+                          <button
+                            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 text-white rounded-full p-2 hover:bg-white/40"
+                            onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === 0 ? assetImages.length - 1 : prev - 1); }}
+                          >
+                            <ChevronLeft className="h-6 w-6" />
+                          </button>
+                        )}
+                        <img
+                          src={assetImages[currentImageIndex]}
+                          alt="Full view"
+                          className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        {assetImages.length > 1 && (
+                          <button
+                            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 text-white rounded-full p-2 hover:bg-white/40"
+                            onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === assetImages.length - 1 ? 0 : prev + 1); }}
+                          >
+                            <ChevronRight className="h-6 w-6" />
+                          </button>
+                        )}
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm bg-black/40 px-3 py-1 rounded-full">
+                          {currentImageIndex + 1} {" / "} {assetImages.length}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-4">
                       <label className="text-xs text-gray-500 mb-2 block">Asset Value</label>
                       {viewMode ? (
@@ -2162,13 +2719,13 @@ export default function AssetMaster() {
                   )}
                   </div>
 
-                  <div className="mt-6 flex justify-end gap-3">
+                  <div className="mt-6 pb-20 sm:pb-0 flex flex-col-reverse sm:flex-row justify-end gap-3">
                     {!viewMode && (
                       <>
-                        <Button variant="outline" onClick={() => setShowForm(false)} className="px-6 py-2 border-gray-300">
+                        <Button variant="outline" onClick={() => setShowForm(false)} className="w-full sm:w-auto px-6 py-2 border-gray-300">
                           Cancel
                         </Button>
-                        <Button onClick={handleSave} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white" disabled={duplicateIds.length > 0}>
+                        <Button onClick={handleSave} className="w-full sm:w-auto px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white" disabled={duplicateIds.length > 0 || !formData.asset_name?.trim() || !formData.asset_category?.trim() || !formData.asset_sub_category?.trim() || !formData.asset_type?.trim()}>
                           <Save className="h-4 w-4 mr-2" />
                           {editingAsset ? 'Save Changes' : bulkGeneration ? `Create ${parseInt(bulkQuantity) || 0} Assets` : 'Create Asset'}
                         </Button>
@@ -2180,10 +2737,50 @@ export default function AssetMaster() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex gap-4 items-center p-4 bg-white rounded-lg border">
-                <div className="flex gap-4 flex-1 flex-wrap">
+              
+              {showLabelOptions && selectedAssets.size > 0 && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                    <h3 className="text-sm font-semibold text-green-800">Thermal Label Generation</h3>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowLabelOptions(false)}
+                      className="text-green-600 hover:text-green-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                    <div className="text-sm text-green-700">
+                      <span className="font-medium">{selectedAssets.size}</span> asset(s) selected for label generation
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button 
+                        onClick={handleGenerateThermalLabels}
+                        className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+                        size="sm"
+                      >
+                        <Ticket className="h-4 w-4 mr-2" />
+                        Generate Thermal PDF
+                      </Button>
+                      <Button 
+                        onClick={() => setSelectedAssets(new Set())}
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto border-green-300 text-green-700 hover:bg-green-50"
+                      >
+                        Clear Selection
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center p-4 bg-white rounded-lg border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 flex-1">
                   <Select value={sortOrder} onValueChange={setSortOrder}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Sort" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2192,7 +2789,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterCategory} onValueChange={setFilterCategory}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Asset Type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2203,7 +2800,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterSubCategory} onValueChange={setFilterSubCategory} disabled={!filterCategory || filterCategory === 'all'}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2214,7 +2811,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterType} onValueChange={setFilterType} disabled={!filterSubCategory || filterSubCategory === 'all'}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Sub Category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2225,7 +2822,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2236,7 +2833,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterBuilding} onValueChange={setFilterBuilding}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Building" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2247,7 +2844,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterFloor} onValueChange={setFilterFloor} disabled={!filterBuilding || filterBuilding === 'all'}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Floor" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2257,8 +2854,45 @@ export default function AssetMaster() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select value={filterRoom} onValueChange={setFilterRoom} disabled={!filterFloor || filterFloor === 'all'}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Filter by Room" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Rooms</SelectItem>
+                      {filterRooms.map(room => (
+                        <SelectItem key={room.id} value={room.id}>{room.room_number}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterTenant} onValueChange={v => { setFilterTenant(v); setFilterTenantSearch(''); }}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Filter by Tenant" />
+                    </SelectTrigger>
+                    <SelectContent onAnimationEnd={() => filterTenantSearchRef.current?.focus()} onCloseAutoFocus={e => e.preventDefault()}>
+                      <div className="px-2 py-1.5" onKeyDown={e => e.stopPropagation()}>
+                        <input
+                          ref={filterTenantSearchRef}
+                          className="w-full text-sm border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-400"
+                          placeholder="Search tenants..."
+                          value={filterTenantSearch}
+                          onChange={e => setFilterTenantSearch(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      </div>
+                      <SelectItem value="all">All Tenants</SelectItem>
+                      {tenants
+                        .filter(t => {
+                          const q = filterTenantSearch.toLowerCase();
+                          return !q || (t.company || t.name || '').toLowerCase().includes(q);
+                        })
+                        .map(tenant => (
+                          <SelectItem key={tenant.id} value={tenant.id}>{tenant.company || tenant.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={filterColor} onValueChange={setFilterColor} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Color" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2269,7 +2903,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterMaterial} onValueChange={setFilterMaterial} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Material" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2280,7 +2914,7 @@ export default function AssetMaster() {
                     </SelectContent>
                   </Select>
                   <Select value={filterSize} onValueChange={setFilterSize} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by Size" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2290,10 +2924,6 @@ export default function AssetMaster() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-                  <div className="text-xs text-blue-600 font-medium">Filtered Assets</div>
-                  <div className="text-lg font-bold text-blue-700">{filteredAssets.length}</div>
                 </div>
               </div>
               <AssetList 
@@ -2306,6 +2936,8 @@ export default function AssetMaster() {
                 filterStatus={filterStatus}
                 filterBuilding={filterBuilding}
                 filterFloor={filterFloor}
+                filterRoom={filterRoom}
+                filterTenant={filterTenant}
                 filterColor={filterColor}
                 filterMaterial={filterMaterial}
                 filterSize={filterSize}
@@ -2314,6 +2946,14 @@ export default function AssetMaster() {
                 itemsPerPage={itemsPerPage}
                 onPageChange={setCurrentPage}
                 onItemsPerPageChange={setItemsPerPage}
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                selectedAssets={selectedAssets}
+                onSelectAsset={handleSelectAsset}
+                onSelectAllAssets={handleSelectAllAssets}
+                onSelectAllFiltered={handleSelectAllFiltered}
+                onClearSelection={() => setSelectedAssets(new Set())}
+                filteredCount={filteredAssets.length}
               />
             </div>
           )}
@@ -2322,5 +2962,12 @@ export default function AssetMaster() {
     </DashboardLayout>
   );
 }
+
+
+
+
+
+
+
 
 

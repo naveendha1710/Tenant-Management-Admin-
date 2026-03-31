@@ -26,7 +26,8 @@ import {
   ClipboardCheck,
   Scan,
   Cog,
-  List
+  List,
+  GitBranch
 } from "lucide-react";
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Accountant' | 'Maintenance Manager' | 'Viewer' | 'Custom' | 'Helpdesk' | 'Technician' | 'Tenant';
@@ -88,6 +89,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
       subItems: [
         { title: "Settings", url: "/admin/settings", icon: Settings },
         { title: "User Management", url: "/admin/user-management", icon: Shield },
+        { title: "Workflows", url: "/admin/workflows", icon: GitBranch },
         { 
           title: "Asset Form", 
           url: "/admin/master-settings", 
@@ -168,6 +170,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
       subItems: [
         { title: "Settings", url: "/admin/settings", icon: Settings },
         { title: "User Management", url: "/admin/user-management", icon: Shield },
+        { title: "Workflows", url: "/admin/workflows", icon: GitBranch },
         { 
           title: "Asset Form", 
           url: "/admin/master-settings", 
@@ -261,6 +264,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Documents", url: "/tenant/documents", icon: FolderOpen },
         { title: "Maintenance", url: "/tenant/maintenance-requests", icon: Wrench },
         { title: "My Assets", url: "/tenant/my-assets", icon: Package },
+        { title: "Asset Movement", url: "/tenant/asset-movement", icon: TrendingUp },
       ]
     }
   ],
@@ -299,7 +303,8 @@ export function getMenusForRole(role: UserRole | null, isApprover?: boolean, use
           (item.title === 'Invoices & Payments' && p.module === 'Invoices') ||
           (item.title === 'Documents' && p.module === 'Documents') ||
           (item.title === 'Maintenance' && p.module === 'Maintenance') ||
-          (item.title === 'My Assets' && p.module === 'My Assets')
+          (item.title === 'My Assets' && p.module === 'My Assets') ||
+          (item.title === 'Asset Movement' && p.module === 'Asset Movement')
         );
         return perm ? perm.view : true;
       })

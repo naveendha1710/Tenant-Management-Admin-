@@ -14,6 +14,15 @@ import { usePermissions } from '@/utils/permissions';
 import { buildingsService, type Building } from '@/services/buildingsService';
 import LoadingScreen from '@/components/LoadingScreen';
 
+// Utility function to create URL-friendly slug from building name
+function createBuildingSlug(name: string): string {
+  return name.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+}
+
 // Buildings Tab Component
 function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats, canAdd, canEdit, canDelete, loading, onAddBuilding, onDeleteBuilding, navigate }) {
   const stats = [
@@ -107,7 +116,7 @@ function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats
                   {canEdit ? (
                     <Button 
                       className="flex-1" 
-                      onClick={() => navigate(`/admin/building-manage/${building.id}`)}
+                      onClick={() => navigate(`/admin/building-manage/${createBuildingSlug(building.name)}`)}
                     >
                       <Settings className="h-4 w-4 mr-2" />
                       Manage
@@ -1108,9 +1117,6 @@ export default function BuildingsPage() {
     address: ''
   });
   const [loading, setLoading] = useState(true);
-  const [isSpaceCategoryOpen, setIsSpaceCategoryOpen] = useState(false);
-  const [spaceCategories, setSpaceCategories] = useState<Array<{name: string, display_name: string}>>([]);
-  const [newCategory, setNewCategory] = useState('');
   const { toast } = useToast();
 
   // Check permissions for Buildings module
@@ -1119,23 +1125,6 @@ export default function BuildingsPage() {
   const canEdit = permissions.hasPermission('Buildings', 'edit');
   const canDelete = permissions.hasPermission('Buildings', 'delete');
 
-
-
-  // Load space categories
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const { supabase } = await import('@/lib/supabase');
-        const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'space_categories').maybeSingle();
-        if (data?.value) {
-          setSpaceCategories(data.value);
-        }
-      } catch (error) {
-        console.error('Error loading categories:', error);
-      }
-    };
-    loadCategories();
-  }, []);
 
   // Load buildings data
   useEffect(() => {
@@ -1351,79 +1340,6 @@ export default function BuildingsPage() {
         {activeTab === 'rooms' && (
           <RoomsTab canAdd={canAdd} canEdit={canEdit} canDelete={canDelete} />
         )}
-
-        {/* Space Category Dialog */}
-        <Dialog open={isSpaceCategoryOpen} onOpenChange={setIsSpaceCategoryOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Manage Space Categories</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Current Categories</Label>
-                <div className="flex flex-wrap gap-2">
-                  {spaceCategories.map((cat, idx) => (
-                    <div key={cat.name} className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded">
-                      <span className="text-sm">{cat.display_name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-5 p-0 hover:bg-red-100"
-                        onClick={async () => {
-                          try {
-                            const updated = spaceCategories.filter((_, i) => i !== idx);
-                            const { supabase } = await import('@/lib/supabase');
-                            await supabase.from('app_settings').update({ value: updated }).eq('key', 'space_categories');
-                            setSpaceCategories(updated);
-                            toast({ title: "Category Deleted", description: `"${cat.display_name}" removed` });
-                          } catch (error) {
-                            toast({ title: "Error", description: "Failed to delete category", variant: "destructive" });
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3 text-red-600" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="new_category">Add New Category</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="new_category"
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="e.g., gym, lounge"
-                  />
-                  <Button
-                    onClick={async () => {
-                      if (newCategory.trim()) {
-                        try {
-                          const name = newCategory.toLowerCase().replace(/\s+/g, '_');
-                          const newCat = { name, display_name: newCategory };
-                          const updated = [...spaceCategories, newCat];
-                          const { supabase } = await import('@/lib/supabase');
-                          await supabase.from('app_settings').update({ value: updated }).eq('key', 'space_categories');
-                          setSpaceCategories(updated);
-                          setNewCategory('');
-                          toast({ title: "Category Added", description: `"${newCategory}" has been added` });
-                        } catch (error) {
-                          toast({ title: "Error", description: "Failed to add category", variant: "destructive" });
-                        }
-                      }
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-              </div>
-              <Button onClick={() => setIsSpaceCategoryOpen(false)} className="w-full">
-                Done
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Add Building Dialog */}
         <Dialog open={isAddBuildingOpen} onOpenChange={setIsAddBuildingOpen}>

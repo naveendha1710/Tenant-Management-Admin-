@@ -51,11 +51,33 @@ export default function MyDocumentsPage() {
   useEffect(() => {
     const initTenantIds = async () => {
       if (!user?.email || activeTenantIds.length > 0) return;
-      const { data } = await supabase.from('tenants').select('id').eq('email', user.email).single();
-      if (data) setActiveTenantIds([data.id]);
+      
+      // First check if user has tenantId in their profile
+      if (user?.appUser?.tenantId) {
+        setActiveTenantIds([user.appUser.tenantId]);
+        return;
+      }
+      
+      // Fallback: try to find tenant by email
+      try {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('email', user.email)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Error loading tenant:', error);
+          return;
+        }
+        
+        if (data) setActiveTenantIds([data.id]);
+      } catch (error) {
+        console.error('Error in initTenantIds:', error);
+      }
     };
     initTenantIds();
-  }, [user?.email]);
+  }, [user?.email, user?.appUser?.tenantId]);
 
   useEffect(() => {
     if (activeTenantIds.length === 0) {

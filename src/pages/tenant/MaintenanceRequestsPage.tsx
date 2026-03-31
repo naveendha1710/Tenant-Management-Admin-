@@ -35,6 +35,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { MaintenanceService, MaintenanceTicket } from '@/services/maintenanceService';
 import { supabase } from '@/lib/supabaseClient';
+import { sendTicketNotification } from '@/services/ticketNotifications';
 
 export default function MaintenanceRequestsPage() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
@@ -121,13 +122,7 @@ export default function MaintenanceRequestsPage() {
         status_history: `${selectedTicket.status_history || ''}\n${historyEntry}`
       });
       
-      // Trigger notification
-      const { ticketNotifications } = await import('@/services/ticketNotifications');
-      await ticketNotifications.onEstimationApproved(
-        selectedTicket.id,
-        selectedTicket.ticket_number || selectedTicket.id,
-        selectedTicket.assigned_to || ''
-      );
+      sendTicketNotification('ticket.estimation_approved_by_tenant', { ...selectedTicket, status: 'approved' }).catch(console.error);
       
       toast({ title: "Success", description: "Estimation accepted. Work can now start." });
       setIsDetailDialogOpen(false);
@@ -174,13 +169,7 @@ export default function MaintenanceRequestsPage() {
         previous_submissions: JSON.stringify(previousSubmissions)
       });
       
-      // Trigger notification
-      const { ticketNotifications } = await import('@/services/ticketNotifications');
-      await ticketNotifications.onEstimationRejected(
-        selectedTicket.id,
-        selectedTicket.ticket_number || selectedTicket.id,
-        selectedTicket.assigned_to || ''
-      );
+      sendTicketNotification('ticket.estimation_rejected_by_tenant', { ...selectedTicket, status: 'tenant_rejected' }).catch(console.error);
       
       toast({ title: "Success", description: "Estimation rejected. Re-estimation requested." });
       setIsDetailDialogOpen(false);
@@ -231,24 +220,8 @@ export default function MaintenanceRequestsPage() {
       
       await MaintenanceService.updateTicket(selectedTicket.id, updates);
       
-      try {
-        const { ticketNotifications } = await import('@/services/ticketNotifications');
-        if (action === 'reopen') {
-          await ticketNotifications.onTicketReopened(
-            selectedTicket.id,
-            selectedTicket.ticket_number || selectedTicket.id,
-            selectedTicket.tenant_id
-          );
-        } else {
-          await ticketNotifications.onTicketResolved(
-            selectedTicket.id,
-            selectedTicket.ticket_number || selectedTicket.id,
-            selectedTicket.tenant_id
-          );
-        }
-      } catch (notifError) {
-        console.error('Notification error:', notifError);
-      }
+      const notifEvent = action === 'reopen' ? 'ticket.reopened' : 'ticket.resolved';
+      sendTicketNotification(notifEvent, { ...selectedTicket, ...updates }).catch(console.error);
       
       toast({ 
         title: "Success", 

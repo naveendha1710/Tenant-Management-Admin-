@@ -30,6 +30,7 @@ import { getStatusColor, getStatusLabel } from '@/utils/ticketStatus';
 import { buildingService } from '@/services/buildingService';
 import { useAuth } from '@/contexts/AuthContext';
 import { AssetInfo } from '@/components/tenant/AssetInfo';
+import { sendTicketNotification } from '@/services/ticketNotifications';
 export default function HelpdeskDashboard() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [filteredTickets, setFilteredTickets] = useState<MaintenanceTicket[]>([]);
@@ -299,6 +300,7 @@ export default function HelpdeskDashboard() {
         resolution_notes: `Technician: ${technicianForm.name}\nContact: ${technicianForm.contact}\nSpecialization: ${technicianForm.specialization}`
       });
       toast({ title: "Success", description: "Technician assigned" });
+      sendTicketNotification('ticket.assigned', { ...selectedTicket, status: 'assigned', assigned_to: technicianForm.name }).catch(console.error);
       setIsAssignOpen(false);
       setTechnicianForm({ name: '', contact: '', specialization: '' });
       loadTickets();
@@ -336,6 +338,7 @@ export default function HelpdeskDashboard() {
         resolution_notes: `${selectedTicket.resolution_notes || ''}\n\n=== ESTIMATION ===\nMaterials: ${estimationForm.materials}\nMaterial Cost: ₹${estimationForm.materialCost}\nLabor Hours: ${estimationForm.laborHours}\nLabor Cost: ₹${estimationForm.laborCost}\nTotal: ₹${estimationForm.totalCost}\nNotes: ${estimationForm.notes}`
       });
       toast({ title: "Success", description: "Estimation sent for approval" });
+      sendTicketNotification('ticket.estimation_submitted', { ...selectedTicket, status: 'pending_approval' }).catch(console.error);
       setIsEstimationOpen(false);
       setEstimationForm({ materials: '', materialCost: '', laborHours: '', laborCost: '', totalCost: '', notes: '' });
       loadTickets();
@@ -355,6 +358,7 @@ export default function HelpdeskDashboard() {
         resolution_notes: `${selectedTicket.resolution_notes || ''}\n\n=== COMPLETION ===\n${completionForm.notes}\nImages: ${completionForm.images.length} uploaded`
       });
       toast({ title: "Success", description: "Work completed. Tenant notified." });
+      sendTicketNotification('ticket.work_completed', { ...selectedTicket, status: 'completed' }).catch(console.error);
       setIsCompleteOpen(false);
       setCompletionForm({ notes: '', images: [] });
       loadTickets();
@@ -1545,6 +1549,7 @@ export default function HelpdeskDashboard() {
                         try {
                           await MaintenanceService.endWork(selectedTicket.id);
                           toast({ title: "Success", description: "Work completed" });
+                          sendTicketNotification('ticket.work_completed', { ...selectedTicket, status: 'work_completed' }).catch(console.error);
                           loadTickets();
                           const refreshedTicket = await MaintenanceService.getTicketById(selectedTicket.id);
                           setSelectedTicket(refreshedTicket);
@@ -1603,6 +1608,7 @@ export default function HelpdeskDashboard() {
                           try {
                             await MaintenanceService.startWork(selectedTicket.id, parseFloat(slaHours));
                             toast({ title: "Success", description: "Work started" });
+                            sendTicketNotification('ticket.work_started', { ...selectedTicket, status: 'in_progress' }).catch(console.error);
                             setSlaHours('');
                             loadTickets();
                             setIsDetailOpen(false);
@@ -1851,7 +1857,7 @@ export default function HelpdeskDashboard() {
                                 </div>
                               </div>
                               {/* Request Changes Button */}
-                              {(selectedTicket.status === 'approved' || selectedTicket.status === 'work_started' || selectedTicket.status === 'in_progress') && (
+                              {(['pending_approval', 'pending_tenant_approval', 'approved'].includes(selectedTicket.status)) && (
                                 <>
                                   <div className="h-px w-full bg-gray-200"></div>
                                   <div>
@@ -1862,7 +1868,7 @@ export default function HelpdeskDashboard() {
                                       onClick={async () => {
                                         if (!selectedTicket) return;
                                         try {
-                                          // Save current approved estimation to history
+                                          // Save current estimation to history
                                           let previousSubmissions = [];
                                           if (selectedTicket.previous_submissions) {
                                             try {
@@ -1872,33 +1878,37 @@ export default function HelpdeskDashboard() {
                                           }
                                           const changeRequestData = {
                                             technicians: selectedTicket.assigned_technicians,
-                                            rca: selectedTicket.resolution_notes?.includes('=== RCA ==='),
-                                            estimation: selectedTicket.cost,
-                                            opex_code: selectedTicket.opex_code,
                                             resolution_notes: selectedTicket.resolution_notes,
+                                            cost: selectedTicket.cost,
+                                            opex_code: selectedTicket.opex_code,
                                             change_requested_at: new Date().toISOString(),
                                             change_requested_by: 'Helpdesk',
                                             manager_approved_at: selectedTicket.status_history?.match(/\[(.*?)\] MANAGER APPROVED/)?.[1],
-                                            tenant_approved_at: selectedTicket.status_history?.match(/\[(.*?)\] TENANT APPROVED/)?.[1]
+                                            tenant_approved_at: selectedTicket.status_history?.match(/\[(.*?)\] TENANT APPROVED/)?.[1],
+                                            previous_status: selectedTicket.status
                                           };
                                           previousSubmissions.push(changeRequestData);
-                                          // Keep RCA and technicians, only reset status to allow editing estimation
+                                          // Keep RCA and technicians, reset estimation section only
                                           const techniciansList = selectedTicket.assigned_technicians?.map((t: any) => t.name).join(', ') || '';
                                           const rcaSection = selectedTicket.resolution_notes?.match(/(=== RCA ===[\s\S]+?)(?=\n\n=== |$)/)?.[0] || '';
+                                          // Clear all approval-related fields to restart approval cycle
                                           await MaintenanceService.updateTicket(selectedTicket.id, {
-                                            status: 'rca_added',
+                                            status: 'assigned',
                                             previous_submissions: JSON.stringify(previousSubmissions),
-                                            status_history: `${selectedTicket.status_history || ''}\n[${new Date().toLocaleString()}] CHANGES REQUESTED BY HELPDESK`,
+                                            status_history: `${selectedTicket.status_history || ''}\n[${new Date().toLocaleString()}] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED`,
                                             resolution_notes: `Technicians: ${techniciansList}\n\n${rcaSection}`,
                                             cost: 0,
+                                            opex_code: null,
                                             work_started_at: null,
                                             work_completed_at: null,
                                             work_duration_hours: null,
-                                            sla_hours: null
+                                            sla_hours: null,
+                                            skip_tenant_approval: false
                                           });
+                                          sendTicketNotification('ticket.request_changes', { ...selectedTicket, status: 'assigned' }).catch(console.error);
                                           toast({ 
                                             title: "Success", 
-                                            description: "Current estimation saved. You can now modify and resubmit." 
+                                            description: "Estimation saved to history. Modify and resubmit for full approval cycle." 
                                           });
                                           loadTickets();
                                           const refreshedTicket = await MaintenanceService.getTicketById(selectedTicket.id);

@@ -16,7 +16,6 @@ function TenantPermissionGuard({ children, module }: { children: React.ReactNode
   
   return <>{children}</>;
 }
-import { NotificationsProvider } from "./contexts/NotificationsContext";
 import { LoadingProvider } from "./contexts/LoadingContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HomePage from "./pages/HomePage";
@@ -39,9 +38,8 @@ import MyDocumentsPage from "./pages/tenant/MyDocumentsPage";
 import MaintenanceRequestsPage from "./pages/tenant/MaintenanceRequestsPage";
 import MyAssetsPage from "./pages/tenant/MyAssetsPage";
 import TenantCompanyProfile from "./pages/tenant/TenantCompanyProfile";
+import TenantAssetMovement from "./pages/tenant/TenantAssetMovement";
 import MaintenanceDashboard from "./pages/MaintenanceDashboard";
-import NotificationsPage from "./pages/NotificationsPage";
-
 import QuotationPage from "./pages/QuotationPage";
 import InvoicesPage from "./pages/finance/InvoicesPage";
 import BillingPage from "./pages/finance/BillingPage";
@@ -87,6 +85,9 @@ import AssetManagement from "./pages/assets/AssetManagement";
 import Configuration from "./pages/assets/Configuration";
 import PreventiveMaintenanceList from "./pages/preventive-maintenance/PreventiveMaintenanceList";
 import PhysicalAuditModule from "./pages/physical-audit/PhysicalAuditModule";
+import { WorkflowManagementPage } from "./pages/admin/WorkflowManagementPage";
+import { WorkflowBuilder } from "./components/workflow/WorkflowBuilder";
+import { PendingApprovalsDashboard } from "./components/workflow/PendingApprovalsDashboard";
 
 
 
@@ -299,7 +300,7 @@ function AppContent() {
                     </PermissionGuard>
                   </ProtectedRoute>
                 } />
-                <Route path="/admin/building-manage/:buildingId" element={
+                <Route path="/admin/building-manage/:buildingSlug" element={
                   <ProtectedRoute>
                     <BuildingManage />
                   </ProtectedRoute>
@@ -403,6 +404,23 @@ function AppContent() {
                   </ProtectedRoute>
                 } />
 
+                {/* Workflow Management Routes */}
+                <Route path="/admin/workflows" element={
+                  <ProtectedRoute>
+                    <WorkflowManagementPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/workflows/builder/:workflowId?" element={
+                  <ProtectedRoute>
+                    <WorkflowBuilder />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/workflow-approvals" element={
+                  <ProtectedRoute>
+                    <PendingApprovalsDashboard />
+                  </ProtectedRoute>
+                } />
+
                 {/* Asset Management Routes */}
                 <Route path="/assets/master" element={
                   <ProtectedRoute>
@@ -450,13 +468,6 @@ function AppContent() {
                   </ProtectedRoute>
                 } />
 
-                {/* Notifications Route (All Users) */}
-                <Route path="/notifications" element={
-                  <ProtectedRoute>
-                    <NotificationsPage />
-                  </ProtectedRoute>
-                } />
-
                 {/* Tenant Routes */}
                 <Route path="/tenant/dashboard" element={
                   <ProtectedRoute>
@@ -500,6 +511,13 @@ function AppContent() {
                     </TenantPermissionGuard>
                   </ProtectedRoute>
                 } />
+                <Route path="/tenant/asset-movement" element={
+                  <ProtectedRoute>
+                    <TenantPermissionGuard module="Asset Movement">
+                      <TenantAssetMovement />
+                    </TenantPermissionGuard>
+                  </ProtectedRoute>
+                } />
                 <Route path="/tenant/profile" element={
                   <ProtectedRoute>
                     <TenantPermissionGuard module="Profile">
@@ -538,13 +556,11 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <LoadingProvider>
       <AuthProvider>
-        <NotificationsProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <AppContent />
-          </TooltipProvider>
-        </NotificationsProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppContent />
+        </TooltipProvider>
       </AuthProvider>
     </LoadingProvider>
   </QueryClientProvider>

@@ -10,12 +10,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Users, Plus, Search, Filter, MoreHorizontal, Eye, Edit, Trash2, Mail, MessageSquare, Phone, Download, Send, Building, Lock, Settings, User as UserIcon } from 'lucide-react';
+import { Users, Plus, Search, Filter, MoreHorizontal, Eye, Edit, Trash2, Mail, MessageSquare, Phone, Download, Send, Building, Lock, Settings, User as UserIcon, FileSpreadsheet } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { mockSpaces } from '@/data/mockData';
 import { TenantForm } from '@/components/admin/TenantForm';
 import { SpaceAssignment } from '@/components/admin/SpaceAssignment';
 import { TenantViewDialog } from '@/components/admin/TenantViewDialog';
+import { TenantReportModal } from '@/components/reports/TenantReportModal';
 import { tenantDataService, type Tenant } from '@/data/tenantData';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/utils/permissions';
@@ -28,6 +29,11 @@ const TenantManagement: React.FC = () => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  
+  // Reset to page 1 when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('grouped');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSpaceAssignmentOpen, setIsSpaceAssignmentOpen] = useState(false);
@@ -53,6 +59,7 @@ const TenantManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Calculate current rent with floor-wise escalations applied
   const calculateCurrentRent = (tenant: Tenant) => {
@@ -209,7 +216,9 @@ const TenantManagement: React.FC = () => {
   const filteredTenants = tenants.filter(tenant => {
     const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          tenant.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (tenant.space && tenant.space.toLowerCase().includes(searchTerm.toLowerCase()));
+                         tenant.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (tenant.phone && tenant.phone.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                         (tenant.companyGroup && tenant.companyGroup.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter;
     // Only filter out branches when in grouped view
     const isNotBranch = viewMode === 'all' || !tenant.parentTenantId;
@@ -1042,9 +1051,18 @@ const TenantManagement: React.FC = () => {
       <div className="space-y-4 sm:space-y-6">
         {/* Header with Actions */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search tenants..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 w-full"
+              />
+            </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
@@ -1069,6 +1087,10 @@ const TenantManagement: React.FC = () => {
                 </Button>
               </>
             )}
+            <Button variant="outline" onClick={() => setIsReportModalOpen(true)}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
             {canAdd ? (
               <Button onClick={handleAddTenant}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1618,6 +1640,12 @@ const TenantManagement: React.FC = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Tenant Report Modal */}
+        <TenantReportModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+        />
       </div>
     </DashboardLayout>
   );

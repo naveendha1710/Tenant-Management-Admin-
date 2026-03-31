@@ -23,6 +23,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import jsPDF from 'jspdf';
 import { AssetInfo } from '@/components/tenant/AssetInfo';
 import { MaintenanceTicketForm } from '@/components/tenant/MaintenanceTicketForm';
+import { sendTicketNotification } from '@/services/ticketNotifications';
 
 const mockTickets = [
   {
@@ -72,7 +73,7 @@ export default function ManageTicketsPage() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending_approval');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -225,19 +226,9 @@ export default function ManageTicketsPage() {
         status_history: `${selectedTicket.status_history || ''}\n${historyEntry}`
       });
       
-      // Trigger notification only if going to tenant approval
-      if (newStatus === 'pending_tenant_approval' && selectedTicket.tenant_id) {
-        const { ticketNotifications } = await import('@/services/ticketNotifications');
-        await ticketNotifications.onEstimationReady(
-          selectedTicket.id,
-          selectedTicket.ticket_number || selectedTicket.id,
-          selectedTicket.tenant_id,
-          selectedTicket.cost || 0,
-          []
-        );
-      }
       toast({ title: "Success", description: newStatus === 'approved' ? "Estimation approved. Ready for work." : "Estimation approved and sent to tenant for approval" });
-      
+      sendTicketNotification('ticket.estimation_approved_by_manager', { ...selectedTicket, status: newStatus }).catch(console.error);
+
       setIsDetailOpen(false);
       setSelectedTicket(null);
       loadTickets();
@@ -286,6 +277,7 @@ export default function ManageTicketsPage() {
       });
       
       toast({ title: "Success", description: "Estimation rejected. Sent back to helpdesk" });
+      sendTicketNotification('ticket.estimation_rejected_by_manager', { ...selectedTicket, status: 'rejected' }).catch(console.error);
       setIsDetailOpen(false);
       setSelectedTicket(null);
       setRejectionReason('');
@@ -1390,10 +1382,9 @@ export default function ManageTicketsPage() {
                 </Button>
               </div>
             </div>
-            <Tabs defaultValue="all" className="w-full mt-4">
-              <TabsList className="grid w-full grid-cols-5">
+            <Tabs defaultValue="approval" className="w-full mt-4">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="all" onClick={() => setStatusFilter('all_tickets')}>All Tickets</TabsTrigger>
-                <TabsTrigger value="manager" onClick={() => setStatusFilter('manager_tickets')}>Manager Tickets</TabsTrigger>
                 <TabsTrigger value="approval" onClick={() => setStatusFilter('pending_approval')}>Approval Pending</TabsTrigger>
                 <TabsTrigger value="progress" onClick={() => setStatusFilter('in_progress')}>In Progress</TabsTrigger>
                 <TabsTrigger value="completed" onClick={() => setStatusFilter('completed')}>Resolved</TabsTrigger>

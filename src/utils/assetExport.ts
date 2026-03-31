@@ -50,6 +50,115 @@ const formatDate = (date?: string) => date ? new Date(date).toLocaleDateString('
 const formatPercent = (value?: number) => value ? `${value}%` : 'N/A';
 const formatText = (value?: string) => value || 'N/A';
 
+export async function generateAssetDetailExcel(assets: AssetExportData[], filename?: string) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Asset Details');
+
+  sheet.columns = [
+    { header: 'Asset ID',              key: 'asset_id',               width: 16 },
+    { header: 'Asset Name',            key: 'asset_name',             width: 28 },
+    { header: 'Asset Type',            key: 'asset_category',         width: 20 },
+    { header: 'Category',              key: 'asset_sub_category',     width: 20 },
+    { header: 'Sub Category',          key: 'asset_type',             width: 20 },
+    { header: 'Manufacturer',          key: 'manufacturer',           width: 20 },
+    { header: 'Make/Model',            key: 'make_model',             width: 20 },
+    { header: 'Serial Number',         key: 'serial_number',          width: 20 },
+    { header: 'Description',           key: 'asset_description',      width: 30 },
+    { header: 'Specifications',        key: 'asset_spec',             width: 30 },
+    { header: 'Asset Status',          key: 'asset_status',           width: 14 },
+    { header: 'Working Status',        key: 'status',                 width: 14 },
+    { header: 'Asset Value',           key: 'asset_value',            width: 16 },
+    { header: 'Purchase Date',         key: 'purchase_date',          width: 15 },
+    { header: 'PO Number',             key: 'po_number',              width: 16 },
+    { header: 'Invoice Number',        key: 'invoice_number',         width: 16 },
+    { header: 'Invoice Date',          key: 'invoice_date',           width: 15 },
+    { header: 'Warranty Expiry',       key: 'warranty_date',          width: 15 },
+    { header: 'PM Date',               key: 'pm_date',                width: 15 },
+    { header: 'Depreciation Date',     key: 'depreciation_date',      width: 16 },
+    { header: 'Depreciation %',        key: 'depreciation_percentage',width: 14 },
+    { header: 'Decommission Date',     key: 'decommission_date',      width: 16 },
+    { header: 'Contract',              key: 'contract',               width: 10 },
+    { header: 'Asset Incharge',        key: 'asset_incharge',         width: 20 },
+    { header: 'Building',              key: 'building',               width: 20 },
+    { header: 'Floor',                 key: 'floor',                  width: 15 },
+    { header: 'Room/Rack',             key: 'room_rack',              width: 15 },
+    { header: 'Tenant',                key: 'tenant_company',         width: 25 },
+    { header: 'Other Handover',        key: 'handover_other_name',    width: 20 },
+    { header: 'SEZ Status',            key: 'sez_status',             width: 12 },
+    { header: 'Customs Category',      key: 'customs_category',       width: 18 },
+    { header: 'BOE Number',            key: 'boe_number',             width: 16 },
+    { header: 'BOE Date',              key: 'boe_date',               width: 14 },
+    { header: 'CIF Value',             key: 'cif_value',              width: 16 },
+    { header: 'Duty Foregone',         key: 'duty_foregone',          width: 16 },
+    { header: 'Import Date',           key: 'import_date',            width: 14 },
+    { header: 'Comments',              key: 'comments',               width: 30 },
+  ];
+
+  // Header styling
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.height = 20;
+
+  assets.forEach((a, i) => {
+    const row = sheet.addRow({
+      asset_id:               formatText(a.asset_id),
+      asset_name:             formatText(a.asset_name),
+      asset_category:         formatText(a.asset_category),
+      asset_sub_category:     formatText(a.asset_sub_category),
+      asset_type:             formatText(a.asset_type),
+      manufacturer:           formatText(a.manufacturer),
+      make_model:             formatText(a.make_model),
+      serial_number:          formatText(a.serial_number),
+      asset_description:      formatText(a.asset_description),
+      asset_spec:             formatText(a.asset_spec),
+      asset_status:           formatText(a.asset_status),
+      status:                 formatText(a.status),
+      asset_value:            formatCurrency(a.asset_value),
+      purchase_date:          formatDate(a.purchase_date),
+      po_number:              formatText(a.po_number),
+      invoice_number:         formatText(a.invoice_number),
+      invoice_date:           formatDate(a.invoice_date),
+      warranty_date:          formatDate(a.warranty_date),
+      pm_date:                formatDate(a.pm_date),
+      depreciation_date:      formatDate(a.depreciation_date),
+      depreciation_percentage:formatPercent(a.depreciation_percentage),
+      decommission_date:      formatDate(a.decommission_date),
+      contract:               formatText(a.contract),
+      asset_incharge:         formatText(a.asset_incharge),
+      building:               formatText(a.building),
+      floor:                  formatText(a.floor),
+      room_rack:              formatText(a.room_rack),
+      tenant_company:         formatText(a.tenant_company),
+      handover_other_name:    formatText(a.handover_other_name),
+      sez_status:             formatText(a.sez_status),
+      customs_category:       formatText(a.customs_category),
+      boe_number:             formatText(a.boe_number),
+      boe_date:               formatDate(a.boe_date),
+      cif_value:              formatCurrency(a.cif_value),
+      duty_foregone:          formatCurrency(a.duty_foregone),
+      import_date:            formatDate(a.import_date),
+      comments:               formatText(a.comments),
+    });
+    // Alternate row shading
+    if (i % 2 === 1) {
+      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    }
+  });
+
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || `Asset_Details_${new Date().toISOString().split('T')[0]}.xlsx`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
 export async function generateAssetExcelReport(assets: AssetExportData[]) {
   const workbook = new ExcelJS.Workbook();
   

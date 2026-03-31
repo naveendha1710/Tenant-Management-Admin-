@@ -10,8 +10,10 @@ import { supabase } from '@/lib/supabaseClient';
 interface PMSchedule {
   id: string;
   scheduled_date: string;
-  status: 'Pending' | 'Completed';
+  status: 'Pending' | 'Completed' | 'Overdue' | 'Upcoming';
   completed_date?: string;
+  assigned_to_name?: string;
+  assigned_to_email?: string;
 }
 
 interface PMAssetDetailProps {
@@ -48,7 +50,7 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
           room_rack,
           handover_to,
           building,
-          floor
+          floor_id
         `)
         .eq('id', assetId)
         .single();
@@ -75,22 +77,56 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
       const isTodayAuditDone = auditDates.has(today);
       setIsTodayAuditDone(isTodayAuditDone);
 
-      // Generate PM schedules based on frequency
+      // Generate PM schedules based on task instances
       if (pmData?.pm_start_date && pmData?.pm_frequency_days) {
         const schedules: PMSchedule[] = [];
-        const startDate = new Date(pmData.pm_start_date);
+        const today = new Date().toISOString().split('T')[0];
         
-        for (let i = 0; i < 10; i++) {
-          const scheduleDate = new Date(startDate);
-          scheduleDate.setDate(scheduleDate.getDate() + (pmData.pm_frequency_days * i));
-          const scheduleDateStr = scheduleDate.toISOString().split('T')[0];
-          
-          schedules.push({
-            id: `pm-${i}`,
-            scheduled_date: scheduleDateStr,
-            status: auditDates.has(scheduleDateStr) ? 'Completed' : 'Pending'
+        // Fetch task instances for this asset
+        const { data: taskInstances } = await supabase
+          .from('pm_task_instances')
+          .select('task_date, assigned_to, status')
+          .eq('asset_id', assetId)
+          .order('task_date', { ascending: true });
+        
+        // Fetch user names and emails for assigned users
+        const assignedUserIds = [...new Set(taskInstances?.map(t => t.assigned_to).filter(Boolean) || [])];
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .in('id', assignedUserIds);
+        
+        const userMap = new Map(users?.map(u => [u.id, { name: u.name, email: u.email }]) || []);
+        
+        // Use actual task instances instead of generating
+        if (taskInstances && taskInstances.length > 0) {
+          taskInstances.forEach((taskInstance, index) => {
+            const userInfo = taskInstance.assigned_to ? userMap.get(taskInstance.assigned_to) : undefined;
+            
+            let status: 'Pending' | 'Completed' | 'Overdue' | 'Upcoming' = 'Pending';
+            
+            if (taskInstance.status === 'COMPLETED') {
+              status = 'Completed';
+            } else if (taskInstance.status === 'OVERDUE') {
+              status = 'Overdue';
+            } else if (taskInstance.status === 'PENDING') {
+              status = 'Pending';
+            } else if (taskInstance.status === 'UPCOMING') {
+              status = 'Upcoming';
+            } else if (taskInstance.task_date < today) {
+              status = 'Overdue';
+            }
+            
+            schedules.push({
+              id: `pm-${index}`,
+              scheduled_date: taskInstance.task_date,
+              status,
+              assigned_to_name: userInfo?.name,
+              assigned_to_email: userInfo?.email
+            });
           });
         }
+        
         setPmSchedules(schedules);
       }
 
@@ -145,7 +181,7 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
         const { data: floor } = await supabase
           .from('floors')
           .select('floor_name, floor_number')
-          .eq('id', asset.floor)
+          .eq('id', asset.floor_id)
           .single();
 
         setAssetSnapshot({
@@ -261,7 +297,11 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
                         {isTodayAuditDone ? 'Today\'s Audit Completed' : 'Audit Pending Today'}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {new Date().toLocaleDateString()}
+                        {pmSchedules.length > 0 && (
+                          <>
+                            {new Date(pmSchedules[0].scheduled_date).toLocaleDateString()} - {new Date(pmSchedules[pmSchedules.length - 1].scheduled_date).toLocaleDateString()}
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -274,11 +314,19 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
                   {pmSchedules.length === 0 ? (
                     <p className="text-sm text-gray-500 text-center py-4">No PM schedule configured</p>
                   ) : (
-                    pmSchedules.map((schedule) => (
-                      <div key={schedule.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                    pmSchedules.map((schedule) => {
+                      const isToday = schedule.scheduled_date === new Date().toISOString().split('T')[0];
+                      return (
+                      <div key={schedule.id} className={`flex items-center justify-between p-3 bg-gray-50 rounded ${
+                        isToday ? 'border-2 border-green-500' : 'border border-gray-200'
+                      }`}>
                         <div className="flex items-center gap-2">
                           {schedule.status === 'Completed' ? (
                             <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : schedule.status === 'Overdue' ? (
+                            <Clock className="h-4 w-4 text-red-600" />
+                          ) : schedule.status === 'Upcoming' ? (
+                            <Clock className="h-4 w-4 text-blue-600" />
                           ) : (
                             <Clock className="h-4 w-4 text-orange-600" />
                           )}
@@ -287,14 +335,25 @@ export function PMAssetDetail({ assetId, onClose }: PMAssetDetailProps) {
                               {new Date(schedule.scheduled_date).toLocaleDateString()}
                             </p>
                             <span className={`text-xs font-medium ${
-                              schedule.status === 'Completed' ? 'text-green-600' : 'text-orange-600'
+                              schedule.status === 'Completed' ? 'text-green-600' : 
+                              schedule.status === 'Overdue' ? 'text-red-600' : 
+                              schedule.status === 'Upcoming' ? 'text-blue-600' : 'text-orange-600'
                             }`}>
                               {schedule.status}
                             </span>
                           </div>
                         </div>
+                        {schedule.assigned_to_name && (
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">{schedule.assigned_to_name}</p>
+                            {schedule.assigned_to_email && (
+                              <p className="text-xs text-gray-500">{schedule.assigned_to_email}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </div>

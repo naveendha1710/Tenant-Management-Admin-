@@ -18,9 +18,10 @@ interface UserFormProps {
   onResetPassword?: (userId: string) => void;
   onToggleApprover?: (userId: string, isApprover: boolean) => void;
   isOtherUserForm?: boolean;
+  isTenantUserForm?: boolean;
 }
 
-export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSave, onDelete, onResetPassword, onToggleApprover, isOtherUserForm = false }) => {
+export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSave, onDelete, onResetPassword, onToggleApprover, isOtherUserForm = false, isTenantUserForm = false }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'access' | 'security' | 'permissions'>(isOtherUserForm ? 'access' : 'profile');
   const [formData, setFormData] = useState({
     name: '',
@@ -36,6 +37,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     isApprover: false,
     assetMovementApprover: false,
     assetIncharge: false,
+    assetAuditor: false,
+    canManageWorkflows: false,
     technicianCategory: '',
     notificationsEnabled: true,
     userManagementAccess: {
@@ -50,9 +53,11 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
       invoices: true,
       documents: true,
       maintenance: true,
-      myAssets: true
+      myAssets: true,
+      assetMovement: true
     },
-    branchAccess: [] as string[]
+    branchAccess: [] as string[],
+    tenantId: '' as string
   });
   const [initialData, setInitialData] = useState(formData);
   const [hasChanges, setHasChanges] = useState(false);
@@ -62,6 +67,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [allTenants, setAllTenants] = useState<any[]>([]);
+  const [userType, setUserType] = useState<'Main User' | 'Sub User'>('Sub User');
 
   const roles: UserRole[] = ['Super Admin', 'Admin', 'Accountant', 'Maintenance Manager', 'Helpdesk', 'Technician', 'Viewer', 'Manage Tickets', 'Vendor', 'Asset Manager'];
 
@@ -129,6 +136,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
         isApprover: user.isApprover || false,
         assetMovementApprover: (user as any).assetMovementApprover || false,
         assetIncharge: (user as any).assetIncharge || false,
+        assetAuditor: (user as any).assetAuditor || false,
+        canManageWorkflows: (user as any).canManageWorkflows || false,
         technicianCategory: user.technicianCategory || '',
         notificationsEnabled: (user as any).notificationsEnabled !== undefined ? (user as any).notificationsEnabled : true,
         userManagementAccess: (user as any).userManagementAccess || {
@@ -143,7 +152,8 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           invoices: user.permissions.some((p: any) => p.module === 'Invoices' && p.view),
           documents: user.permissions.some((p: any) => p.module === 'Documents' && p.view),
           maintenance: user.permissions.some((p: any) => p.module === 'Maintenance' && p.view),
-          myAssets: user.permissions.some((p: any) => p.module === 'My Assets' && p.view)
+          myAssets: user.permissions.some((p: any) => p.module === 'My Assets' && p.view),
+          assetMovement: user.permissions.some((p: any) => p.module === 'Asset Movement' && p.view)
         } : {
           profile: true,
           dashboard: true,
@@ -151,9 +161,11 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           invoices: true,
           documents: true,
           maintenance: true,
-          myAssets: true
+          myAssets: true,
+          assetMovement: true
         },
-        branchAccess: user.branchAccess || []
+        branchAccess: user.branchAccess || [],
+        tenantId: user.tenantId || ''
       };
       setFormData(data);
       setInitialData(data);
@@ -173,6 +185,7 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
         isApprover: false,
         assetMovementApprover: false,
         assetIncharge: false,
+        assetAuditor: false,
         technicianCategory: '',
         notificationsEnabled: true,
         userManagementAccess: {
@@ -186,9 +199,11 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
           invoices: true,
           documents: true,
           maintenance: true,
-          myAssets: true
+          myAssets: true,
+          assetMovement: true
         },
-        branchAccess: []
+        branchAccess: [],
+        tenantId: ''
       };
       setFormData(data);
       setInitialData(data);
@@ -197,11 +212,73 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     setHasChanges(false);
     setActiveTab(isOtherUserForm ? 'access' : 'profile');
     
-    // Load tenants for branch access
+    if (isTenantUserForm || user?.role === 'Tenant') {
+      loadAllTenants();
+      if (formData.tenantId) {
+        loadTenantBranches();
+      }
+    }
+    
     if (user?.role === 'Tenant') {
       loadTenants();
     }
-  }, [user, isOpen, isOtherUserForm]);
+  }, [user, isOpen, isOtherUserForm, isTenantUserForm]);
+
+  const loadTenantBranches = async () => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    if (!formData.tenantId) return;
+    
+    try {
+      // Get the selected tenant
+      const { data: selectedTenant, error: tenantError } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', formData.tenantId)
+        .maybeSingle();
+      
+      if (tenantError) {
+        console.error('Error loading selected tenant:', tenantError);
+        return;
+      }
+      
+      if (!selectedTenant) return;
+      
+      // Get parent tenant ID (if this is a branch, get parent; if main, use own ID)
+      const parentId = selectedTenant.parent_tenant_id || selectedTenant.id;
+      
+      // Get all tenants in this group (parent + branches)
+      const { data: groupTenants, error: groupError } = await supabase
+        .from('tenants')
+        .select('*')
+        .or(`id.eq.${parentId},parent_tenant_id.eq.${parentId}`);
+      
+      if (groupError) {
+        console.error('Error loading group tenants:', groupError);
+        return;
+      }
+      
+      if (groupTenants) {
+        // Filter out the main tenant itself
+        const branches = groupTenants.filter(t => t.id !== formData.tenantId);
+        setTenants(branches);
+      }
+    } catch (error) {
+      console.error('Error in loadTenantBranches:', error);
+    }
+  };
+
+  const loadAllTenants = async () => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    const { data } = await supabase.from('tenants').select('*').order('company');
+    if (data) {
+      setAllTenants(data);
+      if (user) {
+        const isMainUser = data.some(t => t.email === user.email);
+        setUserType(isMainUser ? 'Main User' : 'Sub User');
+      }
+    }
+  };
 
   const loadTenants = async () => {
     const { tenantDataService } = await import('@/data/tenantData');
@@ -209,28 +286,66 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     
     if (!user) return;
     
-    // Find the tenant record for this user
-    const { data: userTenant } = await supabase
-      .from('tenants')
-      .select('*')
-      .eq('email', user.email)
-      .single();
-    
-    if (!userTenant) return;
-    
-    // Get parent tenant ID (if this is a branch, get parent; if main, use own ID)
-    const parentId = userTenant.parent_tenant_id || userTenant.id;
-    
-    // Get all tenants in this group (parent + branches)
-    const { data: groupTenants } = await supabase
-      .from('tenants')
-      .select('*')
-      .or(`id.eq.${parentId},parent_tenant_id.eq.${parentId}`);
-    
-    if (groupTenants) {
-      const all = await tenantDataService.getAllTenants();
-      const filtered = groupTenants.map(t => all.find(at => at.id === t.id)).filter(Boolean);
-      setTenants(filtered as any[]);
+    try {
+      // Find the tenant record for this user using tenantId if available
+      let userTenant;
+      
+      if (user.tenantId) {
+        // If user has tenantId, use it directly
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('id', user.tenantId)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Error loading tenant by ID:', error);
+          return;
+        }
+        userTenant = data;
+      } else {
+        // Fallback to email lookup for main tenant users
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('email', user.email)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Error loading tenant by email:', error);
+          return;
+        }
+        userTenant = data;
+      }
+      
+      if (!userTenant) return;
+      
+      // Get parent tenant ID (if this is a branch, get parent; if main, use own ID)
+      const parentId = userTenant.parent_tenant_id || userTenant.id;
+      
+      // Get all tenants in this group (parent + branches)
+      const { data: groupTenants, error: groupError } = await supabase
+        .from('tenants')
+        .select('*')
+        .or(`id.eq.${parentId},parent_tenant_id.eq.${parentId}`);
+      
+      if (groupError) {
+        console.error('Error loading group tenants:', groupError);
+        return;
+      }
+      
+      if (groupTenants) {
+        // Filter out the user's own tenant to show only other branches
+        const branches = groupTenants.filter(t => t.id !== userTenant.id);
+        const all = await tenantDataService.getAllTenants();
+        const filtered = branches.map(t => all.find(at => at.id === t.id)).filter(Boolean);
+        setTenants(filtered as any[]);
+      } else {
+        setTenants([]);
+      }
+    } catch (error) {
+      console.error('Error in loadTenants:', error);
+      setTenants([]);
     }
   };
 
@@ -249,9 +364,13 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // For Tenant users, convert sidebar permissions to permissions array
+    if (isTenantUserForm && !formData.tenantId) {
+      alert('Please select a tenant');
+      return;
+    }
+    
     let finalPermissions = permissions;
-    if (user?.role === 'Tenant') {
+    if (isTenantUserForm || user?.role === 'Tenant') {
       finalPermissions = [
         { module: 'Profile', view: formData.tenantSidebarPermissions.profile, add: false, edit: false, delete: false },
         { module: 'Dashboard', view: formData.tenantSidebarPermissions.dashboard, add: false, edit: false, delete: false },
@@ -259,20 +378,21 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
         { module: 'Invoices', view: formData.tenantSidebarPermissions.invoices, add: false, edit: false, delete: false },
         { module: 'Documents', view: formData.tenantSidebarPermissions.documents, add: false, edit: false, delete: false },
         { module: 'Maintenance', view: formData.tenantSidebarPermissions.maintenance, add: false, edit: false, delete: false },
-        { module: 'My Assets', view: formData.tenantSidebarPermissions.myAssets, add: false, edit: false, delete: false }
+        { module: 'My Assets', view: formData.tenantSidebarPermissions.myAssets, add: false, edit: false, delete: false },
+        { module: 'Asset Movement', view: formData.tenantSidebarPermissions.assetMovement, add: false, edit: false, delete: false }
       ];
     }
     
-    // For Tenant users, ensure role is set correctly
-    const finalSelectedRoles = user?.role === 'Tenant' ? ['Tenant'] : formData.selectedRoles;
-    const finalRole = user?.role === 'Tenant' ? 'Tenant' : (formData.selectedRoles.length > 0 ? formData.selectedRoles[0] : 'Viewer');
+    const finalSelectedRoles = (isTenantUserForm || user?.role === 'Tenant') ? ['Tenant'] : formData.selectedRoles;
+    const finalRole = (isTenantUserForm || user?.role === 'Tenant') ? 'Tenant' : (formData.selectedRoles.length > 0 ? formData.selectedRoles[0] : 'Viewer');
     
     const userData: any = { 
       ...formData, 
       userType: 'custom', 
       permissions: finalPermissions, 
       role: finalRole,
-      selectedRoles: finalSelectedRoles
+      selectedRoles: finalSelectedRoles,
+      tenantId: (isTenantUserForm || user?.role === 'Tenant') ? formData.tenantId : undefined
     };
     
     if (!userData.password || userData.password.trim() === '') {
@@ -320,8 +440,9 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
     'Maintenance': ['Manage Tickets'],
     'Assets': ['Assets', 'Asset Master', 'Asset Movement', 'Inventory', 'Preventive Maintenance', 'Physical Audit', 'Configuration'],
     'User Management': ['Users'],
-    'Master Settings': ['Settings', 'Asset Form', 'Tenant Form'],
-    'Roles': ['Helpdesk']
+    'Master Settings': ['Settings', 'Asset Form', 'Tenant Form', 'Building Form'],
+    'Roles': ['Helpdesk'],
+    'Workflows': ['Workflow Manager']
   };
 
   // Get all modules from moduleGroups
@@ -339,7 +460,7 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
 
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
-    ...(user?.role === 'Tenant' ? [
+    ...(user?.role === 'Tenant' || isTenantUserForm ? [
       { id: 'branches' as const, label: 'Branches', icon: Building2 },
       { id: 'sidebar' as const, label: 'Sidebar', icon: Shield }
     ] : [
@@ -366,7 +487,14 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
                 {user ? getInitials(formData.name) : <User className="h-5 w-5" />}
               </div>
               <div>
-                <h2 className="text-base font-semibold">{user ? formData.name : 'New User'}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold">{user ? formData.name : 'New User'}</h2>
+                  {user?.role === 'Tenant' && (
+                    <Badge variant={userType === 'Main User' ? 'default' : 'outline'} className="text-xs">
+                      {userType}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{user ? formData.email : 'Create system user'}</p>
               </div>
             </div>
@@ -403,6 +531,37 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
             {/* Tab 1: Profile */}
             {activeTab === 'profile' && (
               <div className="space-y-4">
+                {(isTenantUserForm || user?.role === 'Tenant') && (
+                  <div>
+                    <Label htmlFor="tenantId" className="text-sm font-medium">Select Tenant</Label>
+                    <Select 
+                      value={formData.tenantId} 
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, tenantId: value });
+                        // Load branches when tenant is selected
+                        setTimeout(() => loadTenantBranches(), 100);
+                      }}
+                      required={isTenantUserForm}
+                    >
+                      <SelectTrigger id="tenantId" className="mt-1.5">
+                        <SelectValue placeholder="Choose tenant" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[103]">
+                        {allTenants.length === 0 ? (
+                          <SelectItem value="loading" disabled>Loading tenants...</SelectItem>
+                        ) : (
+                          allTenants.map(t => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.company} - {t.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1.5">This user will belong to the selected tenant</p>
+                  </div>
+                )}
+                
                 <div>
                   <Label htmlFor="name" className="text-sm font-medium">Full Name</Label>
                   <Input
@@ -543,47 +702,51 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
             )}
 
             {/* Tab 2: Branches (Tenant only) */}
-            {activeTab === 'branches' && user?.role === 'Tenant' && (
+            {activeTab === 'branches' && (user?.role === 'Tenant' || isTenantUserForm) && (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-xs text-blue-800">
-                    <strong>Branch Access:</strong> Select which branches this user can access. Empty = no restrictions.
+                    <strong>Branch Access:</strong> Select which tenant branches this user can access. Empty = access to all branches.
                   </p>
                 </div>
                 
                 <div className="space-y-2 border rounded-lg p-3 max-h-96 overflow-y-auto">
-                  {tenants.filter(t => t.email !== user.email).map(t => (
-                    <div key={t.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded">
-                      <Checkbox
-                        id={`branch-${t.id}`}
-                        checked={formData.branchAccess.includes(t.id)}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            branchAccess: checked
-                              ? [...formData.branchAccess, t.id]
-                              : formData.branchAccess.filter(id => id !== t.id)
-                          });
-                        }}
-                      />
-                      <Label htmlFor={`branch-${t.id}`} className="flex-1 cursor-pointer flex items-center gap-2 text-sm">
-                        <Building2 className="h-3.5 w-3.5 text-gray-500" />
-                        <div>
-                          <p className="font-medium">{t.company}</p>
-                          <p className="text-xs text-muted-foreground">{t.email}</p>
-                        </div>
-                      </Label>
-                    </div>
-                  ))}
+                  {tenants.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">No branches available</p>
+                  ) : (
+                    tenants.map(t => (
+                      <div key={t.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded">
+                        <Checkbox
+                          id={`branch-${t.id}`}
+                          checked={formData.branchAccess.includes(t.id)}
+                          onCheckedChange={(checked) => {
+                            setFormData({
+                              ...formData,
+                              branchAccess: checked
+                                ? [...formData.branchAccess, t.id]
+                                : formData.branchAccess.filter(id => id !== t.id)
+                            });
+                          }}
+                        />
+                        <Label htmlFor={`branch-${t.id}`} className="flex-1 cursor-pointer flex items-center gap-2 text-sm">
+                          <Building2 className="h-3.5 w-3.5 text-gray-500" />
+                          <div>
+                            <p className="font-medium">{t.company}</p>
+                            <p className="text-xs text-muted-foreground">{t.email}</p>
+                          </div>
+                        </Label>
+                      </div>
+                    ))
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Selected: {formData.branchAccess.length} {formData.branchAccess.length === 0 && '(No restrictions)'}
+                  Selected: {formData.branchAccess.length} {formData.branchAccess.length === 0 && '(Access to all branches)'}
                 </p>
               </div>
             )}
 
             {/* Tab 3: Sidebar (Tenant only) */}
-            {activeTab === 'sidebar' && user?.role === 'Tenant' && (
+            {activeTab === 'sidebar' && (user?.role === 'Tenant' || isTenantUserForm) && (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-xs text-blue-800">
@@ -672,7 +835,30 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
                         })}
                       />
                     </div>
+                    <div className="flex items-center justify-between py-2">
+                      <Label htmlFor="sidebar-assetmovement" className="text-sm">Asset Movement</Label>
+                      <Switch
+                        id="sidebar-assetmovement"
+                        checked={formData.tenantSidebarPermissions.assetMovement}
+                        onCheckedChange={(checked) => setFormData({ 
+                          ...formData, 
+                          tenantSidebarPermissions: { ...formData.tenantSidebarPermissions, assetMovement: checked }
+                        })}
+                      />
+                    </div>
                   </div>
+                </div>
+                
+                <div className="flex items-center justify-between py-3 border-y mt-4">
+                  <div>
+                    <Label htmlFor="assetMovementApprover" className="text-sm font-medium">Asset Movement Approver</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Can approve/reject asset movements in workflows</p>
+                  </div>
+                  <Switch
+                    id="assetMovementApprover"
+                    checked={formData.assetMovementApprover}
+                    onCheckedChange={(checked) => setFormData({ ...formData, assetMovementApprover: checked })}
+                  />
                 </div>
               </div>
             )}
@@ -814,6 +1000,20 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
                       id="assetIncharge"
                       checked={formData.assetIncharge}
                       onCheckedChange={(checked) => setFormData({ ...formData, assetIncharge: checked })}
+                    />
+                  </div>
+                )}
+                
+                {(permissions.some(p => p.module === 'Physical Audit' && p.view) || permissions.some(p => p.module === 'Preventive Maintenance' && p.view)) && (
+                  <div className="flex items-center justify-between py-3 border-b">
+                    <div>
+                      <Label htmlFor="assetAuditor" className="text-sm font-medium">Asset Auditor</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Can be assigned PM audits</p>
+                    </div>
+                    <Switch
+                      id="assetAuditor"
+                      checked={formData.assetAuditor}
+                      onCheckedChange={(checked) => setFormData({ ...formData, assetAuditor: checked })}
                     />
                   </div>
                 )}

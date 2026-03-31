@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,7 +76,6 @@ export default function MasterSettings() {
     sizes: [] as string[]
   });
   const [currentField, setCurrentField] = useState<'name' | 'shortCode' | 'colors' | 'materials' | 'sizes'>('name');
-  const [currentInput, setCurrentInput] = useState('');
   const [colorInput, setColorInput] = useState('');
   const [materialInput, setMaterialInput] = useState('');
   const [sizeInput, setSizeInput] = useState('');
@@ -94,6 +93,12 @@ export default function MasterSettings() {
   const [existingColors, setExistingColors] = useState<string[]>([]);
   const [existingBodies, setExistingBodies] = useState<string[]>([]);
   const [existingSizes, setExistingSizes] = useState<string[]>([]);
+  
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const shortCodeInputRef = useRef<HTMLInputElement>(null);
+  const colorsInputRef = useRef<HTMLInputElement>(null);
+  const materialsInputRef = useRef<HTMLInputElement>(null);
+  const sizesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -251,35 +256,41 @@ export default function MasterSettings() {
         if (activeTab === 'manufacturers' || activeTab === 'general_charges' || activeTab === 'service_charges' || activeTab === 'building_types' || activeTab === 'amenities') {
           setAddedItems([...addedItems, { name: formData.name }]);
           setFormData({ ...formData, name: '' });
+          setTimeout(() => nameInputRef.current?.focus(), 0);
         } else {
           setCurrentField('shortCode');
+          setTimeout(() => shortCodeInputRef.current?.focus(), 0);
         }
       } else if (currentField === 'shortCode' && formData.shortCode.trim()) {
         if (activeTab === 'sub_subcategories') {
           setCurrentField('colors');
+          setTimeout(() => colorsInputRef.current?.focus(), 0);
         } else {
           setAddedItems([...addedItems, { name: formData.name, shortCode: formData.shortCode }]);
           setFormData({ ...formData, name: '', shortCode: '' });
           setCurrentField('name');
+          setTimeout(() => nameInputRef.current?.focus(), 0);
         }
-      } else if (currentField === 'colors' && currentInput.trim()) {
-        setFormData({...formData, colors: [...formData.colors, currentInput.trim()]});
-        setCurrentInput('');
-      } else if (currentField === 'materials' && currentInput.trim()) {
-        setFormData({...formData, bodies: [...formData.bodies, currentInput.trim()]});
-        setCurrentInput('');
-      } else if (currentField === 'sizes' && currentInput.trim()) {
-        setFormData({...formData, sizes: [...formData.sizes, currentInput.trim()]});
-        setCurrentInput('');
+      } else if (currentField === 'colors' && colorInput.trim()) {
+        setFormData({...formData, colors: [...formData.colors, colorInput.trim()]});
+        setColorInput('');
+      } else if (currentField === 'materials' && materialInput.trim()) {
+        setFormData({...formData, bodies: [...formData.bodies, materialInput.trim()]});
+        setMaterialInput('');
+      } else if (currentField === 'sizes' && sizeInput.trim()) {
+        setFormData({...formData, sizes: [...formData.sizes, sizeInput.trim()]});
+        setSizeInput('');
       }
     } else if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
       if (currentField === 'colors') {
         setCurrentField('materials');
-        setCurrentInput('');
+        setColorInput('');
+        setTimeout(() => materialsInputRef.current?.focus(), 0);
       } else if (currentField === 'materials') {
         setCurrentField('sizes');
-        setCurrentInput('');
+        setMaterialInput('');
+        setTimeout(() => sizesInputRef.current?.focus(), 0);
       } else if (currentField === 'sizes') {
         // Add the complete item with all combinations to addedItems
         setAddedItems([...addedItems, { 
@@ -291,7 +302,8 @@ export default function MasterSettings() {
         }]);
         setFormData({ name: '', shortCode: '', parentCategoryId: formData.parentCategoryId, colors: [], bodies: [], sizes: [] });
         setCurrentField('name');
-        setCurrentInput('');
+        setSizeInput('');
+        setTimeout(() => nameInputRef.current?.focus(), 0);
       }
     }
   };
@@ -496,7 +508,6 @@ export default function MasterSettings() {
         sizes: existingSizes 
       });
       setCurrentField('name');
-      setCurrentInput('');
       setColorInput('');
       setMaterialInput('');
       setSizeInput('');
@@ -548,7 +559,6 @@ export default function MasterSettings() {
     
     setFormData({ name, shortCode: shortCode || '', parentCategoryId: parentId, colors: existingColors, bodies: existingBodies, sizes: existingSizes });
     setCurrentField('name');
-    setCurrentInput('');
     setColorInput('');
     setMaterialInput('');
     setSizeInput('');
@@ -883,7 +893,6 @@ export default function MasterSettings() {
               setFormData({ name: '', shortCode: '', parentCategoryId: '', colors: [], bodies: [], sizes: [] });
               setEditingItem(null);
               setCurrentField('name');
-              setCurrentInput('');
               setColorInput('');
               setMaterialInput('');
               setSizeInput('');
@@ -899,7 +908,7 @@ export default function MasterSettings() {
                 Add New
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
               <DialogHeader>
                 <DialogTitle>
                   {editingItem ? (
@@ -916,7 +925,8 @@ export default function MasterSettings() {
                        activeTab === 'room_categories' ? 'Room Categories' : activeTab.replace('_', ' ')}
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 pt-4">
+              <div className="flex-1 overflow-y-auto">
+              <div className="space-y-4 pt-4 px-1">
                 {activeTab === 'subcategories' && (
                   <div className="space-y-2">
                     <Label>Parent Asset Type</Label>
@@ -1048,17 +1058,17 @@ export default function MasterSettings() {
                                     isExisting ? 'bg-blue-100 border border-blue-300' : 'bg-blue-50'
                                   }`}>
                                     <span className={isExisting ? 'font-medium' : ''}>{color}</span>
-                                    {!isExisting && (
+                                    <div className="flex items-center gap-2">
+                                      {isExisting && (
+                                        <span className="text-xs text-blue-600">Existing</span>
+                                      )}
                                       <button
                                         onClick={() => setFormData({...formData, colors: formData.colors.filter((_, i) => i !== idx)})}
-                                        className="text-red-500 hover:text-red-700 ml-2"
+                                        className="text-red-500 hover:text-red-700"
                                       >
                                         ×
                                       </button>
-                                    )}
-                                    {isExisting && (
-                                      <span className="text-xs text-blue-600 ml-2">Existing</span>
-                                    )}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1110,17 +1120,17 @@ export default function MasterSettings() {
                                     isExisting ? 'bg-green-100 border border-green-300' : 'bg-green-50'
                                   }`}>
                                     <span className={isExisting ? 'font-medium' : ''}>{material}</span>
-                                    {!isExisting && (
+                                    <div className="flex items-center gap-2">
+                                      {isExisting && (
+                                        <span className="text-xs text-green-600">Existing</span>
+                                      )}
                                       <button
                                         onClick={() => setFormData({...formData, bodies: formData.bodies.filter((_, i) => i !== idx)})}
-                                        className="text-red-500 hover:text-red-700 ml-2"
+                                        className="text-red-500 hover:text-red-700"
                                       >
                                         ×
                                       </button>
-                                    )}
-                                    {isExisting && (
-                                      <span className="text-xs text-green-600 ml-2">Existing</span>
-                                    )}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1172,17 +1182,17 @@ export default function MasterSettings() {
                                     isExisting ? 'bg-purple-100 border border-purple-300' : 'bg-purple-50'
                                   }`}>
                                     <span className={isExisting ? 'font-medium' : ''}>{size}</span>
-                                    {!isExisting && (
+                                    <div className="flex items-center gap-2">
+                                      {isExisting && (
+                                        <span className="text-xs text-purple-600">Existing</span>
+                                      )}
                                       <button
                                         onClick={() => setFormData({...formData, sizes: formData.sizes.filter((_, i) => i !== idx)})}
-                                        className="text-red-500 hover:text-red-700 ml-2"
+                                        className="text-red-500 hover:text-red-700"
                                       >
                                         ×
                                       </button>
-                                    )}
-                                    {isExisting && (
-                                      <span className="text-xs text-purple-600 ml-2">Existing</span>
-                                    )}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1196,104 +1206,229 @@ export default function MasterSettings() {
                     )}
                   </>
                 ) : (
-                  // Add mode: Use Enter key flow
+                  // Add mode: Show both fields, Enter to move to next
                   <>
                     <div className="space-y-2">
-                      <Label>
-                        {currentField === 'name' ? 'Name' : 
-                         currentField === 'shortCode' ? 'Short Code' :
-                         currentField === 'colors' ? 'Color' :
-                         currentField === 'materials' ? 'Material' : 'Size'} 
-                        {activeTab === 'sub_subcategories' && currentField !== 'name' && currentField !== 'shortCode' ? 
-                          ' (Enter to add, Shift+Enter for next field)' : ' (Press Enter)'}
-                      </Label>
-                      {currentField === 'name' ? (
+                      <Label>Name {currentField === 'name' && '(Press Enter)'}</Label>
+                      <Input
+                        ref={nameInputRef}
+                        value={formData.name}
+                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                        onKeyPress={handleKeyPress}
+                        placeholder="Enter name and press Enter"
+                        autoFocus={currentField === 'name'}
+                        className={currentField === 'name' ? 'ring-2 ring-primary' : ''}
+                      />
+                    </div>
+                    {(activeTab !== 'manufacturers' && activeTab !== 'general_charges' && activeTab !== 'service_charges' && activeTab !== 'building_types' && activeTab !== 'amenities') && (
+                      <div className="space-y-2">
+                        <Label>Short Code {currentField === 'shortCode' && '(Press Enter)'}</Label>
                         <Input
-                          value={formData.name}
-                          onChange={(e) => setFormData({...formData, name: e.target.value})}
-                          onKeyPress={handleKeyPress}
-                          placeholder="Enter name and press Enter"
-                          autoFocus
-                        />
-                      ) : currentField === 'shortCode' ? (
-                        <Input
+                          ref={shortCodeInputRef}
                           value={formData.shortCode}
                           onChange={(e) => setFormData({...formData, shortCode: e.target.value.toUpperCase()})}
                           onKeyPress={handleKeyPress}
                           placeholder="Enter short code and press Enter"
                           minLength={3}
                           maxLength={5}
-                          autoFocus
+                          autoFocus={currentField === 'shortCode'}
+                          className={currentField === 'shortCode' ? 'ring-2 ring-primary' : ''}
                         />
-                      ) : (
-                        <Input
-                          value={currentInput}
-                          onChange={(e) => setCurrentInput(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          placeholder={`Enter ${currentField === 'colors' ? 'color' : currentField === 'materials' ? 'material' : 'size'}`}
-                          autoFocus
-                        />
-                      )}
-                    </div>
+                      </div>
+                    )}
                     {activeTab === 'sub_subcategories' && (
-                      <>
-                        {formData.colors.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div className="space-y-2">
-                            <Label>Colors Added</Label>
-                            <div className="flex flex-wrap gap-1">
-                              {formData.colors.map((color, idx) => (
-                                <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded flex items-center gap-1">
-                                  {color}
-                                  <button onClick={() => setFormData({...formData, colors: formData.colors.filter((_, i) => i !== idx)})} className="text-blue-600 hover:text-blue-800">×</button>
-                                </span>
-                              ))}
+                            <Label>Colors {currentField === 'colors' && '(Enter to add, Shift+Enter for next)'}</Label>
+                            <Input
+                              ref={colorsInputRef}
+                              value={colorInput}
+                              onChange={(e) => setColorInput(e.target.value)}
+                              onKeyPress={handleKeyPress}
+                              placeholder="Add color"
+                              autoFocus={currentField === 'colors'}
+                              className={currentField === 'colors' ? 'ring-2 ring-primary' : ''}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label>Materials {currentField === 'materials' && '(Enter to add, Shift+Enter for next)'}</Label>
+                            <Input
+                              ref={materialsInputRef}
+                              value={materialInput}
+                              onChange={(e) => setMaterialInput(e.target.value)}
+                              onKeyPress={handleKeyPress}
+                              placeholder="Add material"
+                              autoFocus={currentField === 'materials'}
+                              className={currentField === 'materials' ? 'ring-2 ring-primary' : ''}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label>Sizes {currentField === 'sizes' && '(Enter to add, Shift+Enter to save)'}</Label>
+                            <Input
+                              ref={sizesInputRef}
+                              value={sizeInput}
+                              onChange={(e) => setSizeInput(e.target.value)}
+                              onKeyPress={handleKeyPress}
+                              placeholder="Add size"
+                              autoFocus={currentField === 'sizes'}
+                              className={currentField === 'sizes' ? 'ring-2 ring-primary' : ''}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="space-y-2">
+                            <div className="min-h-[100px] max-h-[150px] overflow-y-auto border rounded-lg">
+                              {formData.colors.length > 0 ? (
+                                <div className="divide-y">
+                                  {formData.colors.map((color, idx) => (
+                                    <div key={idx} className="flex items-center justify-between px-3 py-2 hover:bg-blue-50 transition-colors">
+                                      <span className="text-sm font-medium text-gray-700">{color}</span>
+                                      <button
+                                        onClick={() => setFormData({...formData, colors: formData.colors.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1 transition-colors"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400 text-sm">No colors added</div>
+                              )}
                             </div>
                           </div>
-                        )}
-                        {formData.bodies.length > 0 && (
+                          
                           <div className="space-y-2">
-                            <Label>Materials Added</Label>
-                            <div className="flex flex-wrap gap-1">
-                              {formData.bodies.map((material, idx) => (
-                                <span key={idx} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded flex items-center gap-1">
-                                  {material}
-                                  <button onClick={() => setFormData({...formData, bodies: formData.bodies.filter((_, i) => i !== idx)})} className="text-green-600 hover:text-green-800">×</button>
-                                </span>
-                              ))}
+                            <div className="min-h-[100px] max-h-[150px] overflow-y-auto border rounded-lg">
+                              {formData.bodies.length > 0 ? (
+                                <div className="divide-y">
+                                  {formData.bodies.map((material, idx) => (
+                                    <div key={idx} className="flex items-center justify-between px-3 py-2 hover:bg-green-50 transition-colors">
+                                      <span className="text-sm font-medium text-gray-700">{material}</span>
+                                      <button
+                                        onClick={() => setFormData({...formData, bodies: formData.bodies.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1 transition-colors"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400 text-sm">No materials added</div>
+                              )}
                             </div>
                           </div>
-                        )}
-                        {formData.sizes.length > 0 && (
+                          
                           <div className="space-y-2">
-                            <Label>Sizes Added</Label>
-                            <div className="flex flex-wrap gap-1">
-                              {formData.sizes.map((size, idx) => (
-                                <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded flex items-center gap-1">
-                                  {size}
-                                  <button onClick={() => setFormData({...formData, sizes: formData.sizes.filter((_, i) => i !== idx)})} className="text-purple-600 hover:text-purple-800">×</button>
-                                </span>
-                              ))}
+                            <div className="min-h-[100px] max-h-[150px] overflow-y-auto border rounded-lg">
+                              {formData.sizes.length > 0 ? (
+                                <div className="divide-y">
+                                  {formData.sizes.map((size, idx) => (
+                                    <div key={idx} className="flex items-center justify-between px-3 py-2 hover:bg-purple-50 transition-colors">
+                                      <span className="text-sm font-medium text-gray-700">{size}</span>
+                                      <button
+                                        onClick={() => setFormData({...formData, sizes: formData.sizes.filter((_, i) => i !== idx)})}
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1 transition-colors"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400 text-sm">No sizes added</div>
+                              )}
                             </div>
                           </div>
-                        )}
-                      </>
+                        </div>
+                      </div>
                     )}
 
                     {addedItems.length > 0 && (
-                      <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
-                        <p className="text-sm font-medium mb-2">Added Items ({addedItems.length})</p>
-                        <div className="space-y-1">
-                          {addedItems.map((item, idx) => (
-                            <div key={idx} className="text-sm text-gray-600">
-                              {item.name} {item.shortCode && `(${item.shortCode})`}
-                            </div>
-                          ))}
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-4 py-2 border-b">
+                          <p className="text-sm font-semibold text-gray-700">Added Items ({addedItems.length})</p>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 sticky top-0">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                {(activeTab !== 'manufacturers' && activeTab !== 'general_charges' && activeTab !== 'service_charges' && activeTab !== 'building_types' && activeTab !== 'amenities') && (
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                                )}
+                                {activeTab === 'sub_subcategories' && (
+                                  <>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Colors</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Materials</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sizes</th>
+                                  </>
+                                )}
+                                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {addedItems.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 text-sm text-gray-500">{idx + 1}</td>
+                                  <td className="px-4 py-2 text-sm font-medium text-gray-900">{item.name}</td>
+                                  {(activeTab !== 'manufacturers' && activeTab !== 'general_charges' && activeTab !== 'service_charges' && activeTab !== 'building_types' && activeTab !== 'amenities') && (
+                                    <td className="px-4 py-2 text-sm text-gray-600">{item.shortCode || '-'}</td>
+                                  )}
+                                  {activeTab === 'sub_subcategories' && (
+                                    <>
+                                      <td className="px-4 py-2 text-sm">
+                                        <div className="flex flex-wrap gap-1">
+                                          {(item.colors || []).map((c, i) => (
+                                            <span key={i} className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{c}</span>
+                                          ))}
+                                          {(!item.colors || item.colors.length === 0) && <span className="text-gray-400 text-xs">-</span>}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2 text-sm">
+                                        <div className="flex flex-wrap gap-1">
+                                          {(item.bodies || []).map((b, i) => (
+                                            <span key={i} className="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded">{b}</span>
+                                          ))}
+                                          {(!item.bodies || item.bodies.length === 0) && <span className="text-gray-400 text-xs">-</span>}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2 text-sm">
+                                        <div className="flex flex-wrap gap-1">
+                                          {(item.sizes || []).map((s, i) => (
+                                            <span key={i} className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">{s}</span>
+                                          ))}
+                                          {(!item.sizes || item.sizes.length === 0) && <span className="text-gray-400 text-xs">-</span>}
+                                        </div>
+                                      </td>
+                                    </>
+                                  )}
+                                  <td className="px-4 py-2 text-center">
+                                    <button
+                                      onClick={() => setAddedItems(addedItems.filter((_, i) => i !== idx))}
+                                      className="text-red-500 hover:text-red-700 font-medium"
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     )}
                   </>
                 )}
-
+              </div>
+              </div>
+              <div className="border-t pt-4 mt-4">
                 <Button onClick={handleSaveAll} className="w-full" disabled={!editingItem && addedItems.length === 0}>
                   {editingItem ? (
                     linkedAssets[editingItem.name] ? 'Add New Options' : 'Update'

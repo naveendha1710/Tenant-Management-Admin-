@@ -18,6 +18,11 @@ const getSupabaseClient = () => {
         storageKey: 'rathinam-techpark-auth',
         autoRefreshToken: true,
       },
+      global: {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
+      },
     });
   }
   return supabaseInstance;

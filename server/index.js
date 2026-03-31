@@ -74,12 +74,26 @@ const sanitizePath = (filePath) => {
   return normalized;
 };
 
-// Multer configuration with category support
+// Multer configuration with category support and asset ID subdirectories
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const category = req.query.category || req.body.category || 'general';
     const sanitizedCategory = sanitizePath(category);
-    const categoryPath = path.join(UPLOAD_PATH, sanitizedCategory);
+    
+    let categoryPath;
+    
+    // Special handling for asset_pictures - create subdirectory with asset ID
+    if (category === 'asset_pictures') {
+      const assetId = req.query.assetId || req.body.assetId;
+      if (!assetId) {
+        return cb(new Error('Asset ID is required for asset_pictures category'));
+      }
+      const sanitizedAssetId = sanitizePath(assetId);
+      categoryPath = path.join(UPLOAD_PATH, sanitizedCategory, sanitizedAssetId);
+    } else {
+      // Default behavior for other categories (ticket_pictures, tenant-documents, etc.)
+      categoryPath = path.join(UPLOAD_PATH, sanitizedCategory);
+    }
     
     if (!fs.existsSync(categoryPath)) {
       fs.mkdirSync(categoryPath, { recursive: true });
@@ -113,6 +127,7 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), (req, res) => {
   try {
     console.log('[UPLOAD] Received upload request:', {
       category: req.query.category,
+      assetId: req.query.assetId,
       file: req.file ? req.file.originalname : 'none'
     });
     
@@ -122,11 +137,18 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), (req, res) => {
     }
 
     const category = req.query.category || req.body.category || 'general';
+    const assetId = req.query.assetId || req.body.assetId;
     const file = req.file;
 
     console.log('[UPLOAD] File uploaded successfully:', file.filename);
     
-    const fileUrl = `/uploads/${category}/${file.filename}`;
+    // Build file URL based on category
+    let fileUrl;
+    if (category === 'asset_pictures' && assetId) {
+      fileUrl = `/uploads/${category}/${assetId}/${file.filename}`;
+    } else {
+      fileUrl = `/uploads/${category}/${file.filename}`;
+    }
     
     res.json({ 
       success: true, 
@@ -136,6 +158,7 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), (req, res) => {
         size: file.size,
         mimetype: file.mimetype,
         category: category,
+        assetId: assetId,
         path: fileUrl,
         url: fileUrl
       }
@@ -181,15 +204,27 @@ app.post('/api/upload-multiple', uploadLimiter, upload.array('files', 10), (req,
     }
 
     const category = req.query.category || req.body.category || 'general';
-    const files = req.files.map(file => ({
-      name: file.filename,
-      originalname: file.originalname,
-      size: file.size,
-      mimetype: file.mimetype,
-      category: category,
-      path: `/uploads/${category}/${file.filename}`,
-      url: `/uploads/${category}/${file.filename}`
-    }));
+    const assetId = req.query.assetId || req.body.assetId;
+    
+    const files = req.files.map(file => {
+      let fileUrl;
+      if (category === 'asset_pictures' && assetId) {
+        fileUrl = `/uploads/${category}/${assetId}/${file.filename}`;
+      } else {
+        fileUrl = `/uploads/${category}/${file.filename}`;
+      }
+      
+      return {
+        name: file.filename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        category: category,
+        assetId: assetId,
+        path: fileUrl,
+        url: fileUrl
+      };
+    });
 
     res.json({ success: true, files });
   } catch (error) {

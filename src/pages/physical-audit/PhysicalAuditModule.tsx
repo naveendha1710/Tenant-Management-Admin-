@@ -1,6 +1,6 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useState, useEffect, useRef } from 'react';
-import { QrCode, CheckCircle2, XCircle, Eye, ArrowRight, Camera, X, Calendar, MapPin } from 'lucide-react';
+import { QrCode, CheckCircle2, XCircle, Eye, ArrowRight, Camera, X, Calendar, MapPin, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -37,7 +37,7 @@ interface Asset {
   asset_category: string;
   asset_type: string;
   serial_number: string;
-  asset_picture: string;
+  asset_pictures: string;
   building: string;
   floor: string;
   room_rack: string;
@@ -85,12 +85,86 @@ export default function PhysicalAuditModule() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [todayAssets, setTodayAssets] = useState<any[]>([]);
   const [loadingToday, setLoadingToday] = useState(true);
+  const [completedAssets, setCompletedAssets] = useState<any[]>([]);
+  const [loadingCompleted, setLoadingCompleted] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const today = new Date().toISOString().split('T')[0];
+  const isUpcomingDate = selectedDate > today;
   const { coordinates, error: gpsError, loading: gpsLoading, captureLocation, reset: resetGPS } = useGPSCapture();
+  const [isAssetAssignedToUser, setIsAssetAssignedToUser] = useState(false);
 
   useEffect(() => {
     fetchAuditHistory();
     loadTodayAuditAssets();
+    loadCompletedAudits();
   }, []);
+
+  useEffect(() => {
+    loadTodayAuditAssets();
+  }, [selectedDate]);
+
+  const loadCompletedAudits = async () => {
+    try {
+      setLoadingCompleted(true);
+      const today = new Date().toISOString().split('T')[0];
+      const { data: taskInstances } = await supabase
+        .from('pm_task_instances')
+        .select('asset_id, completed_at')
+        .eq('task_date', today)
+        .eq('assigned_to', user?.id)
+        .eq('status', 'COMPLETED');
+
+      if (!taskInstances || taskInstances.length === 0) {
+        setCompletedAssets([]);
+        setLoadingCompleted(false);
+        return;
+      }
+
+      const assetIds = taskInstances.map(t => t.asset_id);
+      const { data: assets } = await supabase
+        .from('assets')
+        .select('id, asset_id, asset_name, asset_category, building, floor_id, handover_to')
+        .in('id', assetIds);
+
+      if (!assets) {
+        setCompletedAssets([]);
+        setLoadingCompleted(false);
+        return;
+      }
+
+      const buildingIds = [...new Set(assets.map(a => a.building).filter(Boolean))];
+      const floorIds = [...new Set(assets.map(a => a.floor_id).filter(Boolean))];
+      const tenantIds = [...new Set(assets.map(a => a.handover_to).filter(Boolean))];
+
+      const [{ data: buildings }, { data: floors }, { data: tenants }] = await Promise.all([
+        supabase.from('buildings').select('id, name').in('id', buildingIds),
+        supabase.from('floors').select('id, floor_name, floor_number').in('id', floorIds),
+        supabase.from('tenants').select('id, company, name').in('id', tenantIds)
+      ]);
+
+      const buildingMap = new Map(buildings?.map(b => [b.id, b.name]) || []);
+      const floorMap = new Map(floors?.map(f => [f.id, f.floor_name || f.floor_number]) || []);
+      const tenantMap = new Map(tenants?.map(t => [t.id, t.company || t.name]) || []);
+      const taskMap = new Map(taskInstances.map(t => [t.asset_id, t]));
+
+      const formattedAssets = assets.map(asset => {
+        const task = taskMap.get(asset.id);
+        return {
+          ...asset,
+          building_name: buildingMap.get(asset.building) || 'N/A',
+          floor_name: floorMap.get(asset.floor_id) || 'N/A',
+          tenant_name: tenantMap.get(asset.handover_to) || 'Unassigned',
+          completed_at: task?.completed_at
+        };
+      });
+
+      setCompletedAssets(formattedAssets);
+    } catch (error) {
+      console.error('Failed to load completed audits:', error);
+    } finally {
+      setLoadingCompleted(false);
+    }
+  };
 
   useEffect(() => {
     if (showScanModal) {
@@ -155,24 +229,25 @@ export default function PhysicalAuditModule() {
     if (data) setAuditHistory(data);
   };
 
-  const loadTodayAuditAssets = async () => {
+  const loadTodayAuditAssets = async (filterDate?: string) => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const dateToFilter = filterDate || selectedDate;
       
-      // Get assets scheduled for today OR overdue (past dates)
-      const { data: pmSchedules } = await supabase
-        .from('preventive_maintenance')
-        .select('asset_id, pm_next_date')
-        .eq('pm_enabled', true)
-        .lte('pm_next_date', today);
+      // Get PM task instances for the selected date assigned to current user that are NOT completed
+      const { data: taskInstances } = await supabase
+        .from('pm_task_instances')
+        .select('asset_id, assigned_to')
+        .eq('task_date', dateToFilter)
+        .eq('assigned_to', user?.id)
+        .neq('status', 'COMPLETED');
 
-      if (!pmSchedules || pmSchedules.length === 0) {
+      if (!taskInstances || taskInstances.length === 0) {
         setTodayAssets([]);
         setLoadingToday(false);
         return;
       }
 
-      const assetIds = pmSchedules.map(pm => pm.asset_id);
+      const assetIds = taskInstances.map(t => t.asset_id);
       
       const { data: assets } = await supabase
         .from('assets')
@@ -184,7 +259,7 @@ export default function PhysicalAuditModule() {
           serial_number,
           status,
           building,
-          floor,
+          floor_id,
           room_rack,
           handover_to
         `)
@@ -197,7 +272,7 @@ export default function PhysicalAuditModule() {
       }
 
       const buildingIds = [...new Set(assets.map(a => a.building).filter(Boolean))];
-      const floorIds = [...new Set(assets.map(a => a.floor).filter(Boolean))];
+      const floorIds = [...new Set(assets.map(a => a.floor_id).filter(Boolean))];
       const tenantIds = [...new Set(assets.map(a => a.handover_to).filter(Boolean))];
 
       const [{ data: buildings }, { data: floors }, { data: tenants }] = await Promise.all([
@@ -213,13 +288,13 @@ export default function PhysicalAuditModule() {
       const formattedAssets = assets.map(asset => ({
         ...asset,
         building_name: buildingMap.get(asset.building) || 'N/A',
-        floor_name: floorMap.get(asset.floor) || 'N/A',
+        floor_name: floorMap.get(asset.floor_id) || 'N/A',
         tenant_name: tenantMap.get(asset.handover_to) || 'Unassigned'
       }));
 
       setTodayAssets(formattedAssets);
     } catch (error) {
-      console.error('Failed to load today audit assets:', error);
+      console.error('Failed to load assigned audit assets:', error);
     } finally {
       setLoadingToday(false);
     }
@@ -228,16 +303,21 @@ export default function PhysicalAuditModule() {
   const validateAndShowAsset = async (scannedId: string) => {
     setLoading(true);
     
+    console.log('Scanning asset ID:', scannedId);
+    
     // Capture GPS immediately
     captureLocation();
     
     const { data: asset, error } = await supabase
       .from('assets')
-      .select('id, asset_id, asset_name, asset_category, asset_type, serial_number, asset_picture, building, floor, room_rack')
+      .select('id, asset_id, asset_name, asset_category, asset_type, serial_number, asset_pictures, building, floor_id, room_rack')
       .eq('asset_id', scannedId.trim())
       .single();
 
+    console.log('Asset query result:', { asset, error });
+
     if (error || !asset) {
+      console.error('Asset fetch error:', error);
       alert('Asset not found in Asset Master!');
       setAssetId('');
       setLoading(false);
@@ -245,9 +325,23 @@ export default function PhysicalAuditModule() {
       return;
     }
 
+    // Check if this asset is assigned to the current user for today
+    const today = new Date().toISOString().split('T')[0];
+    const { data: taskInstance } = await supabase
+      .from('pm_task_instances')
+      .select('assigned_to, status')
+      .eq('asset_id', asset.id)
+      .eq('task_date', today)
+      .eq('assigned_to', user?.id)
+      .neq('status', 'COMPLETED')
+      .maybeSingle();
+
+    const isAssigned = !!taskInstance;
+    setIsAssetAssignedToUser(isAssigned);
+
     // Fetch building and floor names
     const buildingIds = asset.building ? [asset.building] : [];
-    const floorIds = asset.floor ? [asset.floor] : [];
+    const floorIds = asset.floor_id ? [asset.floor_id] : [];
 
     const { data: buildings } = await supabase
       .from('buildings')
@@ -293,7 +387,9 @@ export default function PhysicalAuditModule() {
     }
     
     setLoading(true);
-    const { error } = await supabase.from('physical_audits').insert({
+    
+    // Insert physical audit record
+    const { data: auditData, error: auditError } = await supabase.from('physical_audits').insert({
       asset_id: assetId,
       barcode_scanned: scanned,
       asset_found: assetFound,
@@ -308,9 +404,25 @@ export default function PhysicalAuditModule() {
       gps_latitude: coordinates?.latitude,
       gps_longitude: coordinates?.longitude,
       gps_accuracy: coordinates?.accuracy
-    });
+    }).select().single();
 
-    if (!error) {
+    if (!auditError && auditData) {
+      // Update PM task instance status to COMPLETED and link audit
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('pm_task_instances')
+        .update({
+          status: 'COMPLETED',
+          completed_at: new Date().toISOString(),
+          completed_by: user?.id,
+          audit_id: auditData.id,
+          notes: remarks || null,
+          updated_by: user?.email
+        })
+        .eq('asset_id', assetDetails?.id)
+        .eq('task_date', today)
+        .eq('assigned_to', user?.id);
+      
       // Update PM schedule: set last completed date and calculate next date
       const { data: pmData } = await supabase
         .from('preventive_maintenance')
@@ -346,7 +458,10 @@ export default function PhysicalAuditModule() {
       resetGPS();
       fetchAuditHistory();
       loadTodayAuditAssets();
+      loadCompletedAudits();
       alert('Audit recorded successfully!');
+    } else {
+      alert('Failed to record audit. Please try again.');
     }
     setLoading(false);
   };
@@ -472,9 +587,9 @@ export default function PhysicalAuditModule() {
               <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
                 {/* Asset Image */}
                 <div className="flex-shrink-0 mx-auto sm:mx-0">
-                  {assetDetails.asset_picture ? (
+                  {assetDetails.asset_pictures ? (
                     <img
-                      src={assetDetails.asset_picture}
+                      src={assetDetails.asset_pictures}
                       alt={assetDetails.asset_name}
                       className="w-full sm:w-48 h-48 object-cover rounded-lg border border-gray-100 shadow-sm"
                     />
@@ -524,13 +639,34 @@ export default function PhysicalAuditModule() {
 
             {/* Action Button */}
             <div className="border-t border-gray-100 px-4 md:px-6 py-4 bg-gray-50">
-              <button
-                onClick={() => setShowAuditForm(true)}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-sm text-sm md:text-base"
-              >
-                Start Verification
-                <ArrowRight className="h-5 w-5" />
-              </button>
+              {isAssetAssignedToUser ? (
+                <button
+                  onClick={() => setShowAuditForm(true)}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-sm text-sm md:text-base"
+                >
+                  Start Verification
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                    <p className="text-sm text-yellow-800">
+                      This asset is not assigned to you for audit today. You can only view the details.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAssetDetails(null);
+                      setAssetId('');
+                      resetGPS();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors text-sm md:text-base"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -712,6 +848,10 @@ export default function PhysicalAuditModule() {
                 <Calendar className="h-4 w-4 mr-2" />
                 Day Audit
               </TabsTrigger>
+              <TabsTrigger value="completed" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Completed
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="history" className="mt-4">
@@ -799,11 +939,25 @@ export default function PhysicalAuditModule() {
             <TabsContent value="day-audit" className="mt-4">
               <div className="bg-white rounded-lg border border-gray-200">
                 <div className="px-6 py-4 border-b bg-blue-50">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-blue-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">Today's Physical Audits (Due & Overdue)</h3>
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-blue-600" />
+                        <h3 className="text-sm font-semibold text-gray-900">Physical Audits (Due & Overdue)</h3>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-gray-600">Filter by Date:</label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 </div>
 
                 {loadingToday ? (
@@ -821,45 +975,90 @@ export default function PhysicalAuditModule() {
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Asset ID</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Asset Name</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Serial Number</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tenant</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase text-center">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {todayAssets.map((asset) => (
                           <tr key={asset.id} className="border-b hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-sm text-gray-900">{asset.asset_id}</td>
                             <td className="px-4 py-3 font-medium text-gray-900">{asset.asset_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{asset.asset_category}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{asset.serial_number || 'N/A'}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {asset.building_name} / {asset.floor_name}
                               {asset.room_rack && ` / ${asset.room_rack}`}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{asset.tenant_name}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                asset.status === 'Working' ? 'bg-green-100 text-green-700' :
-                                asset.status === 'Not Working' ? 'bg-red-100 text-red-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
-                                {asset.status}
-                              </span>
-                            </td>
                             <td className="px-4 py-3 text-center">
                               <button
                                 onClick={() => {
                                   setShowScanModal(true);
                                 }}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                                disabled={isUpcomingDate}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                               >
                                 <QrCode className="h-4 w-4" />
-                                Audit
+                                {isUpcomingDate ? 'Upcoming' : 'Audit'}
                               </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="completed" className="mt-4">
+              <div className="bg-white rounded-lg border border-gray-200">
+                <div className="px-6 py-4 border-b bg-green-50">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <h3 className="text-sm font-semibold text-gray-900">Completed Audits</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">All completed audits for today</p>
+                </div>
+
+                {loadingCompleted ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : completedAssets.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CheckCircle2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No completed audits for this date</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Asset ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Asset Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tenant</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Completed At</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completedAssets.map((asset) => (
+                          <tr key={asset.id} className="border-b hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-sm text-gray-900">{asset.asset_id}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900">{asset.asset_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{asset.asset_category}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {asset.building_name} / {asset.floor_name}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{asset.tenant_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {asset.completed_at ? new Date(asset.completed_at).toLocaleString() : 'N/A'}
                             </td>
                           </tr>
                         ))}

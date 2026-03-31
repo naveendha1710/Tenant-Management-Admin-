@@ -13,13 +13,18 @@ import { buildingsService, type Building, type Floor } from '@/services/building
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 
+// Utility function to create URL-friendly slug from building name
+function createBuildingSlug(name: string): string {
+  return name.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+}
+
 function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDelete, onDelete, assignments, floorId, buildingId, onRoomsUpdate }) {
   const [showRooms, setShowRooms] = useState(false);
   const [rooms, setRooms] = useState([]);
-  const [addingRoom, setAddingRoom] = useState(false);
-  const [startNumber, setStartNumber] = useState('');
-  const [numberOfRooms, setNumberOfRooms] = useState('');
-  const [prefix, setPrefix] = useState('');
   const [selectedRooms, setSelectedRooms] = useState([]);
   const { toast } = useToast();
 
@@ -31,41 +36,25 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('*')
+        .select(`
+          *,
+          form_dropdowns!rooms_category_id_fkey(name)
+        `)
         .eq('floor_id', floorId)
         .order('room_number');
-      if (!error && data) setRooms(data);
+      if (!error && data) {
+        const roomsWithCategory = data.map(room => ({
+          ...room,
+          category_name: room.form_dropdowns?.name || 'Uncategorized'
+        }));
+        setRooms(roomsWithCategory);
+      }
     } catch (error) {
       console.error('Error loading rooms:', error);
     }
   };
 
-  const handleAddRooms = async () => {
-    if (!startNumber || !numberOfRooms) return;
-    try {
-      const start = parseInt(startNumber);
-      const count = parseInt(numberOfRooms);
-      const roomsToAdd = [];
-      for (let i = 0; i < count; i++) {
-        roomsToAdd.push({
-          floor_id: floorId,
-          building_id: buildingId,
-          room_number: `${prefix}${start + i}`
-        });
-      }
-      const { error } = await supabase.from('rooms').insert(roomsToAdd);
-      if (error) throw error;
-      toast({ title: 'Success', description: `${count} rooms added successfully` });
-      setStartNumber('');
-      setNumberOfRooms('');
-      setPrefix('');
-      setAddingRoom(false);
-      loadRooms();
-      onRoomsUpdate?.();
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to add rooms', variant: 'destructive' });
-    }
-  };
+
 
   const handleDeleteRoom = async (roomId) => {
     try {
@@ -181,18 +170,21 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
                 <p className="text-xs text-muted-foreground">No rooms added</p>
               ) : (
                 <>
-                  <div className="flex flex-wrap gap-0">
+                  <div className="flex flex-wrap gap-1">
                     {rooms.map((room) => (
                       <div
                         key={room.id}
                         onClick={() => canDelete && toggleRoomSelection(room.id)}
-                        className={`w-12 h-12 flex items-center justify-center rounded text-xs font-medium cursor-pointer transition-colors ${
+                        className={`min-w-24 h-12 flex items-center justify-center rounded text-xs font-medium cursor-pointer transition-colors px-2 ${
                           selectedRooms.includes(room.id)
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-100 hover:bg-gray-200'
                         }`}
+                        title={`${room.room_number} - ${room.category_name}`}
                       >
-                        {room.room_number}
+                        <span className="truncate text-center">
+                          {room.room_number} | {room.category_name}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -203,45 +195,6 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
                   )}
                 </>
               )}
-              {canEdit && (
-                addingRoom ? (
-                  <div className="flex gap-2">
-                    <Input
-                      size="sm"
-                      placeholder="Prefix (optional)"
-                      value={prefix}
-                      onChange={(e) => setPrefix(e.target.value)}
-                      className="h-8 text-xs w-24"
-                    />
-                    <Input
-                      size="sm"
-                      type="number"
-                      placeholder="Start number"
-                      value={startNumber}
-                      onChange={(e) => setStartNumber(e.target.value)}
-                      className="h-8 text-xs"
-                    />
-                    <Input
-                      size="sm"
-                      type="number"
-                      placeholder="Count"
-                      value={numberOfRooms}
-                      onChange={(e) => setNumberOfRooms(e.target.value)}
-                      className="h-8 text-xs w-20"
-                    />
-                    <Button size="sm" onClick={handleAddRooms} className="h-8">
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setAddingRoom(false); setStartNumber(''); setNumberOfRooms(''); setPrefix(''); }} className="h-8">
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => setAddingRoom(true)} className="h-8 text-xs">
-                    <Plus className="h-3 w-3 mr-1" /> Add Rooms
-                  </Button>
-                )
-              )}
             </div>
           )}
         </div>
@@ -251,7 +204,7 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
 }
 
 export default function BuildingManage() {
-  const { buildingId } = useParams();
+  const { buildingSlug } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const permissions = usePermissions(user?.appUser?.permissions || []);
@@ -279,16 +232,17 @@ export default function BuildingManage() {
   // Load building data
   useEffect(() => {
     const loadBuilding = async () => {
-      if (!buildingId || !canView) {
+      if (!buildingSlug || !canView) {
         navigate('/admin/buildings');
         return;
       }
       
       try {
-        const [buildingData, floorsData] = await Promise.all([
-          buildingsService.getBuildingById(buildingId),
-          buildingsService.getFloorsByBuilding(buildingId)
-        ]);
+        // Get all buildings and find by name slug
+        const allBuildings = await buildingsService.getBuildings();
+        const buildingData = allBuildings.find(b => 
+          createBuildingSlug(b.name) === buildingSlug.toLowerCase()
+        );
         
         if (!buildingData) {
           toast({
@@ -299,6 +253,8 @@ export default function BuildingManage() {
           navigate('/admin/buildings');
           return;
         }
+        
+        const floorsData = await buildingsService.getFloorsByBuilding(buildingData.id);
         
         setBuilding(buildingData);
         setFloors(floorsData);
@@ -323,7 +279,7 @@ export default function BuildingManage() {
             const tenant = tenantMap.get(agreement.tenant_id);
             if (agreement.space_assignments && Array.isArray(agreement.space_assignments)) {
               agreement.space_assignments.forEach((assignment: any) => {
-                if (assignment.building === buildingId) {
+                if (assignment.building === buildingData.id) {
                   const floorKey = assignment.floorId;
                   if (!assignmentsByFloor[floorKey]) {
                     assignmentsByFloor[floorKey] = [];
@@ -339,7 +295,6 @@ export default function BuildingManage() {
           });
         }
         
-        console.log('Floor Assignments:', assignmentsByFloor);
         setFloorAssignments(assignmentsByFloor);
       } catch (error) {
         console.error('Error loading building:', error);
@@ -355,7 +310,7 @@ export default function BuildingManage() {
     };
 
     loadBuilding();
-  }, [buildingId, canView, navigate, toast]);
+  }, [buildingSlug, canView, navigate, toast]);
 
   if (loading) {
     return (
@@ -383,7 +338,7 @@ export default function BuildingManage() {
   };
 
   const handleSaveFloor = async () => {
-    if (editingFloor && floorForm.totalSqft && buildingId) {
+    if (editingFloor && floorForm.totalSqft && building?.id) {
       try {
         await buildingsService.updateFloor(editingFloor.id, {
           total_sqft: parseInt(floorForm.totalSqft),
@@ -391,7 +346,7 @@ export default function BuildingManage() {
         });
         
         // Reload floors
-        const updatedFloors = await buildingsService.getFloorsByBuilding(buildingId);
+        const updatedFloors = await buildingsService.getFloorsByBuilding(building.id);
         setFloors(updatedFloors);
         
         setEditingFloor(null);
@@ -412,16 +367,16 @@ export default function BuildingManage() {
   };
 
   const handleAddFloor = async () => {
-    if (floorForm.floorNumber && floorForm.totalSqft && buildingId) {
+    if (floorForm.floorNumber && floorForm.totalSqft && building?.id) {
       try {
-        await buildingsService.addFloor(buildingId, {
+        await buildingsService.addFloor(building.id, {
           floor_number: parseInt(floorForm.floorNumber),
           total_sqft: parseInt(floorForm.totalSqft),
           number_of_seats: floorForm.numberOfSeats ? parseInt(floorForm.numberOfSeats) : null
         });
         
         // Reload floors
-        const updatedFloors = await buildingsService.getFloorsByBuilding(buildingId);
+        const updatedFloors = await buildingsService.getFloorsByBuilding(building.id);
         setFloors(updatedFloors);
         
         setAddingFloor(false);
@@ -484,8 +439,8 @@ export default function BuildingManage() {
       }
       
       // Reload floors
-      if (buildingId) {
-        const updatedFloors = await buildingsService.getFloorsByBuilding(buildingId);
+      if (building?.id) {
+        const updatedFloors = await buildingsService.getFloorsByBuilding(building.id);
         setFloors(updatedFloors);
       }
       
@@ -622,7 +577,7 @@ export default function BuildingManage() {
                   canDelete={canDelete}
                   assignments={floorAssignments[floor.id] || []}
                   floorId={floor.id}
-                  buildingId={buildingId}
+                  buildingId={building.id}
                   onRoomsUpdate={() => {}}
                 />
               ))

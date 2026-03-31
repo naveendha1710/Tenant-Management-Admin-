@@ -151,11 +151,16 @@ export default function TenantDashboard() {
       if (!user?.email) return;
       
       try {
-        const { data: tenantData } = await supabase
+        const { data: tenantData, error } = await supabase
           .from('tenants')
           .select('id')
           .eq('email', user.email)
-          .single();
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error loading tenant:', error);
+          return;
+        }
 
         if (tenantData && activeTenantIds.length === 0) {
           setActiveTenantIds([tenantData.id]);

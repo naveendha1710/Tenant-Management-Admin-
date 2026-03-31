@@ -146,9 +146,14 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
 
   const fetchPreviousTickets = async () => {
     try {
-      const tenant = await MaintenanceService.getTenantByEmail(user?.email || '');
-      if (tenant) {
-        const tickets = await MaintenanceService.getTenantTickets(tenant.id);
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('email', user?.email)
+        .maybeSingle();
+      
+      if (tenantData) {
+        const tickets = await MaintenanceService.getTenantTickets(tenantData.id);
         setPreviousTickets(tickets);
       }
     } catch (error) {
@@ -289,7 +294,13 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
     setLoading(true);
     try {
       // Check if user is a tenant
-      const tenant = await MaintenanceService.getTenantByEmail(user?.email || '');
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('email', user?.email)
+        .maybeSingle();
+      
+      const tenant = tenantData;
       
       // Upload photos if any
       const uploadedPhotos = [];
@@ -347,15 +358,6 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
           asset_id: assetId
         }));
         await supabase.from('ticket_assets').insert(ticketAssets);
-      }
-      
-      // Trigger notification only if tenant exists
-      if (tenant) {
-        try {
-          await ticketNotifications.onTicketCreated(ticket.id, ticket.ticket_number || ticket.id, tenant.id);
-        } catch (error) {
-          console.error('Notification error:', error);
-        }
       }
       
       toast({ title: "Success", description: "Maintenance request submitted successfully" });

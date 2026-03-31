@@ -11,14 +11,16 @@ import { buildingService, Building, Floor } from '@/services/buildingService';
 import { TenantData } from '@/services/tenantService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { X, Save, Plus, AlertCircle, TrendingUp, Calendar, QrCode, Search, Check, ChevronsUpDown, Building2, ArrowRight, CheckCircle, XCircle } from 'lucide-react';
+import { X, Save, Plus, AlertCircle, TrendingUp, Calendar, QrCode, Search, Check, ChevronsUpDown, Building2, ArrowRight, CheckCircle, XCircle, Settings, FileText } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import QRScannerModal from '@/components/shared/QRScannerModal';
 import { supabase } from '@/lib/supabase';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { workflowEngine } from '@/services/workflowEngine';
 import { useAuth } from '@/contexts/AuthContext';
+import { ApprovalList } from '@/components/workflow/ApprovalList';
 
 export default function AssetMovement() {
   const { user } = useAuth();
@@ -32,6 +34,8 @@ export default function AssetMovement() {
   const [allBuildings, setAllBuildings] = useState<Building[]>([]);
   const [fromFloors, setFromFloors] = useState<Floor[]>([]);
   const [toFloors, setToFloors] = useState<Floor[]>([]);
+  const [fromRooms, setFromRooms] = useState<any[]>([]);
+  const [toRooms, setToRooms] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,6 +46,9 @@ export default function AssetMovement() {
   const [otherHandovers, setOtherHandovers] = useState<Array<{name: string, email: string, contact: string}>>([]);
   const [viewMovement, setViewMovement] = useState<Movement | null>(null);
   const [viewMovementAssets, setViewMovementAssets] = useState<any[]>([]);
+  const [canApproveCurrentMovement, setCanApproveCurrentMovement] = useState(false);
+  const [isMovementCreator, setIsMovementCreator] = useState(false);
+  const [viewTab, setViewTab] = useState<'details' | 'approvals'>('details');
   const [activeTab, setActiveTab] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 16;
@@ -77,6 +84,8 @@ export default function AssetMovement() {
     handover_name: '',
     handover_email: '',
     handover_mobile: '',
+    from_tenant: '',
+    to_tenant: '',
   });
 
   useEffect(() => {
@@ -153,14 +162,30 @@ export default function AssetMovement() {
   useEffect(() => {
     if (formData.from_building) {
       loadFromFloors(formData.from_building);
+      setFromRooms([]);
+      updateField('from_floor', '');
+      updateField('from_room', '');
     }
   }, [formData.from_building]);
 
   useEffect(() => {
     if (formData.to_building) {
       loadToFloors(formData.to_building);
+      setToRooms([]);
+      updateField('to_floor', '');
+      updateField('to_room', '');
     }
   }, [formData.to_building]);
+
+  useEffect(() => {
+    if (formData.from_floor) loadRoomsForFloor(formData.from_floor, 'from');
+    else setFromRooms([]);
+  }, [formData.from_floor]);
+
+  useEffect(() => {
+    if (formData.to_floor) loadRoomsForFloor(formData.to_floor, 'to');
+    else setToRooms([]);
+  }, [formData.to_floor]);
 
   useEffect(() => {
     if (formData.asset_ids.length > 0) {
@@ -172,32 +197,27 @@ export default function AssetMovement() {
   }, [formData.asset_ids, assets]);
 
   const filteredAssets = assets.filter(asset => {
-    // Text search filter
     const matchesSearch = asset.asset_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.asset_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.asset_category.toLowerCase().includes(searchTerm.toLowerCase());
     
     if (!matchesSearch) return false;
     
-    // Cascading location filters based on "From Location" selections
     if (formData.from_tenant_type === 'Tenant' && formData.tenant_id) {
-      // Filter by tenant - only show assets assigned to selected tenant
       if (asset.handover_to !== formData.tenant_id) return false;
     }
     
     if (formData.from_building) {
-      // Filter by building - only show assets in selected building
+      // Only match by UUID for new assets
       if (asset.building !== formData.from_building) return false;
     }
     
     if (formData.from_floor) {
-      // Filter by floor - only show assets on selected floor
-      if (asset.floor !== formData.from_floor) return false;
+      if (asset.floor_id !== formData.from_floor) return false;
     }
     
     if (formData.from_room) {
-      // Filter by room - only show assets in selected room
-      if (!asset.room_rack || !asset.room_rack.toLowerCase().includes(formData.from_room.toLowerCase())) return false;
+      if (asset.room_id !== formData.from_room) return false;
     }
     
     return true;
@@ -222,24 +242,25 @@ export default function AssetMovement() {
       ]);
       setMovements(movementsData);
       setAssets(assetsData);
+
+      // Filter movements based on user's workflow assignments
+      let filteredMovements = movementsData;
       
-      const allAssets = assetsData;
-      
-      const enriched = await Promise.all(movementsData.map(async (m) => {
-        const asset = allAssets.find(a => a.id === m.asset_id);
-        const fromBuilding = m.from_building ? (await supabase.from('buildings').select('name').eq('id', m.from_building).single()).data?.name : null;
-        const toBuilding = m.to_building ? (await supabase.from('buildings').select('name').eq('id', m.to_building).single()).data?.name : null;
-        const fromFloor = m.from_floor ? (await supabase.from('floors').select('floor_name, floor_number').eq('id', m.from_floor).single()).data : null;
-        const toFloor = m.to_floor ? (await supabase.from('floors').select('floor_name, floor_number').eq('id', m.to_floor).single()).data : null;
-        
-        return {
-          ...m,
-          asset_name: asset?.asset_name,
-          from_building_name: fromBuilding,
-          to_building_name: toBuilding,
-          from_floor_name: fromFloor?.floor_name || `Floor ${fromFloor?.floor_number}`,
-          to_floor_name: toFloor?.floor_name || `Floor ${toFloor?.floor_number}`,
-        };
+      if (user?.appUser?.id) {
+        // Show movements where user is in the workflow_approver_ids
+        filteredMovements = movementsData.filter(m => {
+          const approverIds = (m as any).workflow_approver_ids || [];
+          return approverIds.includes(user.appUser.id);
+        });
+      }
+
+      // Names are now stored as text directly — no need to resolve UUIDs
+      const enriched = filteredMovements.map((m) => ({
+        ...m,
+        from_building_name: m.from_building || 'N/A',
+        to_building_name: m.to_building || 'N/A',
+        from_floor_name: m.from_floor || 'N/A',
+        to_floor_name: m.to_floor || 'N/A',
       }));
       setMovementsWithDetails(enriched);
     } catch (error) {
@@ -297,6 +318,18 @@ export default function AssetMovement() {
     setToFloors(data);
   };
 
+  const loadRoomsForFloor = async (floorId: string, side: 'from' | 'to') => {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('id, room_number')
+      .eq('floor_id', floorId)
+      .order('room_number');
+    if (!error && data) {
+      if (side === 'from') setFromRooms(data);
+      else setToRooms(data);
+    }
+  };
+
   const getBuildingName = (id?: string) => buildings.find(b => b.id === id)?.name || 'N/A';
 
   const updateField = (field: string, value: any) => {
@@ -331,14 +364,19 @@ export default function AssetMovement() {
       expected_inward_date: '',
       gate_pass_number: '',
       approval_required: true,
+      approval_status: 'Pending',
       handover_to: 'Tenant',
       handover_name: '',
       handover_email: '',
       handover_mobile: '',
+      from_tenant: '',
+      to_tenant: '',
     });
     setSelectedAssets([]);
     setSearchTerm('');
     setActiveTab(0);
+    setFromRooms([]);
+    setToRooms([]);
     setShowForm(true);
   };
 
@@ -368,7 +406,20 @@ export default function AssetMovement() {
 
   const handleSubmit = async () => {
     try {
-      const requestNumber = `MV-${Date.now()}`;
+      // Generate unique request number with random component to avoid conflicts
+      const requestNumber = `MV-${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+
+      // Resolve UUIDs to names at save time so they persist even if records are deleted
+      const fromBuildingName = allBuildings.find(b => b.id === formData.from_building)?.name || formData.from_building || '';
+      const toBuildingName = allBuildings.find(b => b.id === formData.to_building)?.name || formData.to_building || '';
+      const fromFloorObj = fromFloors.find(f => f.id === formData.from_floor);
+      const fromFloorName = fromFloorObj ? (fromFloorObj.floor_name || `Floor ${fromFloorObj.floor_number}`) : formData.from_floor || '';
+      const toFloorObj = toFloors.find(f => f.id === formData.to_floor);
+      const toFloorName = toFloorObj ? (toFloorObj.floor_name || `Floor ${toFloorObj.floor_number}`) : formData.to_floor || '';
+      const fromRoomName = fromRooms.find(r => r.id === formData.from_room)?.room_number || formData.from_room || '';
+      const toRoomName = toRooms.find(r => r.id === formData.to_room)?.room_number || formData.to_room || '';
+      const fromTenantName = formData.from_tenant_type === 'Tenant' ? tenants.find(t => t.id === formData.tenant_id)?.company || '' : formData.from_other_name;
+      const toTenantName = formData.handover_to === 'Tenant' ? tenants.find(t => t.id === formData.handover_name)?.company || '' : formData.handover_name;
       
       const movementPayload: Partial<Movement> = {
         request_number: requestNumber,
@@ -377,12 +428,12 @@ export default function AssetMovement() {
         movement_date: formData.movement_date,
         movement_time: formData.movement_time || undefined,
         expected_return_date: formData.expected_return_date || undefined,
-        from_building: formData.from_building,
-        from_floor: formData.from_floor,
-        from_room: formData.from_room,
-        to_building: formData.to_building || undefined,
-        to_floor: formData.to_floor || undefined,
-        to_room: formData.to_room || undefined,
+        from_building: fromBuildingName,
+        from_floor: fromFloorName,
+        from_room: fromRoomName,
+        to_building: toBuildingName || undefined,
+        to_floor: toFloorName || undefined,
+        to_room: toRoomName || undefined,
         vendor_name: formData.vendor_name || undefined,
         vendor_contact: formData.vendor_contact || undefined,
         outward_date: formData.outward_date || undefined,
@@ -391,14 +442,42 @@ export default function AssetMovement() {
         movement_reason: formData.movement_reason === 'Other' ? formData.other_reason : formData.movement_reason,
         remarks: formData.remarks || undefined,
         movement_status: 'Pending',
+        approval_required: formData.approval_required,
+        approval_status: formData.approval_required ? 'Pending' : 'Approved',
         handover_to: formData.handover_to,
         handover_name: formData.handover_to === 'Other' ? formData.handover_name : undefined,
         handover_email: formData.handover_to === 'Other' ? formData.handover_email : undefined,
         handover_mobile: formData.handover_to === 'Other' ? formData.handover_mobile : undefined,
-      };
+        from_tenant: fromTenantName,
+        to_tenant: toTenantName,
+        // Use the user ID from public.users table (after removing foreign key constraint)
+        requested_by: user?.appUser?.id || null,
+      } as any;
       
-      await AssetService.createMovement(movementPayload);
-      toast({ title: 'Success', description: `Movement request created with ${formData.asset_ids.length} asset(s)` });
+      const movement = await AssetService.createMovement(movementPayload);
+      
+      // Start workflow if approval required
+      if (formData.approval_required && formData.tenant_id) {
+        try {
+          await workflowEngine.startWorkflow(
+            'asset_movement',
+            movement.id,
+            formData.tenant_id,
+            {
+              request_number: requestNumber,
+              movement_type: formData.movement_type,
+              asset_count: formData.asset_ids.length
+            }
+          );
+          toast({ title: 'Success', description: `Movement request created and sent for approval` });
+        } catch (workflowError) {
+          console.error('Workflow start failed:', workflowError);
+          toast({ title: 'Warning', description: 'Movement created but workflow could not be started', variant: 'destructive' });
+        }
+      } else {
+        toast({ title: 'Success', description: `Movement request created with ${formData.asset_ids.length} asset(s)` });
+      }
+      
       setShowForm(false);
       loadData();
     } catch (error) {
@@ -408,8 +487,37 @@ export default function AssetMovement() {
 
   const handleApprove = async (id: string) => {
     try {
-      await AssetService.updateMovementStatus(id, 'Approved', new Date().toISOString());
-      toast({ title: 'Success', description: 'Movement approved' });
+      // Get current pending step for this movement
+      const { data: instance } = await supabase
+        .from('workflow_instances')
+        .select('id')
+        .eq('entity_type', 'asset_movement')
+        .eq('entity_id', id)
+        .eq('status', 'in_progress')
+        .single();
+      
+      if (!instance) {
+        toast({ title: 'Error', description: 'No active workflow found', variant: 'destructive' });
+        return;
+      }
+      
+      const { data: step } = await supabase
+        .from('workflow_instance_steps')
+        .select('id')
+        .eq('instance_id', instance.id)
+        .eq('status', 'pending')
+        .order('step_number', { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (!step) {
+        toast({ title: 'Error', description: 'No pending step found', variant: 'destructive' });
+        return;
+      }
+      
+      // Call workflow engine to approve
+      await workflowEngine.approveStep(step.id, user?.appUser?.id || '');
+      toast({ title: 'Success', description: 'Approval submitted' });
       loadData();
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to approve', variant: 'destructive' });
@@ -418,7 +526,36 @@ export default function AssetMovement() {
 
   const handleReject = async (id: string) => {
     try {
-      await AssetService.updateMovementStatus(id, 'Rejected');
+      // Get current pending step for this movement
+      const { data: instance } = await supabase
+        .from('workflow_instances')
+        .select('id')
+        .eq('entity_type', 'asset_movement')
+        .eq('entity_id', id)
+        .eq('status', 'in_progress')
+        .single();
+      
+      if (!instance) {
+        toast({ title: 'Error', description: 'No active workflow found', variant: 'destructive' });
+        return;
+      }
+      
+      const { data: step } = await supabase
+        .from('workflow_instance_steps')
+        .select('id')
+        .eq('instance_id', instance.id)
+        .eq('status', 'pending')
+        .order('step_number', { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (!step) {
+        toast({ title: 'Error', description: 'No pending step found', variant: 'destructive' });
+        return;
+      }
+      
+      // Call workflow engine to reject
+      await workflowEngine.rejectStep(step.id, user?.appUser?.id || '');
       toast({ title: 'Success', description: 'Movement rejected' });
       loadData();
     } catch (error) {
@@ -427,13 +564,81 @@ export default function AssetMovement() {
   };
 
   const loadMovementAssets = async (requestNumber: string) => {
-    const { data: movement } = await supabase.from('asset_movements').select('assets').eq('request_number', requestNumber).single();
+    const { data: movement } = await supabase.from('asset_movements').select('assets, id, requested_by').eq('request_number', requestNumber).single();
     if (movement) {
       const assetIds = movement.assets || [];
       if (assetIds.length > 0) {
         const { data: assetData } = await supabase.from('assets').select('id, asset_id, asset_name, asset_category, asset_status').in('id', assetIds);
         if (assetData) setViewMovementAssets(assetData);
       }
+      
+      await checkUserCanApprove(movement.id);
+      // Check if current user is the movement creator
+      setIsMovementCreator(movement.requested_by === user?.appUser?.id);
+      setViewTab('details');
+    }
+  };
+  
+  const handleMarkAsCompleted = async (id: string) => {
+    try {
+      await supabase
+        .from('asset_movements')
+        .update({
+          movement_status: 'Completed',
+          actual_movement_date: new Date().toISOString()
+        })
+        .eq('id', id);
+      
+      toast({ title: 'Success', description: 'Movement marked as completed' });
+      setViewMovement(null);
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to mark as completed', variant: 'destructive' });
+    }
+  };
+
+  const checkUserCanApprove = async (movementId: string) => {
+    if (!user?.appUser?.id) {
+      setCanApproveCurrentMovement(false);
+      return;
+    }
+    
+    try {
+      // Get active workflow instance for this movement
+      const { data: instance } = await supabase
+        .from('workflow_instances')
+        .select('id, status')
+        .eq('entity_type', 'asset_movement')
+        .eq('entity_id', movementId)
+        .eq('status', 'in_progress')
+        .single();
+      
+      if (!instance) {
+        setCanApproveCurrentMovement(false);
+        return;
+      }
+      
+      // Get current pending step
+      const { data: step } = await supabase
+        .from('workflow_instance_steps')
+        .select('assigned_user_ids')
+        .eq('instance_id', instance.id)
+        .eq('status', 'pending')
+        .order('step_number', { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (!step || !step.assigned_user_ids) {
+        setCanApproveCurrentMovement(false);
+        return;
+      }
+      
+      // Check if current user is in assigned approvers
+      const isAssigned = step.assigned_user_ids.includes(user.appUser.id);
+      setCanApproveCurrentMovement(isAssigned);
+    } catch (error) {
+      console.error('Error checking approval permission:', error);
+      setCanApproveCurrentMovement(false);
     }
   };
 
@@ -557,7 +762,7 @@ export default function AssetMovement() {
                         ) : (
                           <div>
                             <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                              Tenant <span className="text-red-500">*</span>
+                              From Tenant <span className="text-red-500">*</span>
                             </label>
                             <Popover open={openTenantCombobox} onOpenChange={setOpenTenantCombobox}>
                               <PopoverTrigger asChild>
@@ -605,7 +810,12 @@ export default function AssetMovement() {
                         </div>
                         <div>
                           <label className="text-sm font-medium text-gray-700 mb-1.5 block">Room</label>
-                          <Input value={formData.from_room} onChange={(e) => updateField('from_room', e.target.value)} placeholder="Enter room" />
+                          <Select value={formData.from_room} onValueChange={(v) => updateField('from_room', v)} disabled={!formData.from_floor}>
+                            <SelectTrigger><SelectValue placeholder={!formData.from_floor ? 'Select floor first' : fromRooms.length === 0 ? 'No rooms available' : 'Select room'} /></SelectTrigger>
+                            <SelectContent>
+                              {fromRooms.map(r => <SelectItem key={r.id} value={r.id}>{r.room_number}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </CardContent>
@@ -634,7 +844,7 @@ export default function AssetMovement() {
                         </div>
                         {formData.handover_to === 'Tenant' ? (
                           <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1.5 block">Tenant</label>
+                            <label className="text-sm font-medium text-gray-700 mb-1.5 block">To Tenant</label>
                             <Popover open={openHandoverCombobox} onOpenChange={setOpenHandoverCombobox}>
                               <PopoverTrigger asChild>
                                 <Button variant="outline" role="combobox" className="w-full justify-between">
@@ -700,7 +910,12 @@ export default function AssetMovement() {
                         </div>
                         <div>
                           <label className="text-sm font-medium text-gray-700 mb-1.5 block">Room</label>
-                          <Input value={formData.to_room} onChange={(e) => updateField('to_room', e.target.value)} placeholder="Enter room" />
+                          <Select value={formData.to_room} onValueChange={(v) => updateField('to_room', v)} disabled={!formData.to_floor}>
+                            <SelectTrigger><SelectValue placeholder={!formData.to_floor ? 'Select floor first' : toRooms.length === 0 ? 'No rooms available' : 'Select room'} /></SelectTrigger>
+                            <SelectContent>
+                              {toRooms.map(r => <SelectItem key={r.id} value={r.id}>{r.room_number}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </CardContent>
@@ -976,9 +1191,11 @@ export default function AssetMovement() {
             <>
               <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Asset Movement</h1>
-                <Button onClick={handleCreateNew}>
-                  <Plus className="mr-2 h-4 w-4" /> Raise Movement Request
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={handleCreateNew}>
+                    <Plus className="mr-2 h-4 w-4" /> Raise Movement Request
+                  </Button>
+                </div>
               </div>
 
               <div className="rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
@@ -990,7 +1207,8 @@ export default function AssetMovement() {
                         <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">Type</th>
                         <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">From</th>
                         <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">To</th>
-                        <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">Status</th>
+                        <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">Approval Status</th>
+                        <th className="h-12 px-4 text-left align-middle text-gray-600 font-semibold uppercase text-xs">Movement Status</th>
                         <th className="h-12 px-4 align-middle text-gray-600 font-semibold uppercase text-xs text-center">Actions</th>
                       </tr>
                     </thead>
@@ -1002,12 +1220,23 @@ export default function AssetMovement() {
                           <td className="p-4 align-middle text-gray-700">{m.from_building_name || 'N/A'} - {m.from_floor_name || 'N/A'}</td>
                           <td className="p-4 align-middle text-gray-700">{m.to_building_name || m.vendor_name || 'N/A'}</td>
                           <td className="p-4 align-middle">
+                            {(m as any).approval_status === 'Pending' ? (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-amber-100 text-amber-800 border-amber-200">Pending</span>
+                            ) : (m as any).approval_status === 'Approved' ? (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-green-500/20 text-green-500 border-green-500/30">Approved</span>
+                            ) : (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-red-500/20 text-red-500 border-red-500/30">Rejected</span>
+                            )}
+                          </td>
+                          <td className="p-4 align-middle">
                             {m.movement_status === 'Pending' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-amber-100 text-amber-800 border-amber-200">Pending</span>
                             ) : m.movement_status === 'Approved' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-green-500/20 text-green-500 border-green-500/30">Approved</span>
-                            ) : (
+                            ) : m.movement_status === 'Rejected' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-red-500/20 text-red-500 border-red-500/30">Rejected</span>
+                            ) : (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-blue-500/20 text-blue-500 border-blue-500/30">Completed</span>
                             )}
                           </td>
                           <td className="p-4 align-middle">
@@ -1036,8 +1265,34 @@ export default function AssetMovement() {
                     <X className="h-5 w-5" />
                   </Button>
                 </div>
+                {/* Tab Switcher */}
+                <div className="flex gap-2 mt-4 border-b">
+                  <button
+                    onClick={() => setViewTab('details')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'details'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Building2 className="inline h-4 w-4 mr-1" />
+                    Details
+                  </button>
+                  <button
+                    onClick={() => setViewTab('approvals')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'approvals'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <FileText className="inline h-4 w-4 mr-1" />
+                    Approval History
+                  </button>
+                </div>
               </CardHeader>
               <CardContent className="p-4">
+                {viewTab === 'details' ? (
                 <div className="grid grid-cols-5 gap-4">
                   <div className="col-span-2">
                     <div className="mb-2 px-2">
@@ -1078,6 +1333,7 @@ export default function AssetMovement() {
                               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From Location</label>
                             </div>
                             <div className="space-y-1 text-sm">
+                              {(viewMovement as any).from_tenant && <p className="text-gray-800"><span className="font-medium">Tenant:</span> {(viewMovement as any).from_tenant}</p>}
                               <p className="text-gray-800"><span className="font-medium">Building:</span> {(viewMovement as any).from_building_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Floor:</span> {(viewMovement as any).from_floor_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Room:</span> {viewMovement.from_room || 'N/A'}</p>
@@ -1092,6 +1348,7 @@ export default function AssetMovement() {
                               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To Location</label>
                             </div>
                             <div className="space-y-1 text-sm">
+                              {(viewMovement as any).to_tenant && <p className="text-gray-800"><span className="font-medium">Tenant:</span> {(viewMovement as any).to_tenant}</p>}
                               <p className="text-gray-800"><span className="font-medium">Building:</span> {(viewMovement as any).to_building_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Floor:</span> {(viewMovement as any).to_floor_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Room:</span> {viewMovement.to_room || 'N/A'}</p>
@@ -1102,14 +1359,28 @@ export default function AssetMovement() {
                       <div className="h-[1px] bg-gray-200 mb-4" />
                       <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                         <div>
-                          <label className="text-xs text-gray-400 uppercase tracking-wider">Status</label>
+                          <label className="text-xs text-gray-400 uppercase tracking-wider">Approval Status</label>
+                          <div className="mt-1">
+                            {(viewMovement as any).approval_status === 'Pending' ? (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>
+                            ) : (viewMovement as any).approval_status === 'Approved' ? (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Approved</span>
+                            ) : (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">Rejected</span>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 uppercase tracking-wider">Movement Status</label>
                           <div className="mt-1">
                             {viewMovement.movement_status === 'Pending' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>
                             ) : viewMovement.movement_status === 'Approved' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Approved</span>
-                            ) : (
+                            ) : viewMovement.movement_status === 'Rejected' ? (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">Rejected</span>
+                            ) : (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">Completed</span>
                             )}
                           </div>
                         </div>
@@ -1140,7 +1411,7 @@ export default function AssetMovement() {
                           </div>
                         )}
                       </div>
-                      {viewMovement.movement_status === 'Pending' && user?.appUser?.assetMovementApprover && (
+                      {viewMovement.movement_status === 'Pending' && canApproveCurrentMovement && (
                         <>
                           <div className="h-[1px] bg-gray-200 my-4" />
                           <div className="flex gap-3">
@@ -1155,9 +1426,21 @@ export default function AssetMovement() {
                           </div>
                         </>
                       )}
+                      {viewMovement.movement_status === 'Approved' && isMovementCreator && (
+                        <>
+                          <div className="h-[1px] bg-gray-200 my-4" />
+                          <button onClick={() => { handleMarkAsCompleted(viewMovement.id); }} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                            <CheckCircle className="h-4 w-4" />
+                            Mark Movement as Completed
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <ApprovalList movementId={viewMovement.id} />
+                )}
               </CardContent>
             </Card>
           )}

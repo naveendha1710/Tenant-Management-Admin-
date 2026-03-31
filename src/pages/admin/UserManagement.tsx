@@ -41,20 +41,19 @@ import { Pagination } from '@/components/ui/pagination';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [isOtherUserForm, setIsOtherUserForm] = useState(false);
+  const [isTenantUserForm, setIsTenantUserForm] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [viewingUser, setViewingUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
-  const [syncChanges, setSyncChanges] = useState<{ updates: any[], newTenants: any[] }>({ updates: [], newTenants: [] });
-  const [selectedChanges, setSelectedChanges] = useState(new Set<string>());
-  const [tenantCount, setTenantCount] = useState(0);
+
   const { toast } = useToast();
   const { user, refreshUser } = useAuth();
 
@@ -84,6 +83,10 @@ const UserManagement: React.FC = () => {
     setLoading(true);
     const allUsers = await userService.getAllUsers();
     setUsers(allUsers);
+    
+    const { data: tenantsData } = await supabase.from('tenants').select('*');
+    if (tenantsData) setTenants(tenantsData);
+    
     setLoading(false);
   };
 
@@ -96,6 +99,17 @@ const UserManagement: React.FC = () => {
     
     return unsubscribe;
   }, []);
+
+  const getTenantCompany = (tenantId?: string) => {
+    if (!tenantId) return 'Not Assigned';
+    const tenant = tenants.find(t => t.id === tenantId);
+    return tenant?.company || 'Unknown';
+  };
+
+  const getUserType = (email: string) => {
+    const isMainUser = tenants.some(t => t.email === email);
+    return isMainUser ? 'Main User' : 'Sub User';
+  };
 
   const getRoleColor = (role: UserRole) => {
     const colors = {
@@ -140,6 +154,18 @@ const UserManagement: React.FC = () => {
     }
     setSelectedUser(null);
     setIsOtherUserForm(false);
+    setIsTenantUserForm(false);
+    setIsUserFormOpen(true);
+  };
+
+  const handleAddTenantUser = () => {
+    if (!canAdd) {
+      toast({ title: "Error", description: "You don't have permission to add users", variant: "destructive" });
+      return;
+    }
+    setSelectedUser(null);
+    setIsOtherUserForm(false);
+    setIsTenantUserForm(true);
     setIsUserFormOpen(true);
   };
 
@@ -182,13 +208,13 @@ const UserManagement: React.FC = () => {
     }
 
     if (confirm(`Are you sure you want to delete ${user.name}?`)) {
-      const success = await userService.deleteUser(user.id);
-      if (success) {
+      try {
+        await userService.deleteUser(user.id);
         toast({ title: "Success", description: `${user.name} deleted successfully` });
-      } else {
+      } catch (error: any) {
         toast({ 
           title: "Error", 
-          description: "Failed to delete user", 
+          description: error.message || "Failed to delete user", 
           variant: "destructive" 
         });
       }
@@ -299,90 +325,7 @@ const UserManagement: React.FC = () => {
     setIsPermissionsOpen(false);
   };
 
-  const handleSyncTenants = async () => {
-    try {
-      const { data: tenants, error: tenantsError } = await supabase.from('tenants').select('*');
-      const { data: existingUsers, error: usersError } = await supabase.from('users').select('*');
-      
-      if (tenantsError) console.error('Tenants error:', tenantsError);
-      if (usersError) console.error('Users error:', usersError);
-      
-      if (!tenants || !existingUsers) {
-        toast({ title: "Error", description: "Failed to fetch data", variant: "destructive" });
-        return;
-      }
-      
-      setTenantCount(tenants.length);
-      
-      const userEmailMap = new Map(existingUsers?.map(u => [(u.name || u.full_name)?.toLowerCase(), u.email]) || []);
-      const existingEmails = new Set(existingUsers.map(u => u.email));
-      
-      const updates: any[] = [];
 
-      tenants?.forEach(tenant => {
-        const companyName = tenant.company || tenant.name;
-        const existingEmail = userEmailMap.get(companyName?.toLowerCase());
-        
-        if (existingEmail && existingEmail !== tenant.email) {
-          updates.push({ tenantId: tenant.id, oldEmail: existingEmail, newEmail: tenant.email, companyName });
-        }
-      });
-
-      setSyncChanges({ updates, newTenants: [] });
-      setSelectedChanges(new Set());
-      setIsSyncDialogOpen(true);
-    } catch (error) {
-      console.error('Sync error:', error);
-      toast({ title: "Error", description: "Failed to sync tenants", variant: "destructive" });
-    }
-  };
-
-  const handleApplySyncChanges = async () => {
-    try {
-      const selected = Array.from(selectedChanges);
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (const key of selected) {
-        if (key.startsWith('update-')) {
-          const update = syncChanges.updates.find(u => `update-${u.tenantId}` === key);
-          if (update) {
-            const { error } = await supabase.from('users').update({ email: update.newEmail }).eq('name', update.companyName);
-            if (error) {
-              console.error(`Failed to update ${update.companyName}:`, error);
-              errorCount++;
-            } else {
-              successCount++;
-            }
-          }
-        } else if (key.startsWith('new-')) {
-          const newTenant = syncChanges.newTenants.find(t => `new-${t.tenantId}` === key);
-          if (newTenant) {
-            const { error } = await supabase.from('users').insert({ email: newTenant.email, role: 'Tenant', name: newTenant.companyName, is_active: true, password: 'admin123' });
-            if (error) {
-              console.error(`Failed to add ${newTenant.companyName}:`, error);
-              errorCount++;
-            } else {
-              successCount++;
-            }
-          }
-        }
-      }
-
-      if (successCount > 0) {
-        toast({ title: "Success", description: `${successCount} changes applied successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}` });
-      } else {
-        toast({ title: "Error", description: "All changes failed to apply", variant: "destructive" });
-      }
-      
-      setIsSyncDialogOpen(false);
-      const allUsers = await userService.getAllUsers();
-      setUsers(allUsers);
-    } catch (error) {
-      console.error('Apply changes error:', error);
-      toast({ title: "Error", description: "Failed to apply changes", variant: "destructive" });
-    }
-  };
 
   const hasUsersAccess = !user?.appUser?.userManagementAccess || user.appUser.userManagementAccess.users !== false;
   const hasTenantUsersAccess = !user?.appUser?.userManagementAccess || user.appUser.userManagementAccess.tenantUsers !== false;
@@ -613,11 +556,12 @@ const UserManagement: React.FC = () => {
                 className="pl-10 w-full"
               />
             </div>
-            {/* Sync Button */}
-            <Button variant="outline" onClick={handleSyncTenants}>
-              <Users className="h-4 w-4 mr-2" />
-              Sync Existing Tenants
-            </Button>
+            {canAdd && (
+              <Button onClick={handleAddTenantUser} className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Tenant User
+              </Button>
+            )}
           </div>
           
           {/* Tenant Users Stats */}
@@ -627,7 +571,7 @@ const UserManagement: React.FC = () => {
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Tenants</p>
-                    <p className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl font-bold">{tenantCount || users.filter(u => u.role === 'Tenant').length}</p>
+                    <p className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl font-bold">{users.filter(u => u.role === 'Tenant').length}</p>
                   </div>
                   <Users className="h-8 w-8 text-blue-600" />
                 </div>
@@ -707,7 +651,7 @@ const UserManagement: React.FC = () => {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-700">{user.name}</TableCell>
+                          <TableCell className="text-gray-700">{getTenantCompany(user.tenantId)}</TableCell>
                           <TableCell>
                             <Badge variant={user.isActive ? 'success' : 'secondary'} className="capitalize">
                               {user.isActive ? 'Active' : 'Inactive'}
@@ -872,87 +816,18 @@ const UserManagement: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Sync Dialog */}
-      <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Sync Tenant Users</DialogTitle>
-            <DialogDescription>
-              {syncChanges.updates.length === 0 && syncChanges.newTenants.length === 0 
-                ? "All tenant users are already synced. No changes detected."
-                : "Select changes to apply"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {syncChanges.updates.length === 0 && syncChanges.newTenants.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No changes detected. All tenant users are in sync.</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex justify-end mb-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      const allKeys = new Set<string>();
-                      syncChanges.updates.forEach(u => allKeys.add(`update-${u.tenantId}`));
-                      setSelectedChanges(allKeys);
-                    }}
-                  >
-                    Select All
-                  </Button>
-                </div>
-                {syncChanges.updates.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold mb-2">Email Updates</h3>
-                    {syncChanges.updates.map(update => (
-                      <div key={update.tenantId} className="flex items-center gap-3 p-3 border rounded mb-2">
-                        <Checkbox
-                          checked={selectedChanges.has(`update-${update.tenantId}`)}
-                          onCheckedChange={(checked) => {
-                            const newSet = new Set(selectedChanges);
-                            checked ? newSet.add(`update-${update.tenantId}`) : newSet.delete(`update-${update.tenantId}`);
-                            setSelectedChanges(newSet);
-                          }}
-                        />
-                        <div className="flex-1">
-                          <div className="font-medium">{update.companyName}</div>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>{update.oldEmail}</span>
-                            <ArrowRight className="h-4 w-4" />
-                            <span className="text-green-600">{update.newEmail}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)}>Close</Button>
-            {syncChanges.updates.length > 0 && (
-              <Button onClick={handleApplySyncChanges} disabled={selectedChanges.size === 0}>
-                Apply {selectedChanges.size} Changes
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* User Form Modal - Outside tabs so it works from any tab */}
       <UserForm
         isOpen={isUserFormOpen}
         onClose={() => {
           setIsUserFormOpen(false);
           setIsOtherUserForm(false);
+          setIsTenantUserForm(false);
         }}
         user={selectedUser}
         onSave={handleSaveUser}
         isOtherUserForm={isOtherUserForm}
+        isTenantUserForm={isTenantUserForm}
         onDelete={(userId) => {
           const user = users.find(u => u.id === userId);
           if (user) handleDeleteUser(user);

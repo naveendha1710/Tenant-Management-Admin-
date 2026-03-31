@@ -14,10 +14,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { BackToHome } from "@/components/ui/back-to-home";
-import { NotificationsDrawer } from "@/components/NotificationsDrawer";
 import { RoleBasedActionButton } from "./RoleBasedActionButton";
-import { NotificationBadge } from "./NotificationBadge";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { DemoNotice } from "@/components/ui/demo-notice";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -67,23 +64,6 @@ export function DashboardLayout({ children, title, subtitle, action }: Dashboard
             {/* Role-based Primary Action Button */}
             <div className="hidden lg:block">
               <RoleBasedActionButton />
-            </div>
-            
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input 
-                placeholder="Search tenants, spaces..." 
-                className="w-48 lg:w-full sm:w-64 pl-10"
-              />
-            </div>
-            
-            {/* Notifications */}
-            <NotificationBell />
-            
-            {/* Application Notifications Badge */}
-            <div className="hidden sm:block">
-              <NotificationBadge />
             </div>
           </div>
         </div>

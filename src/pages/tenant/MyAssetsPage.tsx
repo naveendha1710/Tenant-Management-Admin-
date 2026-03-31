@@ -46,11 +46,39 @@ export default function MyAssetsPage() {
   useEffect(() => {
     const initTenantIds = async () => {
       if (!user?.email || activeTenantIds.length > 0) return;
-      const { data } = await supabase.from('tenants').select('id').eq('email', user.email).single();
-      if (data) setActiveTenantIds([data.id]);
+      
+      // First check if user has tenantId in their profile
+      if (user?.appUser?.tenantId) {
+        setActiveTenantIds([user.appUser.tenantId]);
+        setLoading(false);
+        return;
+      }
+      
+      // Fallback: try to find tenant by email
+      try {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('email', user.email)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Error loading tenant:', error);
+          setLoading(false);
+          return;
+        }
+        
+        if (data) {
+          setActiveTenantIds([data.id]);
+        }
+        setLoading(false);
+      } catch (error) {
+        console.error('Error in initTenantIds:', error);
+        setLoading(false);
+      }
     };
     initTenantIds();
-  }, [user?.email]);
+  }, [user?.email, user?.appUser?.tenantId]);
 
   useEffect(() => {
     if (user?.email && activeTenantIds.length > 0) fetchAssets();
@@ -173,8 +201,8 @@ export default function MyAssetsPage() {
   const paginatedAssets = filteredAssets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
-  const categories = [...new Set(assets.map(a => a.asset_category))];
-  const statuses = [...new Set(assets.map(a => a.asset_status))];
+  const categories = [...new Set(assets.map(a => a.asset_category).filter(Boolean))];
+  const statuses = [...new Set(assets.map(a => a.asset_status).filter(Boolean))];
 
   return (
     <DashboardLayout title="My Assets" subtitle="View and manage your assigned assets">

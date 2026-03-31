@@ -23,6 +23,7 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
   const [assignmentType, setAssignmentType] = useState<'sqft' | 'seat'>('sqft');
   const [buildings, setBuildings] = useState<BuildingType[]>([]);
   const [floors, setFloors] = useState<{ [buildingId: string]: Floor[] }>({});
+  const [rooms, setRooms] = useState<{ [floorId: string]: any[] }>({});
   const [assignments, setAssignments] = useState([{
     building: '',
     floor: '',
@@ -53,8 +54,21 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
       }
       setFloors(floorsMap);
       
+      // Load rooms for all floors
+      const { supabase } = await import('@/lib/supabase');
+      const { data: roomsData } = await supabase.from('rooms').select('id, floor_id, room_number');
+      if (roomsData) {
+        const roomsMap: { [floorId: string]: any[] } = {};
+        roomsData.forEach(room => {
+          if (!roomsMap[room.floor_id]) {
+            roomsMap[room.floor_id] = [];
+          }
+          roomsMap[room.floor_id].push(room);
+        });
+        setRooms(roomsMap);
+      }
+      
       try {
-        const { supabase } = await import('@/lib/supabase');
         const { data } = await supabase.from('app_settings').select('value').eq('key', 'space_categories').maybeSingle();
         if (data?.value) {
           setSpaceCategories(data.value);
@@ -78,6 +92,25 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
       const floorsData = await buildingService.getFloorsByBuilding(buildingId);
       setFloors(prev => ({ ...prev, [buildingId]: floorsData }));
     }
+  };
+
+  // Helper function to get current building name from UUID
+  const getBuildingName = (buildingId: string) => {
+    return buildings.find(b => b.id === buildingId)?.name || 'Unknown Building';
+  };
+
+  // Helper function to get current floor name from UUID
+  const getFloorName = (buildingId: string, floorId: string) => {
+    const buildingFloors = floors[buildingId] || [];
+    const floor = buildingFloors.find(f => f.id === floorId);
+    return floor ? (floor.floor_name || `Floor ${floor.floor_number}`) : 'Unknown Floor';
+  };
+
+  // Helper function to get current room name from UUID
+  const getRoomName = (floorId: string, roomId: string) => {
+    const floorRooms = rooms[floorId] || [];
+    const room = floorRooms.find(r => r.id === roomId);
+    return room?.room_number || 'Unknown Room';
   };
 
   const addAssignment = () => {
@@ -264,7 +297,13 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                {tenant.spaceAssignments.map((sa: any, idx: number) => (
+                {tenant.spaceAssignments.map((sa: any, idx: number) => {
+                  // Fetch current names using UUIDs
+                  const currentBuildingName = getBuildingName(sa.building);
+                  const currentFloorName = getFloorName(sa.building, sa.floorId);
+                  const currentRoomName = sa.roomId ? getRoomName(sa.floorId, sa.roomId) : null;
+                  
+                  return (
                   <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded border">
                     <input
                       type="checkbox"
@@ -279,7 +318,10 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
                       className="h-4 w-4 rounded border-gray-300"
                     />
                     <div className="flex-1">
-                      <div className="font-medium text-sm">{sa.buildingName} - {sa.floorName || `Floor ${sa.floor}`}</div>
+                      <div className="font-medium text-sm">
+                        {currentBuildingName} - {currentFloorName}
+                        {currentRoomName && ` - ${currentRoomName}`}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {sa.assignmentType === 'seat' 
                           ? `${sa.assignedSeats} seats (${sa.assignedSqft} sqft) @ ₹${sa.ratePerSeat}/seat = ₹${sa.amount?.toLocaleString()}/month`
@@ -317,7 +359,8 @@ export const SpaceAssignment: React.FC<SpaceAssignmentProps> = ({ isOpen, onClos
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <div className="pt-2 border-t flex justify-between items-center">
                   <span className="text-sm font-medium">Total Monthly Rent:</span>
                   <span className="text-lg font-bold text-blue-600">

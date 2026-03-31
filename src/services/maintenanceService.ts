@@ -152,6 +152,27 @@ export class MaintenanceService {
       throw error;
     }
     
+    // Fire ticket.created notification (non-blocking, fetch full ticket with tenant join)
+    import('@/services/ticketNotifications').then(({ sendTicketNotification }) => {
+      supabase
+        .from('maintenance_tickets')
+        .select('*, tenant:tenants!tenant_id(company, name, email, phone)')
+        .eq('id', data.id)
+        .single()
+        .then(({ data: full }) => {
+          const ticket = full ? {
+            ...full,
+            tenant: full.tenant ? {
+              company_name: full.tenant.company,
+              contact_person: full.tenant.name,
+              email: full.tenant.email,
+              phone: full.tenant.phone
+            } : undefined
+          } : data;
+          sendTicketNotification('ticket.created', ticket).catch(console.error);
+        });
+    });
+
     return data;
   }
 
@@ -275,21 +296,6 @@ export class MaintenanceService {
       .single();
 
     if (error) throw error;
-    
-    // Trigger notification when status changes to pending_approval
-    if (updates.status === 'pending_approval') {
-      try {
-        const { default: notificationService } = await import('./notificationService');
-        await notificationService.trigger('ESTIMATION_PENDING_APPROVAL', {
-          ticket_id: data.id,
-          ticket_number: data.ticket_number || data.id,
-          cost: data.cost || 0
-        });
-      } catch (notifError) {
-        console.error('Notification error:', notifError);
-      }
-    }
-    
     return data;
   }
 
@@ -526,20 +532,6 @@ export class MaintenanceService {
       .single();
 
     if (error) throw error;
-    
-    // Trigger notification
-    try {
-      const { ticketNotifications } = await import('./ticketNotifications');
-      await ticketNotifications.onWorkStarted(
-        data.id,
-        data.ticket_number || data.id,
-        data.tenant_id,
-        data.assigned_to || 'Technician'
-      );
-    } catch (notifError) {
-      console.error('Notification error:', notifError);
-    }
-    
     return data;
   }
 
@@ -568,19 +560,6 @@ export class MaintenanceService {
       .single();
 
     if (error) throw error;
-    
-    // Trigger notification
-    try {
-      const { ticketNotifications } = await import('./ticketNotifications');
-      await ticketNotifications.onWorkCompleted(
-        data.id,
-        data.ticket_number || data.id,
-        data.tenant_id
-      );
-    } catch (notifError) {
-      console.error('Notification error:', notifError);
-    }
-    
     return data;
   }
 

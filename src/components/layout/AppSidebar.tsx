@@ -63,14 +63,26 @@ export function AppSidebar() {
           const filteredSubItems = group.subItems.filter((item: any) => {
             if (item.title === 'Settings') return hasPermission(user?.appUser, 'Settings', 'view');
             if (item.title === 'User Management') return hasPermission(user?.appUser, 'Users', 'view');
-            if (item.title === 'Asset Form') return hasPermission(user?.appUser, 'Asset Form', 'view');
-            if (item.title === 'Tenant Form') return hasPermission(user?.appUser, 'Tenant Form', 'view');
+            if (item.title === 'Workflows') return hasPermission(user?.appUser, 'Workflows', 'view');
+            
+            // Filter expandable form items (Asset Form, Tenant Form, Building Form)
+            if (item.expandable) {
+              if (item.title === 'Asset Form') return hasPermission(user?.appUser, 'Asset Form', 'view');
+              if (item.title === 'Tenant Form') return hasPermission(user?.appUser, 'Tenant Form', 'view');
+              if (item.title === 'Building Form') return hasPermission(user?.appUser, 'Building Form', 'view');
+            }
+            
             return true;
           });
           return filteredSubItems.length > 0 ? { ...group, subItems: filteredSubItems } : null;
         }
         if (group.title === 'Asset Management') {
-          return hasPermission(user?.appUser, 'Assets', 'view') ? group : null;
+          // Show Asset Management if user has view permission for any asset module
+          const hasAnyAssetPermission = [
+            'Assets', 'Asset Master', 'Asset Movement', 'Inventory', 
+            'Preventive Maintenance', 'Physical Audit', 'Configuration'
+          ].some(module => hasPermission(user?.appUser, module, 'view'));
+          return hasAnyAssetPermission ? group : null;
         }
         if (group.title === 'Companies') {
           return hasPermission(user?.appUser, 'Companies', 'view') ? group : null;
