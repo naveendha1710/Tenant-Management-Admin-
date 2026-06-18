@@ -136,14 +136,25 @@ export interface UpdateTicketData {
   draft_data?: any;
 }
 
+// Helper to append status_history entry
+function appendStatusHistory(currentHistory: string | null, event: string, details?: string): string {
+  const timestamp = new Date().toLocaleString('en-IN', { 
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
+  }).replace(/\//g, '-');
+  const entry = details ? `[${timestamp}] ${event}: ${details}` : `[${timestamp}] ${event}`;
+  return currentHistory ? `${currentHistory}\n${entry}` : entry;
+}
+
 export class MaintenanceService {
   // Create new maintenance ticket (Tenant)
   static async createTicket(ticketData: any): Promise<MaintenanceTicket> {
     const ticketNumber = await generateTicketId();
+    const statusHistory = appendStatusHistory(null, 'TICKET_CREATED', `Ticket #${ticketNumber} created`);
     
     const { data, error } = await supabase
       .from('maintenance_tickets')
-      .insert({ ...ticketData, ticket_number: ticketNumber })
+      .insert({ ...ticketData, ticket_number: ticketNumber, status_history: statusHistory })
       .select()
       .single();
 
@@ -285,10 +296,77 @@ export class MaintenanceService {
 
   // Update ticket (Admin/Maintenance)
   static async updateTicket(ticketId: string, updates: UpdateTicketData): Promise<MaintenanceTicket> {
+    const { data: currentTicket } = await supabase
+      .from('maintenance_tickets')
+      .select('status, status_history, ticket_number, assigned_to')
+      .eq('id', ticketId)
+      .single();
+
+    let statusHistoryUpdate = {};
+    
+    if (updates.status && currentTicket && updates.status !== currentTicket.status) {
+      let event = '';
+      let details = '';
+      
+      switch (updates.status) {
+        case 'assigned':
+          event = 'ASSIGNED';
+          details = updates.assigned_to ? `Assigned to technician` : 'Ticket assigned';
+          break;
+        case 'rca_added':
+          event = 'RCA_ADDED';
+          details = 'Root cause analysis submitted';
+          break;
+        case 'pending_approval':
+          event = 'ESTIMATION_SUBMITTED';
+          details = 'Estimation submitted for manager approval';
+          break;
+        case 'rejected':
+          event = 'MANAGER_REJECTED';
+          details = 'Rejected by manager';
+          break;
+        case 'pending_tenant_approval':
+          event = 'MANAGER_APPROVED';
+          details = 'Approved by manager, awaiting tenant approval';
+          break;
+        case 'tenant_rejected':
+          event = 'TENANT_REJECTED';
+          details = 'Rejected by tenant';
+          break;
+        case 'approved':
+          event = 'TENANT_APPROVED';
+          details = 'Approved by tenant';
+          break;
+        case 'work_started':
+          event = 'WORK_STARTED';
+          details = 'Work has been started';
+          break;
+        case 'work_completed':
+          event = 'WORK_COMPLETED';
+          details = 'Work completed';
+          break;
+        case 'resolved':
+          event = 'RESOLVED';
+          details = 'Ticket resolved';
+          break;
+        case 'reopened':
+          event = 'REOPENED';
+          details = 'Ticket reopened by tenant';
+          break;
+        default:
+          event = updates.status.toUpperCase().replace(/_/g, ' ');
+      }
+      
+      statusHistoryUpdate = {
+        status_history: appendStatusHistory(currentTicket.status_history, event, details)
+      };
+    }
+
     const { data, error } = await supabase
       .from('maintenance_tickets')
       .update({
         ...updates,
+        ...statusHistoryUpdate,
         updated_at: new Date().toISOString()
       })
       .eq('id', ticketId)
@@ -519,12 +597,21 @@ export class MaintenanceService {
 
   // Start work on ticket
   static async startWork(ticketId: string, slaHours: number): Promise<MaintenanceTicket> {
+    const { data: currentTicket } = await supabase
+      .from('maintenance_tickets')
+      .select('status_history')
+      .eq('id', ticketId)
+      .single();
+
+    const newHistory = appendStatusHistory(currentTicket?.status_history || null, 'WORK_STARTED', `SLA: ${slaHours} hours`);
+
     const { data, error } = await supabase
       .from('maintenance_tickets')
       .update({
         work_started_at: new Date().toISOString(),
         sla_hours: slaHours,
-        status: 'in_progress',
+        status: 'work_started',
+        status_history: newHistory,
         updated_at: new Date().toISOString()
       })
       .eq('id', ticketId)
@@ -539,7 +626,7 @@ export class MaintenanceService {
   static async endWork(ticketId: string): Promise<MaintenanceTicket> {
     const { data: ticket } = await supabase
       .from('maintenance_tickets')
-      .select('work_started_at, ticket_number, tenant_id')
+      .select('work_started_at, ticket_number, tenant_id, status_history')
       .eq('id', ticketId)
       .single();
 
@@ -547,12 +634,15 @@ export class MaintenanceService {
     const workCompleted = new Date();
     const durationHours = (workCompleted.getTime() - workStarted.getTime()) / (1000 * 60 * 60);
 
+    const newHistory = appendStatusHistory(ticket?.status_history || null, 'WORK_COMPLETED', `Duration: ${durationHours.toFixed(2)} hours`);
+
     const { data, error } = await supabase
       .from('maintenance_tickets')
       .update({
         work_completed_at: workCompleted.toISOString(),
         work_duration_hours: durationHours,
         status: 'work_completed',
+        status_history: newHistory,
         updated_at: new Date().toISOString()
       })
       .eq('id', ticketId)

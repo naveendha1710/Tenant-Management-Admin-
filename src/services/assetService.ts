@@ -64,6 +64,7 @@ export interface Asset {
   updated_at: string;
   updated_by?: string;
   created_by?: string;
+  update_history?: string; // JSONB array of update records
 }
 
 export interface AssetMovement {
@@ -95,6 +96,11 @@ export interface AssetMovement {
   actual_movement_date?: string;
   from_tenant?: string;
   to_tenant?: string;
+  to_tenant_id?: string; // UUID of tenant for asset update
+  handover_to?: string;
+  handover_name?: string;
+  handover_email?: string;
+  handover_mobile?: string;
   requested_by?: string;
   created_at: string;
 }
@@ -150,16 +156,32 @@ export class AssetService {
     // Get user from localStorage
     const savedUser = localStorage.getItem('demo_user');
     const userName = savedUser ? JSON.parse(savedUser).appUser?.name : null;
-    
+
+    // Ensure an asset_id exists. If not provided, try generating one via RPC
+    const finalData: Partial<Asset> = { ...assetData };
+    if (!finalData.asset_id || String(finalData.asset_id).trim() === '') {
+      try {
+        const { data: generatedId, error: rpcErr } = await supabase.rpc('generate_asset_id');
+        if (!rpcErr && generatedId) {
+          // rpc returns value in `data` — can be string or object depending on function
+          finalData.asset_id = (generatedId as any) || finalData.asset_id;
+        } else if (rpcErr) {
+          console.warn('generate_asset_id RPC error:', rpcErr);
+        }
+      } catch (rpcError) {
+        console.warn('generate_asset_id RPC failed:', rpcError);
+      }
+    }
+
     const { data, error } = await supabase
       .from('assets')
       .insert({ 
-        ...assetData,
+        ...finalData,
         created_by: userName 
       })
       .select()
       .single();
-    
+
     if (error) throw new Error(error.message);
     return data;
   }
@@ -316,8 +338,8 @@ export class AssetService {
     
     if (fetchError) throw fetchError;
     
-    // If approving, update asset locations and create history
-    if (status === 'Approved' && movement) {
+    // If approving or completing, update asset locations and create history
+    if ((status === 'Approved' || status === 'Completed') && movement) {
       const savedUser = localStorage.getItem('demo_user');
       const userName = savedUser ? JSON.parse(savedUser).appUser?.name : 'System';
       
@@ -495,14 +517,14 @@ export class AssetService {
           }
         }
         
-        // Update handover_to
-        if ((movement as any).handover_to === 'Tenant' && (movement as any).handover_name) {
-          const newHandoverToId = (movement as any).handover_name;
+        // Update handover_to (tenant)
+        if ((movement as any).handover_to === 'Tenant' && (movement as any).to_tenant_id) {
+          const newHandoverToId = (movement as any).to_tenant_id;
           
           if (asset.handover_to !== newHandoverToId) {
             // Get tenant names for history
             let oldTenantName = 'N/A';
-            let newTenantName = 'N/A';
+            let newTenantName = (movement as any).to_tenant || (movement as any).handover_name || 'N/A';
             
             if (asset.handover_to) {
               const { data: oldTenant } = await supabase
@@ -512,13 +534,6 @@ export class AssetService {
                 .maybeSingle();
               oldTenantName = oldTenant?.company || oldTenant?.name || asset.handover_to;
             }
-            
-            const { data: newTenant } = await supabase
-              .from('tenants')
-              .select('company, name')
-              .eq('id', newHandoverToId)
-              .maybeSingle();
-            newTenantName = newTenant?.company || newTenant?.name || newHandoverToId;
             
             historyRecords.push({
               asset_id: assetId,

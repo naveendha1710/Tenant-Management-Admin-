@@ -1,5 +1,4 @@
 FROM node:18-alpine
-
 WORKDIR /app
 
 # Install dependencies
@@ -10,6 +9,7 @@ RUN npm install --production
 COPY index.js .env ./
 COPY services ./services
 COPY routes ./routes
+COPY ./server/middleware ./middleware 
 
 # Copy built frontend
 COPY client/build ./client/build
@@ -18,5 +18,4 @@ COPY client/build ./client/build
 RUN mkdir -p /app/uploads /app/config /app/logs
 
 EXPOSE 3000
-
 CMD ["node", "index.js"]

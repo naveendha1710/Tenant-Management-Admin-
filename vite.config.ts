@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => ({
       protocol: 'wss',
       host: 'localhost',
       port: 8080,
+      clientPort: 8080,
+      overlay: true,
     },
     proxy: {
       '/api': {

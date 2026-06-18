@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Settings, Key, Bell, FileText, Building, Eye, Copy, RefreshCw, Trash2, Lock } from 'lucide-react';
+import { Settings, Key, Bell, FileText, Building, Eye, Copy, RefreshCw, Trash2, Lock, Cloud, HardDrive, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissionUtils';
+import { TicketUploadService } from '@/services/ticketUploadService';
 
 const mockTaxRules = [
   {
@@ -151,8 +152,14 @@ export default function SettingsPage() {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+  const [useSupabase, setUseSupabase] = useState(true);
   const { toast } = useToast();
   const { user } = useAuth();
+
+  useState(() => {
+    const settings = TicketUploadService.getSettings();
+    setUseSupabase(settings.useSupabase);
+  });
 
   const canView = hasPermission(user, 'Settings', 'view');
   const canAdd = hasPermission(user, 'Settings', 'add');
@@ -210,12 +217,13 @@ export default function SettingsPage() {
     <DashboardLayout title="System Settings" subtitle="Configure system-wide settings">
       <div className="space-y-4 sm:space-y-6">
         <Tabs defaultValue="tax" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="tax">Tax Rules</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="api">API Keys</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="branches">Branches</TabsTrigger>
+            <TabsTrigger value="uploads">File Uploads</TabsTrigger>
             <TabsTrigger value="cache">Cache</TabsTrigger>
           </TabsList>
 
@@ -481,6 +489,65 @@ export default function SettingsPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* File Uploads Tab */}
+          <TabsContent value="uploads" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>File Upload Settings</CardTitle>
+                <CardDescription>Choose where ticket attachments should be stored</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${useSupabase ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <Cloud className={`h-5 w-5 ${useSupabase ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Supabase Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload files to cloud storage bucket</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {useSupabase && <Check className="h-4 w-4 text-green-600" />}
+                    <Switch 
+                      checked={useSupabase} 
+                      onCheckedChange={(checked) => {
+                        setUseSupabase(checked);
+                        TicketUploadService.saveSettings({ useSupabase: checked });
+                        toast({
+                          title: 'Settings Updated',
+                          description: `File uploads will now use ${checked ? 'Supabase Storage' : 'Local Storage'}`,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${!useSupabase ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <HardDrive className={`h-5 w-5 ${!useSupabase ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Local Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload files to local server storage</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!useSupabase && <Check className="h-4 w-4 text-green-600" />}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-900">
+                    <strong>Current Setting:</strong> Files will be uploaded to{' '}
+                    <span className="font-semibold">{useSupabase ? 'Supabase Storage' : 'Local Storage'}</span>
+                  </p>
                 </div>
               </CardContent>
             </Card>

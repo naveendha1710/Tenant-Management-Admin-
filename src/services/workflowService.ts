@@ -180,19 +180,22 @@ export class WorkflowService {
    * Publishes workflow (activates it)
    */
   async publishWorkflow(workflowId: string): Promise<Workflow> {
-    // Deactivate other workflows for same tenant/entity
+    // Get workflow details
     const { data: workflow } = await supabase
       .from('workflows')
       .select('tenant_id, entity_type')
       .eq('id', workflowId)
       .single();
     
-    if (workflow) {
+    if (workflow && workflow.tenant_id) {
+      // Only deactivate for tenant workflows
+      // System workflows can have multiple active (different users)
       await supabase
         .from('workflows')
         .update({ is_active: false })
         .eq('tenant_id', workflow.tenant_id)
-        .eq('entity_type', workflow.entity_type);
+        .eq('entity_type', workflow.entity_type)
+        .neq('id', workflowId);
     }
     
     // Activate this workflow

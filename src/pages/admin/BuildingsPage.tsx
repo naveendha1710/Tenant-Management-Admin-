@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -245,6 +245,45 @@ function FloorsTab({ canAdd, canEdit, canDelete }) {
 
   const confirmDeleteFloor = async () => {
     try {
+      // Check if floor has rooms with assets
+      const { supabase } = await import('@/lib/supabase');
+      const { data: roomsWithAssets } = await supabase
+        .from('rooms')
+        .select('id, room_number, assets(asset_id, asset_name)')
+        .eq('floor_id', deleteFloorId);
+      
+      const roomsInUse = roomsWithAssets?.filter(r => r.assets && r.assets.length > 0) || [];
+      
+      if (roomsInUse.length > 0) {
+        const roomList = roomsInUse.map(r => r.room_number).join(', ');
+        toast({ 
+          title: 'Cannot Delete Floor', 
+          description: `Floor has rooms with assets: ${roomList}`, 
+          variant: 'destructive' 
+        });
+        setDeleteFloorId(null);
+        return;
+      }
+      
+      // Check if floor has assets directly assigned
+      const { data: assetsOnFloor } = await supabase
+        .from('assets')
+        .select('asset_id, asset_name')
+        .eq('floor_id', deleteFloorId)
+        .limit(5);
+      
+      if (assetsOnFloor && assetsOnFloor.length > 0) {
+        const assetList = assetsOnFloor.map(a => a.asset_name || a.asset_id).join(', ');
+        const moreText = assetsOnFloor.length === 5 ? ' and more' : '';
+        toast({ 
+          title: 'Cannot Delete Floor', 
+          description: `Floor has assets assigned: ${assetList}${moreText}`, 
+          variant: 'destructive' 
+        });
+        setDeleteFloorId(null);
+        return;
+      }
+      
       await buildingsService.deleteFloor(deleteFloorId);
       toast({ title: 'Success', description: 'Floor deleted successfully' });
       loadData();
@@ -476,6 +515,8 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
   });
   const [existingRooms, setExistingRooms] = useState([]);
   const [showSequenceDialog, setShowSequenceDialog] = useState(false);
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
+  const saveRoomLockRef = useRef(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -558,6 +599,28 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
   const confirmDeleteRoom = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
+      
+      // Check if room is used by assets
+      const { data: assetsInRoom, error: assetError } = await supabase
+        .from('assets')
+        .select('asset_id, asset_name')
+        .eq('room_id', deleteRoomId)
+        .limit(5);
+      
+      if (assetError) throw assetError;
+      
+      if (assetsInRoom && assetsInRoom.length > 0) {
+        const assetList = assetsInRoom.map(a => a.asset_name || a.asset_id).join(', ');
+        const moreText = assetsInRoom.length === 5 ? ' and more' : '';
+        toast({ 
+          title: 'Cannot Delete Room', 
+          description: `Room is assigned to assets: ${assetList}${moreText}`, 
+          variant: 'destructive' 
+        });
+        setDeleteRoomId(null);
+        return;
+      }
+      
       await supabase.from('rooms').delete().eq('id', deleteRoomId);
       toast({ title: 'Success', description: 'Room deleted successfully' });
       loadData();
@@ -637,6 +700,7 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
       use_sequence: false
     }));
     setShowSequenceDialog(false);
+    setIsAddRoomOpen(true);
   };
 
   const handleFloorChange = (floorId) => {
@@ -914,6 +978,7 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                 onClick={() => {
                   setIsAddRoomOpen(false);
                   setEditingRoomId(null);
+                  setIsSavingRoom(false);
                   setRoomForm({ building_id: '', floor_id: '', rooms: [{ room_number: '', category_id: '' }], use_sequence: false, sequence_start: '', sequence_count: 1, sequence_prefix: '' });
                 }}
                 className="flex-1"
@@ -921,9 +986,15 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                 Cancel
               </Button>
               <Button
+                type="button"
+                disabled={isSavingRoom}
                 onClick={async () => {
+                  if (saveRoomLockRef.current) return;
+                  saveRoomLockRef.current = true;
+                  setIsSavingRoom(true);
                   try {
                     const { supabase } = await import('@/lib/supabase');
+                    const normalizeRoomNumber = (value: string) => value.trim().toLowerCase();
                     
                     if (editingRoomId) {
                       // Update existing room
@@ -943,6 +1014,15 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                         })
                         .eq('id', editingRoomId);
                       
+                      if (error?.code === '23505') {
+                        toast({ 
+                          title: 'Error', 
+                          description: 'A room with the same number already exists on this floor.', 
+                          variant: 'destructive' 
+                        });
+                        return;
+                      }
+                      
                       if (error) {
                         console.error('Update error:', error);
                         throw error;
@@ -957,6 +1037,42 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                         toast({ title: 'Error', description: 'Please enter at least one room number', variant: 'destructive' });
                         return;
                       }
+
+                      const seenNumbers = new Set<string>();
+                      const duplicateInForm = validRooms.filter(room => {
+                        const normalized = normalizeRoomNumber(room.room_number);
+                        if (seenNumbers.has(normalized)) return true;
+                        seenNumbers.add(normalized);
+                        return false;
+                      });
+
+                      if (duplicateInForm.length > 0) {
+                        const duplicateList = [...new Set(duplicateInForm.map(room => room.room_number.trim()))];
+                        toast({
+                          title: 'Error',
+                          description: `Duplicate room number(s) in this form: ${duplicateList.join(', ')}`,
+                          variant: 'destructive'
+                        });
+                        return;
+                      }
+                      
+                      // Check for duplicates in existing rooms
+                      const { data: existingRoomsData } = await supabase
+                        .from('rooms')
+                        .select('room_number')
+                        .eq('floor_id', roomForm.floor_id);
+                      
+                      const existingRoomNumbers = new Set(existingRoomsData?.map(r => normalizeRoomNumber(r.room_number)) || []);
+                      const duplicates = validRooms.filter(room => existingRoomNumbers.has(normalizeRoomNumber(room.room_number)));
+                      
+                      if (duplicates.length > 0) {
+                        toast({ 
+                          title: 'Error', 
+                          description: `Room(s) already exist: ${duplicates.map(r => r.room_number).join(', ')}`, 
+                          variant: 'destructive' 
+                        });
+                        return;
+                      }
                       
                       const roomsToInsert = validRooms.map(room => ({
                         building_id: roomForm.building_id,
@@ -965,7 +1081,22 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                         category_id: room.category_id || null
                       }));
                       
-                      await supabase.from('rooms').insert(roomsToInsert);
+                      const { error } = await supabase.from('rooms').insert(roomsToInsert);
+                      
+                      if (error?.code === '23505') {
+                        toast({ 
+                          title: 'Error', 
+                          description: 'One or more rooms already exist on this floor.', 
+                          variant: 'destructive' 
+                        });
+                        return;
+                      }
+                      
+                      if (error) {
+                        console.error('Insert error:', error);
+                        throw error;
+                      }
+                      
                       toast({ 
                         title: 'Success', 
                         description: `${validRooms.length} room(s) added successfully` 
@@ -975,14 +1106,19 @@ function RoomsTab({ canAdd, canEdit, canDelete }) {
                     setIsAddRoomOpen(false);
                     setEditingRoomId(null);
                     setRoomForm({ building_id: '', floor_id: '', rooms: [{ room_number: '', category_id: '' }], use_sequence: false, sequence_start: '', sequence_count: 1, sequence_prefix: '' });
+                    setExistingRooms([]);
                     loadData();
                   } catch (error) {
+                    console.error('Room operation error:', error);
                     toast({ title: 'Error', description: editingRoomId ? 'Failed to update room' : 'Failed to add rooms', variant: 'destructive' });
+                  } finally {
+                    saveRoomLockRef.current = false;
+                    setIsSavingRoom(false);
                   }
                 }}
                 className="flex-1"
               >
-                {editingRoomId ? 'Update Room' : `Add ${roomForm.rooms.filter(room => room.room_number.trim()).length} Room(s)`}
+                {isSavingRoom ? 'Saving...' : (editingRoomId ? 'Update Room' : `Add ${roomForm.rooms.filter(room => room.room_number.trim()).length} Room(s)`)}
               </Button>
             </div>
           </div>
@@ -1133,29 +1269,31 @@ export default function BuildingsPage() {
         const buildingsData = await buildingsService.getBuildings();
         setBuildings(buildingsData);
         
-        // Load actual floor data for each building
+        // Load floor counts and totals in parallel using a single query
+        const { supabase } = await import('@/lib/supabase');
+        const { data: floorsData } = await supabase
+          .from('floors')
+          .select('building_id, total_sqft, occupied_sqft');
+        
+        // Aggregate floor data by building
         const floorTotals: {[key: string]: number} = {};
         const floorCounts: {[key: string]: number} = {};
-        for (const building of buildingsData) {
-          const floors = await buildingsService.getFloorsByBuilding(building.id);
-          floorTotals[building.id] = floors.reduce((sum, floor) => sum + floor.total_sqft, 0);
-          floorCounts[building.id] = floors.length;
-        }
-        setBuildingFloors(floorTotals);
-        setActualFloorCounts(floorCounts);
-        
-        // Calculate real stats from floors data
         let totalSqft = 0;
         let occupiedSqft = 0;
         
-        for (const building of buildingsData) {
-          const floors = await buildingsService.getFloorsByBuilding(building.id);
-          floors.forEach(floor => {
-            totalSqft += floor.total_sqft;
-            occupiedSqft += floor.occupied_sqft || 0;
-          });
-        }
+        floorsData?.forEach(floor => {
+          if (!floorTotals[floor.building_id]) {
+            floorTotals[floor.building_id] = 0;
+            floorCounts[floor.building_id] = 0;
+          }
+          floorTotals[floor.building_id] += floor.total_sqft;
+          floorCounts[floor.building_id]++;
+          totalSqft += floor.total_sqft;
+          occupiedSqft += floor.occupied_sqft || 0;
+        });
         
+        setBuildingFloors(floorTotals);
+        setActualFloorCounts(floorCounts);
         setSpaceStats({
           totalSpaces: totalSqft,
           available: totalSqft - occupiedSqft,

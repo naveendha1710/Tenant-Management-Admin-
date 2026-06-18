@@ -1,11 +1,11 @@
-import { 
-  Building2, 
-  Users, 
-  Calendar, 
-  FileText, 
-  DollarSign, 
-  BarChart3, 
-  Settings, 
+import {
+  Building2,
+  Users,
+  Calendar,
+  FileText,
+  DollarSign,
+  BarChart3,
+  Settings,
   Bell,
   Wrench,
   UserCheck,
@@ -27,7 +27,9 @@ import {
   Scan,
   Cog,
   List,
-  GitBranch
+  GitBranch,
+  Truck,
+  FileSpreadsheet
 } from "lucide-react";
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Accountant' | 'Maintenance Manager' | 'Viewer' | 'Custom' | 'Helpdesk' | 'Technician' | 'Tenant';
@@ -68,6 +70,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Buildings", url: "/admin/buildings", icon: Building2 },
         { title: "Accounts", url: "/admin/accounts", icon: DollarSign },
         { title: "Helpdesk", url: "/admin/helpdesk", icon: Headphones },
+        { title: "Reports", url: "/reports", icon: FileSpreadsheet },
       ]
     },
     {
@@ -77,6 +80,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Asset Master", url: "/assets/master", icon: Package },
         { title: "Asset Movement", url: "/assets/movement", icon: TrendingUp },
         { title: "Inventory", url: "/assets/inventory", icon: Package },
+        { title: "Services", url: "/assets/services", icon: Wrench },
         { title: "Preventive Maintenance", url: "/assets/preventive-maintenance", icon: ClipboardCheck },
         { title: "Physical Audit", url: "/assets/physical-audit", icon: Scan },
         { title: "Configuration", url: "/assets/configuration", icon: Cog },
@@ -89,6 +93,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
       subItems: [
         { title: "Settings", url: "/admin/settings", icon: Settings },
         { title: "User Management", url: "/admin/user-management", icon: Shield },
+        { title: "Vendors", url: "/admin/vendors", icon: Truck },
         { title: "Workflows", url: "/admin/workflows", icon: GitBranch },
         { 
           title: "Asset Form", 
@@ -149,6 +154,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Buildings", url: "/admin/buildings", icon: Building2 },
         { title: "Accounts", url: "/admin/accounts", icon: DollarSign },
         { title: "Helpdesk", url: "/admin/helpdesk", icon: Headphones },
+        { title: "Reports", url: "/reports", icon: FileSpreadsheet },
       ]
     },
     {
@@ -158,6 +164,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Asset Master", url: "/assets/master", icon: Package },
         { title: "Asset Movement", url: "/assets/movement", icon: TrendingUp },
         { title: "Inventory", url: "/assets/inventory", icon: Package },
+        { title: "Services", url: "/assets/services", icon: Wrench },
         { title: "Preventive Maintenance", url: "/assets/preventive-maintenance", icon: ClipboardCheck },
         { title: "Physical Audit", url: "/assets/physical-audit", icon: Scan },
         { title: "Configuration", url: "/assets/configuration", icon: Cog },
@@ -170,6 +177,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
       subItems: [
         { title: "Settings", url: "/admin/settings", icon: Settings },
         { title: "User Management", url: "/admin/user-management", icon: Shield },
+        { title: "Vendors", url: "/admin/vendors", icon: Truck },
         { title: "Workflows", url: "/admin/workflows", icon: GitBranch },
         { 
           title: "Asset Form", 

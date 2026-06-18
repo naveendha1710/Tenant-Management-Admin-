@@ -19,6 +19,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // ─── SMTP ────────────────────────────────────────────────────────────────────
 
+// Batch send with delay to avoid rate limits
 async function smtpSend(to: string, subject: string, html: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/api/admin/smtp/send`, {
@@ -31,6 +32,26 @@ async function smtpSend(to: string, subject: string, html: string): Promise<bool
     return false;
   }
 }
+
+// Batch send multiple emails with server-side rate limiting
+async function smtpSendBatch(emails: Array<{ to: string; subject: string; html: string }>): Promise<{ success: boolean; results: Array<{ to: string; success: boolean }> }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/smtp/send-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emails }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return { success: false, results: [] };
+  } catch {
+    return { success: false, results: [] };
+  }
+}
+
+// Add delay between emails to prevent rate limit errors
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ─── LOGGING ─────────────────────────────────────────────────────────────────
 
@@ -59,19 +80,46 @@ async function resolveRecipients(
   setting: any,
 ): Promise<{ role: string; email: string }[]> {
   const out: { role: string; email: string }[] = [];
+  const seen = new Set<string>(); // Deduplicate emails
 
   if (setting.notify_creator) {
     const email = ticket.tenant?.email || ticket.creator_email || null;
-    if (email) out.push({ role: 'creator', email });
+    if (email && !seen.has(email)) {
+      // Check if tenant user has notifications enabled
+      const { data: tenantUser } = await supabase
+        .from('users')
+        .select('receive_ticket_notifications')
+        .eq('email', email)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (tenantUser?.receive_ticket_notifications !== false) {
+        out.push({ role: 'creator', email });
+        seen.add(email);
+      }
+    }
   }
 
   if (setting.notify_manager) {
+    // Manager = users with "Manage Tickets" permission
     const { data } = await supabase
       .from('users')
-      .select('email')
-      .eq('role', 'Maintenance Manager')
-      .eq('is_active', true);
-    data?.forEach(u => out.push({ role: 'manager', email: u.email }));
+      .select('email, permissions, receive_ticket_notifications')
+      .eq('is_active', true)
+      .eq('receive_ticket_notifications', true);
+    
+    data?.forEach(u => {
+      if (u.permissions && !seen.has(u.email)) {
+        const perms = Array.isArray(u.permissions) ? u.permissions : [];
+        const hasManageTickets = perms.some((p: any) => 
+          p.module === 'Manage Tickets' && p.view === true
+        );
+        if (hasManageTickets) {
+          out.push({ role: 'manager', email: u.email });
+          seen.add(u.email);
+        }
+      }
+    });
   }
 
   if (setting.notify_helpdesk) {
@@ -79,8 +127,14 @@ async function resolveRecipients(
       .from('users')
       .select('email')
       .eq('role', 'Helpdesk')
-      .eq('is_active', true);
-    data?.forEach(u => out.push({ role: 'helpdesk', email: u.email }));
+      .eq('is_active', true)
+      .eq('receive_ticket_notifications', true);
+    data?.forEach(u => {
+      if (!seen.has(u.email)) {
+        out.push({ role: 'helpdesk', email: u.email });
+        seen.add(u.email);
+      }
+    });
   }
 
   return out;
@@ -89,6 +143,7 @@ async function resolveRecipients(
 // ─── MAIN SERVICE ────────────────────────────────────────────────────────────
 
 export async function sendTicketNotification(event: TicketEvent, ticket: any): Promise<void> {
+  console.log(`[TicketNotification] Event: ${event}, Ticket ID: ${ticket.id}, Status: ${ticket.status}`);
   try {
     // 0. Check global kill-switch
     const { data: global } = await supabase
@@ -96,7 +151,10 @@ export async function sendTicketNotification(event: TicketEvent, ticket: any): P
       .select('enabled')
       .limit(1)
       .single();
-    if (!global?.enabled) return;
+    if (!global?.enabled) {
+      console.log(`[TicketNotification] Global email disabled`);
+      return;
+    }
 
     // 1. Check notification settings
     const { data: setting } = await supabase
@@ -105,14 +163,21 @@ export async function sendTicketNotification(event: TicketEvent, ticket: any): P
       .eq('event', event)
       .eq('enabled', true)
       .maybeSingle();
-    if (!setting) return;
+    if (!setting) {
+      console.log(`[TicketNotification] No settings found for event: ${event}`);
+      return;
+    }
 
     // 2. Resolve recipients + branding in parallel
     const [recipients, brandingRes] = await Promise.all([
       resolveRecipients(ticket, setting),
       supabase.from('email_branding').select('*').limit(1).single(),
     ]);
-    if (!recipients.length) return;
+    if (!recipients.length) {
+      console.log(`[TicketNotification] No recipients found`);
+      return;
+    }
+    console.log(`[TicketNotification] Recipients: ${recipients.map(r => `${r.role}:${r.email}`).join(', ')}`);
 
     const branding = brandingRes.data ?? {
       company_name: 'Rathinam Nexus Suite',
@@ -134,7 +199,9 @@ export async function sendTicketNotification(event: TicketEvent, ticket: any): P
       footerText: branding.footer_text,
     };
 
-    // 4. Send per recipient
+    // 4. Prepare all emails for batch sending
+    const emailsToSend: Array<{ to: string; subject: string; html: string; role: string }> = [];
+    
     for (const { role, email } of recipients) {
       const { data: tmpl } = await supabase
         .from('email_templates')
@@ -147,12 +214,32 @@ export async function sendTicketNotification(event: TicketEvent, ticket: any): P
 
       const subject = renderTemplate(tmpl.subject, vars);
       const html = renderTemplate(tmpl.html_body, vars);
-      const ok = await smtpSend(email, subject, html);
-      await logResult(event, ticket.id, email, subject, ok ? 'sent' : 'failed');
+      emailsToSend.push({ to: email, subject, html, role });
+    }
+
+    // 5. Send all emails in batch (backend handles rate limiting)
+    if (emailsToSend.length > 0) {
+      console.log(`[TicketNotification] Sending ${emailsToSend.length} emails via batch`);
+      const batchResult = await smtpSendBatch(emailsToSend);
+      console.log(`[TicketNotification] Batch result:`, batchResult);
+      
+      // Log results
+      for (let i = 0; i < emailsToSend.length; i++) {
+        const emailData = emailsToSend[i];
+        const result = batchResult.results[i];
+        console.log(`[TicketNotification] Email to ${emailData.to}: ${result?.success ? 'SUCCESS' : 'FAILED'}`);
+        await logResult(
+          event,
+          ticket.id,
+          emailData.to,
+          emailData.subject,
+          result?.success ? 'sent' : 'failed'
+        );
+      }
     }
   } catch (err) {
     // Non-blocking — ticket flow must not be interrupted
-    console.error('[TicketNotification]', err);
+    console.error('[TicketNotification] Error:', err);
   }
 }
 

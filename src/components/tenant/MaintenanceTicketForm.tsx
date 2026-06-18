@@ -12,6 +12,7 @@ import { FileText, MapPin, Calendar, Camera, AlertTriangle, X, Upload, Cloud, Bu
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { MaintenanceService } from '@/services/maintenanceService';
+import { TicketUploadService } from '@/services/ticketUploadService';
 import { supabase } from '@/lib/supabaseClient';
 import { ticketNotifications } from '@/services/ticketNotifications';
 import { cn } from '@/lib/utils';
@@ -68,6 +69,9 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
   const [dragActive, setDragActive] = useState(false);
   const [tenantAssets, setTenantAssets] = useState<any[]>([]);
   const [assetSearchOpen, setAssetSearchOpen] = useState(false);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [currentTenant, setCurrentTenant] = useState<any | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -93,9 +97,11 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
       // Check if user is a tenant
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
-        .select('id')
+        .select('*')
         .eq('email', user?.email)
         .maybeSingle();
+
+      setCurrentTenant(tenantData || null);
 
       if (tenantData) {
         // Tenant user - fetch their space assignments
@@ -109,6 +115,15 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
         const allSpaceAssignments = agreements?.flatMap(a => a.space_assignments || []) || [];
         setSpaceAssignments(allSpaceAssignments);
       } else {
+        // Non-tenant user (helpdesk/admin) - fetch tenant list and all buildings/floors
+        try {
+          const { tenantDataService } = await import('@/data/tenantData');
+          const allTenants = await tenantDataService.getAllTenants();
+          setTenants(allTenants || []);
+        } catch (e) {
+          console.warn('Could not load tenants list', e);
+        }
+
         // Non-tenant user (helpdesk/admin) - fetch all buildings and floors
         const { data: buildings, error: buildingsError } = await supabase
           .from('buildings')
@@ -293,40 +308,32 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
     
     setLoading(true);
     try {
-      // Check if user is a tenant
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('email', user?.email)
-        .maybeSingle();
-      
-      const tenant = tenantData;
+      // Determine tenant context (tenant user or admin selected tenant)
+      const tenant = currentTenant || null;
       
       // Upload photos if any
       const uploadedPhotos = [];
       if (formData.photos.length > 0) {
         const folderName = tenant ? tenant.company.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'helpdesk';
-        for (const photo of formData.photos) {
-          const uploadFormData = new FormData();
-          uploadFormData.append('file', photo);
-          
-          const response = await fetch(`/api/upload?category=tenant-ticketing/${folderName}`, {
-            method: 'POST',
-            body: uploadFormData
+        
+        try {
+          const photoUrls = await TicketUploadService.uploadFiles(formData.photos, folderName);
+          uploadedPhotos.push(...photoUrls);
+        } catch (error) {
+          console.error('Photo upload failed:', error);
+          toast({ 
+            title: "Warning", 
+            description: "Some photos failed to upload, but ticket will be created",
+            variant: "destructive" 
           });
-          
-          if (response.ok) {
-            const result = await response.json();
-            uploadedPhotos.push(result.file.url);
-          } else {
-            console.error('Photo upload failed:', await response.text());
-          }
         }
       }
       
-      // Create ticket data
+      // Create ticket data - use selected tenant if an admin chooses one
+      const tenantIdToUse = tenant?.id || selectedTenantId || null;
       const ticketData = {
-        tenant_id: tenant?.id || null,
+        tenant_id: tenantIdToUse,
+        on_behalf_tenant_id: selectedTenantId || null,
         created_by_user_id: user?.id || null,
         title: formData.title,
         description: formData.description,
@@ -399,6 +406,24 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
         </h3>
         <p className="text-sm text-gray-600 mt-1">Tell us what needs attention</p>
       </div>
+
+      {/* Tenant selector for admins to create ticket on behalf of a tenant */}
+      {!currentTenant && (
+        <div className="px-0">
+          <Label className="text-sm font-medium mb-2 block">Select Tenant (Optional)</Label>
+          <Select value={selectedTenantId || ''} onValueChange={(v) => setSelectedTenantId(v === '__none' ? null : v)}>
+            <SelectTrigger className="ring-offset-background focus:ring-2 focus:ring-blue-500">
+              <SelectValue placeholder="Select Tenant (Optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">None</SelectItem>
+              {tenants.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.company || t.name || t.companygroup}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-5">
         {/* Category & Title - 2 column grid */}
@@ -664,50 +689,52 @@ export function MaintenanceTicketForm({ isOpen, onClose, onSuccess }: Maintenanc
         </div>
 
         {/* Photo Upload Dropzone */}
-        <div>
-          <Label className="text-sm font-medium mb-3 flex items-center gap-2">
-            <Camera className="h-4 w-4 text-gray-500" />
-            Upload Photos
-          </Label>
-          <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-            }`}
-          >
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                setFormData(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
-              }}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            <Cloud className="h-12 w-12 mx-auto text-gray-400 mb-3" />
-            <p className="text-sm font-medium text-gray-700">Drag files here or click to upload</p>
-            <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
-          </div>
-          {formData.photos.length > 0 && (
-            <div className="flex gap-3 mt-4 flex-wrap">
-              {formData.photos.map((photo, i) => (
-                <div key={i} className="relative group">
-                  <img src={URL.createObjectURL(photo)} alt="" className="w-24 h-24 object-cover rounded-lg border-2 border-gray-200" />
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(i)}
-                    className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label className="text-sm font-medium mb-3 flex items-center gap-2">
+              <Camera className="h-4 w-4 text-gray-500" />
+              Upload Photos
+            </Label>
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={`relative border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+              }`}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setFormData(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <Cloud className="h-6 w-6 mx-auto text-gray-400 mb-1" />
+              <p className="text-xs font-medium text-gray-700">Drag files here or click to upload</p>
+              <p className="text-xs text-gray-500 mt-0.5">PNG, JPG up to 10MB</p>
             </div>
-          )}
+            {formData.photos.length > 0 && (
+              <div className="flex gap-3 mt-4 flex-wrap">
+                {formData.photos.map((photo, i) => (
+                  <div key={i} className="relative group">
+                    <img src={URL.createObjectURL(photo)} alt="" className="w-24 h-24 object-cover rounded-lg border-2 border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(i)}
+                      className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

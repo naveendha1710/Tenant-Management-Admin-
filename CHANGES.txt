@@ -1,0 +1,17 @@
+KPI Card Click and Search Implementation for ManageTicketsPage.tsx
+
+Changes needed:
+
+1. Add searchQuery state variable
+2. Change statusFilter initial value from 'pending_approval' to 'all_tickets'
+3. Add searchQuery filter logic in filteredTickets
+4. Add enhanced status filter logic (pending_estimation, overdue, safety_risk)
+5. Add onClick handlers to all KPI cards
+6. Replace search input with separate search bar above filters
+7. Add 'All Status' option in status filter dropdown
+8. Update Clear Filters to reset searchQuery and statusFilter to 'all_tickets'
+
+The implementation matches HelpdeskDashboard.tsx functionality where:
+- Clicking KPI cards filters the ticket list
+- Search bar searches across ticket number, title, description, tenant, unit
+- Status filters include special cases like overdue, safety_risk, pending_estimation

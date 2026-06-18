@@ -6,7 +6,42 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AssetService, Asset } from '@/services/assetService';
 import { buildingService, Building } from '@/services/buildingService';
 import { supabase } from '@/lib/supabaseClient';
-import { Plus, Search, Edit, Trash2, Eye, Printer, FileSpreadsheet, Tag, Settings2, Check } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Printer, FileSpreadsheet, Tag, Settings2, Check, FileText } from 'lucide-react';
+// VirtualList: dynamically load react-window's FixedSizeList at runtime
+// and fall back to a simple non-virtualized renderer when unavailable.
+function VirtualList(props: any) {
+  const { height, itemCount, itemSize, width, children } = props;
+  const [RemoteList, setRemoteList] = useState<any>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    import('react-window')
+      .then((mod) => {
+        const Comp = (mod && (mod.FixedSizeList || (mod as any).default || (mod as any).default?.FixedSizeList));
+        if (mounted && Comp) setRemoteList(() => Comp);
+      })
+      .catch(() => {
+        // ignore and keep RemoteList null to use fallback
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  if (RemoteList) {
+    return (
+      // eslint-disable-next-line react/jsx-props-no-spreading
+      <RemoteList height={height} itemCount={itemCount} itemSize={itemSize} width={width}>
+        {children}
+      </RemoteList>
+    );
+  }
+
+  // Fallback: simple mapped list (not virtualized)
+  return (
+    <div style={{ height, width, overflow: 'auto' }}>
+      {Array.from({ length: itemCount }).map((_, index) => children({ index, style: { height: itemSize } }))}
+    </div>
+  );
+}
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
@@ -15,7 +50,9 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { generateAssetDetailExcel, generateAssetExcelReport } from '@/utils/assetExport';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { generateAssetLabelsPDF } from '@/utils/thermalPdfGenerator';
+import { generateAssetDetailPDF } from '@/utils/assetPdfGenerator';
 import { useAuth } from '@/contexts/AuthContext';
 
 const ALL_COLUMNS = [
@@ -56,7 +93,6 @@ interface AssetListProps {
   filterMaterial?: string;
   filterSize?: string;
   sortOrder?: string;
-  filteredCount?: number;
   currentPage?: number;
   itemsPerPage?: number;
   onPageChange?: (page: number) => void;
@@ -68,11 +104,12 @@ interface AssetListProps {
   onSelectAllAssets?: (pageAssetIds: string[]) => void;
   onSelectAllFiltered?: () => void;
   onClearSelection?: () => void;
-  filteredCount?: number;
+  onTotalCountChange?: (count: number) => void;
 }
 
-export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize, sortOrder, currentPage: propCurrentPage, itemsPerPage: propItemsPerPage, onPageChange, onItemsPerPageChange, searchTerm = '', onSearchChange, selectedAssets: propSelectedAssets, onSelectAsset, onSelectAllAssets, onSelectAllFiltered, onClearSelection, filteredCount }: AssetListProps) {
+export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize, sortOrder, currentPage: propCurrentPage, itemsPerPage: propItemsPerPage, onPageChange, onItemsPerPageChange, searchTerm = '', onSearchChange, selectedAssets: propSelectedAssets, onSelectAsset, onSelectAllAssets, onSelectAllFiltered, onClearSelection, onTotalCountChange }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [floors, setFloors] = useState<Record<string, string>>({});
   const [rooms, setRooms] = useState<Record<string, string>>({});
@@ -81,16 +118,25 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   const [tenants, setTenants] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  // Use prop selectedAssets if provided, otherwise use local state
   const currentSelectedAssets = propSelectedAssets ? Array.from(propSelectedAssets) : selectedAssets;
   const [currentPage, setCurrentPage] = useState(propCurrentPage || 1);
   const [itemsPerPage, setItemsPerPage] = useState(propItemsPerPage || 10);
+  // Keyset pagination state (cursor = last seen asset_id for paging)
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [prevCursors, setPrevCursors] = useState<(string | null)[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  // Offset paging support for numeric page buttons (hybrid approach)
+  const [offsetPage, setOffsetPage] = useState<number | null>(null);
+  const MAX_OFFSET_PAGES = 50; // safe threshold for OFFSET-based jumps
 
   useEffect(() => {
     if (propCurrentPage !== undefined) setCurrentPage(propCurrentPage);
   }, [propCurrentPage]);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
+  const [showDeepJumpConfirm, setShowDeepJumpConfirm] = useState(false);
+  const [deepJumpTarget, setDeepJumpTarget] = useState<number | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -107,7 +153,7 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   }, []);
 
   useEffect(() => {
-    loadAssets();
+    // Load non-paged supporting data once or when relevant filters change
     loadBuildings();
     loadUsers();
     loadAssetCombinations();
@@ -116,9 +162,22 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
     loadTenants();
   }, []);
 
+  // Load assets when cursor, page size, offsetPage or filters change
   useEffect(() => {
+    loadAssets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, offsetPage, itemsPerPage, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, searchTerm, sortOrder]);
+
+  useEffect(() => {
+    // Reset keyset pagination when filters/search change
     setCurrentPage(1);
+    setPrevCursors([]);
+    setCursor(null);
+    setHasNextPage(false);
+    setNextCursor(null);
+    setOffsetPage(null);
     onPageChange?.(1);
+    // Don't reload here - will be handled by the main useEffect triggered by dependencies
   }, [filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize, searchTerm]);
 
   const loadTenants = async () => {
@@ -165,11 +224,102 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   };
 
   const loadAssets = async () => {
+    setLoading(true);
     try {
-      const data = await AssetService.getAssets();
-      setAssets(data);
+      // Build a helper to apply filters to a Supabase query
+      const applyFilters = (q: any) => {
+        if (searchTerm) {
+          q = q.or(`asset_name.ilike.%${searchTerm}%,asset_id.ilike.%${searchTerm}%`);
+        }
+        if (filterCategory && filterCategory !== 'all') q = q.eq('asset_category', filterCategory);
+        if (filterSubCategory && filterSubCategory !== 'all') q = q.eq('asset_sub_category', filterSubCategory);
+        if (filterType && filterType !== 'all') q = q.eq('asset_type', filterType);
+        if (filterStatus && filterStatus !== 'all') q = q.eq('asset_status', filterStatus);
+        if (filterBuilding && filterBuilding !== 'all') q = q.eq('building', filterBuilding);
+        if (filterFloor && filterFloor !== 'all') q = q.eq('floor_id', filterFloor);
+        if (filterRoom && filterRoom !== 'all') q = q.eq('room_id', filterRoom);
+        if (filterTenant && filterTenant !== 'all') q = q.eq('handover_to', filterTenant);
+        return q;
+      };
+
+      // Get total count (may be expensive for very large datasets)
+      try {
+        let countQuery: any = supabase.from('assets').select('id', { count: 'exact', head: true });
+        countQuery = applyFilters(countQuery);
+        const countRes = await countQuery;
+        const total = countRes?.count ?? 0;
+        setTotalCount(total);
+        onTotalCountChange?.(total);
+      } catch (err) {
+        // Ignore count errors and leave totalCount as-is
+        console.warn('Count query failed', err);
+      }
+
+      // If offsetPage is set, perform an OFFSET-based fetch for numeric page jumps
+      if (offsetPage !== null) {
+        const page = Math.max(1, offsetPage);
+        const from = (page - 1) * itemsPerPage;
+        const to = from + itemsPerPage - 1;
+
+        let offsetQuery: any = supabase.from('assets').select('*');
+        offsetQuery = applyFilters(offsetQuery);
+        const asc = sortOrder !== 'desc';
+        offsetQuery = offsetQuery.order('asset_id', { ascending: asc });
+        const { data: pageData, error: offsetErr, count: offsetCount } = await offsetQuery.range(from, to);
+        if (offsetErr) throw offsetErr;
+
+        const items = (pageData || []) as Asset[];
+        setAssets(items);
+        if (typeof offsetCount === 'number') setTotalCount(offsetCount);
+        setHasNextPage(items.length === itemsPerPage && ((offsetCount ?? 0) > page * itemsPerPage || items.length === itemsPerPage));
+        setNextCursor(items.length ? items[items.length - 1].asset_id : null);
+        setCurrentPage(page);
+        // keep offsetPage as-is to allow numeric navigation; caller can clear it if desired
+        return;
+      }
+
+      // Fetch page with lookahead (itemsPerPage + 1) to detect next page
+      let fetchQuery: any = supabase.from('assets').select('*');
+      fetchQuery = applyFilters(fetchQuery);
+
+      const asc = sortOrder !== 'desc';
+      fetchQuery = fetchQuery.order('asset_id', { ascending: asc });
+
+      if (cursor) {
+        // Keyset: use asset_id comparator based on sort order
+        if (asc) fetchQuery = fetchQuery.gt('asset_id', cursor);
+        else fetchQuery = fetchQuery.lt('asset_id', cursor);
+      }
+
+      const limitCount = itemsPerPage + 1;
+      fetchQuery = fetchQuery.limit(limitCount);
+
+      const { data: fetched, error: fetchErr } = await fetchQuery;
+      if (fetchErr) throw fetchErr;
+
+      const pageData = (fetched || []) as Asset[];
+      const hasNext = pageData.length > itemsPerPage;
+      setHasNextPage(hasNext);
+
+      const sliced = hasNext ? pageData.slice(0, itemsPerPage) : pageData;
+      setAssets(sliced || []);
+
+      // Set next cursor to last item's asset_id (for forward paging)
+      if (sliced && sliced.length > 0) {
+        setNextCursor(sliced[sliced.length - 1].asset_id || null);
+      } else {
+        setNextCursor(null);
+      }
+
+      // If cursor is null and no prevCursors, ensure currentPage is 1
+      if (!cursor && prevCursors.length === 0) setCurrentPage(1);
+
     } catch (error) {
       console.error('Failed to load assets:', error);
+      setAssets([]);
+      setTotalCount(0);
+      setHasNextPage(false);
+      setNextCursor(null);
     } finally {
       setLoading(false);
     }
@@ -262,6 +412,73 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
         setSelectedAssets(prev => [...new Set([...prev, ...paginatedAssets.map(a => a.id)])]);
       }
     }
+  };
+
+  const handleNext = () => {
+    // If we're in offset mode or within safe OFFSET page range, use numeric jump
+    if (offsetPage !== null || currentPage + 1 <= MAX_OFFSET_PAGES) {
+      goToPage(currentPage + 1);
+      return;
+    }
+
+    if (!hasNextPage) return;
+    // push current cursor onto stack (can be null for first page)
+    setPrevCursors(prev => [...prev, cursor]);
+    // move cursor to nextCursor (set by last load)
+    setCursor(nextCursor);
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    onPageChange?.(nextPage);
+  };
+
+  const handlePrev = () => {
+    // If we're in offset mode or within safe OFFSET page range, use numeric jump
+    if (offsetPage !== null || (currentPage - 1 >= 1 && currentPage - 1 <= MAX_OFFSET_PAGES)) {
+      goToPage(Math.max(1, currentPage - 1));
+      return;
+    }
+
+    if (prevCursors.length === 0) return;
+    const stack = [...prevCursors];
+    const prevCursor = stack.pop() ?? null;
+    setPrevCursors(stack);
+    setCursor(prevCursor);
+    const prevPage = Math.max(1, currentPage - 1);
+    setCurrentPage(prevPage);
+    onPageChange?.(prevPage);
+  };
+
+  const goToPage = (page: number) => {
+    const target = Math.max(1, page);
+    if (target > MAX_OFFSET_PAGES) {
+      // Ask user to confirm deep jump since large OFFSET queries can be slow
+      setDeepJumpTarget(target);
+      setShowDeepJumpConfirm(true);
+      return;
+    }
+    // Use OFFSET-based fetch for numeric jumps within safe range (hybrid)
+    setOffsetPage(target);
+    // Clear keyset state
+    setCursor(null);
+    setPrevCursors([]);
+    setHasNextPage(false);
+    setNextCursor(null);
+    setCurrentPage(target);
+    onPageChange?.(target);
+  };
+
+  const confirmDeepJump = () => {
+    if (!deepJumpTarget) return;
+    const target = deepJumpTarget;
+    setOffsetPage(target);
+    setCursor(null);
+    setPrevCursors([]);
+    setHasNextPage(false);
+    setNextCursor(null);
+    setCurrentPage(target);
+    onPageChange?.(target);
+    setShowDeepJumpConfirm(false);
+    setDeepJumpTarget(null);
   };
 
   const printQRCodes = async () => {
@@ -390,14 +607,65 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
   };
 
   const handleExportFiltered = async () => {
-    if (filteredAssets.length === 0) {
+    if (totalCount === 0) {
       toast({ title: 'No assets', description: 'Nothing to export', variant: 'destructive' });
       return;
     }
     try {
-      toast({ title: 'Generating Report', description: `Building report for ${filteredAssets.length} asset(s)...` });
-      await generateAssetExcelReport(buildExportData(filteredAssets));
-      toast({ title: 'Success', description: 'Report downloaded successfully' });
+      toast({ title: 'Generating Report', description: `Fetching all ${totalCount} asset(s)...` });
+      
+      // Fetch all filtered assets without pagination
+      let query = supabase
+        .from('assets')
+        .select('*');
+      
+      // Apply same filters
+      if (searchTerm) {
+        query = query.or(`asset_name.ilike.%${searchTerm}%,asset_id.ilike.%${searchTerm}%`);
+      }
+      if (filterCategory && filterCategory !== 'all') {
+        query = query.eq('asset_category', filterCategory);
+      }
+      if (filterSubCategory && filterSubCategory !== 'all') {
+        query = query.eq('asset_sub_category', filterSubCategory);
+      }
+      if (filterType && filterType !== 'all') {
+        query = query.eq('asset_type', filterType);
+      }
+      if (filterStatus && filterStatus !== 'all') {
+        query = query.eq('asset_status', filterStatus);
+      }
+      if (filterBuilding && filterBuilding !== 'all') {
+        query = query.eq('building', filterBuilding);
+      }
+      if (filterFloor && filterFloor !== 'all') {
+        query = query.eq('floor_id', filterFloor);
+      }
+      if (filterRoom && filterRoom !== 'all') {
+        query = query.eq('room_id', filterRoom);
+      }
+      if (filterTenant && filterTenant !== 'all') {
+        query = query.eq('handover_to', filterTenant);
+      }
+      
+      // Apply sorting
+      if (sortOrder === 'desc') {
+        query = query.order('asset_id', { ascending: false });
+      } else {
+        query = query.order('asset_id', { ascending: true });
+      }
+      
+      const { data: allAssets, error } = await query;
+      
+      if (error) throw error;
+      
+      if (!allAssets || allAssets.length === 0) {
+        toast({ title: 'No assets', description: 'Nothing to export', variant: 'destructive' });
+        return;
+      }
+      
+      await generateAssetExcelReport(buildExportData(allAssets));
+      toast({ title: 'Success', description: `Report downloaded with ${allAssets.length} asset(s)` });
     } catch (error: any) {
       toast({ title: 'Error', description: error.message || 'Failed to export', variant: 'destructive' });
     }
@@ -495,47 +763,41 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
     }
   };
 
-
-
-
-
-  const filteredAssets = assets.filter(a => {
-    const matchesSearch = a.asset_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.asset_id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !filterCategory || filterCategory === 'all' || a.asset_category === filterCategory;
-    const matchesSubCategory = !filterSubCategory || filterSubCategory === 'all' || a.asset_sub_category === filterSubCategory;
-    const matchesType = !filterType || filterType === 'all' || a.asset_type === filterType;
-    const matchesStatus = !filterStatus || filterStatus === 'all' || a.asset_status === filterStatus;
-    const matchesBuilding = !filterBuilding || filterBuilding === 'all' || a.building === filterBuilding;
-    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor_id === filterFloor;
-    const matchesRoom = !filterRoom || filterRoom === 'all' || a.room_id === filterRoom;
-    const matchesTenant = !filterTenant || filterTenant === 'all' || a.handover_to === filterTenant;
-    // Combination filters
-    let matchesCombination = true;
-    if (a.asset_combination && (filterColor || filterMaterial || filterSize)) {
-      const combination = assetCombinations[a.asset_combination];
-      if (combination) {
-        const matchesColor = !filterColor || filterColor === 'all' || combination.color === filterColor;
-        const matchesMaterial = !filterMaterial || filterMaterial === 'all' || combination.material === filterMaterial;
-        const matchesSize = !filterSize || filterSize === 'all' || combination.size === filterSize;
-        matchesCombination = matchesColor && matchesMaterial && matchesSize;
-      } else {
-        matchesCombination = false;
-      }
+  const handlePrintPDF = async () => {
+    const selectedAssetData = assets.filter(a => currentSelectedAssets.includes(a.id));
+    if (selectedAssetData.length === 0) {
+      toast({ title: 'Error', description: 'No assets selected', variant: 'destructive' });
+      return;
     }
-    
-    return matchesSearch && matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesRoom && matchesTenant && matchesCombination;
-  }).sort((a, b) => {
-    if (sortOrder === 'desc') {
-      return b.asset_id.localeCompare(a.asset_id);
-    }
-    return a.asset_id.localeCompare(b.asset_id);
-  });
 
-  const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedAssets = filteredAssets.slice(startIndex, endIndex);
+    try {
+      toast({ title: 'Generating PDF', description: `Creating detailed PDF for ${selectedAssetData.length} asset(s)...` });
+      
+      const pdf = await generateAssetDetailPDF(
+        selectedAssetData,
+        buildings,
+        floors,
+        rooms,
+        users,
+        tenants
+      );
+
+      pdf.save(`Asset_Details_${selectedAssetData.length}_Assets_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast({ title: 'Success', description: `PDF generated for ${selectedAssetData.length} asset(s)` });
+    } catch (error: any) {
+      console.error('PDF generation error:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+
+
+
+
+  const filteredAssets = assets; // Already filtered by server
+
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const paginatedAssets = assets; // Already paginated by server
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -548,6 +810,18 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
 
   return (
     <div className="space-y-6">
+      <Dialog open={showDeepJumpConfirm} onOpenChange={setShowDeepJumpConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Jump to page {deepJumpTarget}</DialogTitle>
+            <DialogDescription>Direct jumps beyond {MAX_OFFSET_PAGES} may be slow and can impact performance. Do you want to proceed?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDeepJumpConfirm(false); setDeepJumpTarget(null); }}>Cancel</Button>
+            <Button onClick={confirmDeepJump}>Proceed</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Asset Master</h1>
           <Button onClick={onCreateNew || (() => navigate('/assets/create'))}>
@@ -559,11 +833,11 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-sm">
             <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
             <span className="text-blue-700 font-medium">{currentSelectedAssets.length} selected</span>
-            {onSelectAllFiltered && currentSelectedAssets.length < (filteredCount ?? filteredAssets.length) && paginatedAssets.every(a => currentSelectedAssets.includes(a.id)) && (
+            {onSelectAllFiltered && currentSelectedAssets.length < totalCount && paginatedAssets.every(a => currentSelectedAssets.includes(a.id)) && (
               <>
                 <span className="text-blue-300">·</span>
                 <button onClick={onSelectAllFiltered} className="text-blue-600 hover:text-blue-800 font-medium hover:underline underline-offset-2">
-                  Select all {filteredCount ?? filteredAssets.length}
+                  Select all {totalCount}
                 </button>
               </>
             )}
@@ -584,9 +858,14 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
             />
           </div>
           {currentSelectedAssets.length > 0 && (
-            <Button onClick={handleThermalLabels} variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
-              <Tag className="mr-2 h-4 w-4" /> Print Labels ({currentSelectedAssets.length})
-            </Button>
+            <>
+              <Button onClick={handleThermalLabels} variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
+                <Tag className="mr-2 h-4 w-4" /> Print Labels ({currentSelectedAssets.length})
+              </Button>
+              <Button onClick={handlePrintPDF} variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
+                <FileText className="mr-2 h-4 w-4" /> Print PDF ({currentSelectedAssets.length})
+              </Button>
+            </>
           )}
           <div className="relative" ref={columnPickerRef}>
             <Button variant="outline" onClick={() => setShowColumnPicker(p => !p)}>
@@ -616,7 +895,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
           ) : (
             <Button onClick={handleExportFiltered} variant="outline">
               <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Export Report ({filteredAssets.length})
+              Export Report ({totalCount})
             </Button>
           )}
           {currentSelectedAssets.length > 0 && (
@@ -632,132 +911,132 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
           </div>
         ) : (
           <div className="rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-gray-200 hover:bg-transparent bg-gray-50">
-                  <TableHead className="w-12 text-gray-600 font-semibold uppercase text-xs">
-                    <Checkbox 
-                      checked={paginatedAssets.length > 0 && paginatedAssets.every(a => currentSelectedAssets.includes(a.id))}
-                      onCheckedChange={toggleSelectAll}
-                    />
-                  </TableHead>
-                  {ALL_COLUMNS.filter(c => visibleColumns.includes(c.key)).map(col => (
-                    <TableHead key={col.key} className="text-gray-600 font-semibold uppercase text-xs">{col.label}</TableHead>
-                  ))}
-                  <TableHead className="text-gray-600 font-semibold uppercase text-xs text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedAssets.map((asset) => (
-                  <TableRow key={asset.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <TableCell>
+            <div className="relative w-full overflow-auto">
+              <table className="w-full caption-bottom text-sm">
+                <thead className="[&_tr]:border-b">
+                  <tr className="transition-colors data-[state=selected]:bg-muted border-b border-gray-200 hover:bg-transparent bg-gray-50">
+                    <th className="h-12 px-4 text-left align-middle [&:has([role=checkbox])]:pr-0 w-12 text-gray-600 font-semibold uppercase text-xs">
                       <Checkbox 
-                        checked={currentSelectedAssets.includes(asset.id)}
-                        onCheckedChange={() => toggleAssetSelection(asset.id)}
+                        checked={paginatedAssets.length > 0 && paginatedAssets.every(a => currentSelectedAssets.includes(a.id))}
+                        onCheckedChange={toggleSelectAll}
                       />
-                    </TableCell>
-                    {visibleColumns.includes('asset_id') && (
-                      <TableCell className="font-medium text-gray-900">{asset.asset_id}</TableCell>
-                    )}
-                    {visibleColumns.includes('asset_name') && (
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          {asset.asset_picture && (
-                            <img src={asset.asset_picture} alt={asset.asset_name} className="w-10 h-10 rounded-lg object-cover" />
-                          )}
-                          <div>
-                            <p className="font-medium text-gray-900">{asset.asset_name}</p>
-                            <p className="text-sm text-gray-500">{asset.serial_number || 'N/A'}</p>
+                    </th>
+                    {ALL_COLUMNS.filter(c => visibleColumns.includes(c.key)).map(col => (
+                      <th key={col.key} className="h-12 px-4 text-left align-middle [&:has([role=checkbox])]:pr-0 text-gray-600 font-semibold uppercase text-xs">{col.label}</th>
+                    ))}
+                    <th className="h-12 px-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-600 font-semibold uppercase text-xs text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child]:border-0">
+                  {paginatedAssets.length === 0 ? (
+                    <tr><td colSpan={ALL_COLUMNS.length + 2} className="p-6 text-sm text-gray-500">No assets found.</td></tr>
+                  ) : (
+                    paginatedAssets.map(asset => (
+                      <tr key={asset.id} className="data-[state=selected]:bg-muted border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                          <Checkbox checked={currentSelectedAssets.includes(asset.id)} onCheckedChange={() => toggleAssetSelection(asset.id)} />
+                        </td>
+                        {visibleColumns.includes('asset_id') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 font-medium text-gray-900">
+                            {asset.asset_id && String(asset.asset_id).trim() ? asset.asset_id : 'AUTO-GENERATED'}
+                          </td>
+                        )}
+                        {visibleColumns.includes('asset_name') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                            <div className="flex items-center gap-3">
+                              {asset.asset_picture && (
+                                <img src={asset.asset_picture} alt={asset.asset_name} className="w-10 h-10 rounded-lg object-cover" />
+                              )}
+                              <div>
+                                <p className="font-medium text-gray-900">{asset.asset_name}</p>
+                                <p className="text-sm text-gray-500">
+                                  {asset.asset_combination && assetCombinations[asset.asset_combination]
+                                    ? [
+                                        assetCombinations[asset.asset_combination].color,
+                                        assetCombinations[asset.asset_combination].material,
+                                        assetCombinations[asset.asset_combination].size,
+                                      ].filter(Boolean).join(' | ')
+                                    : asset.serial_number || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.includes('asset_category') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                            <div>
+                                <p className="font-medium text-gray-900">{asset.asset_sub_category || asset.asset_category || 'N/A'}</p>
+                                {asset.asset_type && (
+                                  <p className="text-sm text-gray-500 mt-1">{asset.asset_type}</p>
+                                )}
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.includes('asset_status') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(asset.asset_status || 'Active')}`}>
+                              {asset.asset_status || 'Active'}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.includes('location') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{getBuildingName(asset.building)}</td>
+                        )}
+                        {visibleColumns.includes('floor') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.floor_id ? (floors[asset.floor_id] || 'N/A') : 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('room') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.room_id ? (rooms[asset.room_id] || 'N/A') : 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('tenant') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.handover_to ? (tenants[asset.handover_to] || 'N/A') : 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('asset_value') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">₹{(asset.asset_value || asset.asset_cost || 0).toLocaleString()}</td>
+                        )}
+                        {visibleColumns.includes('serial_number') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.serial_number || 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('manufacturer') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.manufacturer || 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('make_model') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.make_model || 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('purchase_date') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('warranty_date') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.warranty_date ? new Date(asset.warranty_date).toLocaleDateString() : 'N/A'}</td>
+                        )}
+                        {visibleColumns.includes('sez_status') && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 text-gray-700">{asset.sez_status || 'N/A'}</td>
+                        )}
+                        <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                          <div className="flex gap-2 justify-center">
+                            <Button size="sm" variant="ghost" onClick={() => onView ? onView(asset) : navigate(`/assets/view/${asset.id}`)} title="View" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => onEdit ? onEdit(asset) : navigate(`/assets/edit/${asset.id}`)} title="Edit" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => onDelete ? onDelete(asset) : handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                        </div>
-                      </TableCell>
-                    )}
-                    {visibleColumns.includes('asset_category') && (
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-gray-900">{asset.asset_category}</p>
-                          <div className="flex gap-1 mt-1">
-                            {asset.asset_combination && assetCombinations[asset.asset_combination] ? (
-                              <>
-                                {assetCombinations[asset.asset_combination].color && (
-                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">{assetCombinations[asset.asset_combination].color}</span>
-                                )}
-                                {assetCombinations[asset.asset_combination].material && (
-                                  <span className="px-1.5 py-0.5 bg-green-100 text-green-800 text-xs rounded">{assetCombinations[asset.asset_combination].material}</span>
-                                )}
-                                {assetCombinations[asset.asset_combination].size && (
-                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-xs rounded">{assetCombinations[asset.asset_combination].size}</span>
-                                )}
-                              </>
-                            ) : (
-                              <p className="text-sm text-gray-500">{asset.asset_type || 'N/A'}</p>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                    )}
-                    {visibleColumns.includes('asset_status') && (
-                      <TableCell>
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(asset.asset_status || 'Active')}`}>
-                          {asset.asset_status || 'Active'}
-                        </span>
-                      </TableCell>
-                    )}
-                    {visibleColumns.includes('location') && (
-                      <TableCell className="text-gray-700">{getBuildingName(asset.building)}</TableCell>
-                    )}
-                    {visibleColumns.includes('floor') && (
-                      <TableCell className="text-gray-700">{asset.floor_id ? (floors[asset.floor_id] || 'N/A') : 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('room') && (
-                      <TableCell className="text-gray-700">{asset.room_id ? (rooms[asset.room_id] || 'N/A') : 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('tenant') && (
-                      <TableCell className="text-gray-700">{asset.handover_to ? (tenants[asset.handover_to] || 'N/A') : 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('asset_value') && (
-                      <TableCell className="text-gray-700">₹{(asset.asset_value || asset.asset_cost || 0).toLocaleString()}</TableCell>
-                    )}
-                    {visibleColumns.includes('serial_number') && (
-                      <TableCell className="text-gray-700">{asset.serial_number || 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('manufacturer') && (
-                      <TableCell className="text-gray-700">{asset.manufacturer || 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('make_model') && (
-                      <TableCell className="text-gray-700">{asset.make_model || 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('purchase_date') && (
-                      <TableCell className="text-gray-700">{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('warranty_date') && (
-                      <TableCell className="text-gray-700">{asset.warranty_date ? new Date(asset.warranty_date).toLocaleDateString() : 'N/A'}</TableCell>
-                    )}
-                    {visibleColumns.includes('sez_status') && (
-                      <TableCell className="text-gray-700">{asset.sez_status || 'N/A'}</TableCell>
-                    )}
-                    <TableCell>
-                      <div className="flex gap-2 justify-center">
-                        <Button size="sm" variant="ghost" onClick={() => onView ? onView(asset) : navigate(`/assets/view/${asset.id}`)} title="View" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => onEdit ? onEdit(asset) : navigate(`/assets/edit/${asset.id}`)} title="Edit" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => onDelete ? onDelete(asset) : handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
             {filteredAssets.length > 0 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
                 <div className="flex items-center gap-4">
                   <div className="text-sm text-gray-500">
-                    Showing {startIndex + 1} to {Math.min(endIndex, filteredAssets.length)} of {filteredAssets.length} assets
+                    Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} assets
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-500">Per page:</label>
@@ -782,10 +1061,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
-                  onPageChange={(page) => {
-                    setCurrentPage(page);
-                    onPageChange?.(page);
-                  }}
+                  onPageChange={(page) => goToPage(page)}
                   showControls
                 />
               </div>

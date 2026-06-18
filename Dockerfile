@@ -17,6 +17,7 @@ RUN npm install --production
 COPY server/index.js ./
 COPY server/.env* ./
 COPY server/services ./services
+COPY server/middleware ./middleware 
 
 # Expose port
 EXPOSE 3000

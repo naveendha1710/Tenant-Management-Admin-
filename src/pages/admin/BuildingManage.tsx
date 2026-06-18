@@ -58,6 +58,24 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
 
   const handleDeleteRoom = async (roomId) => {
     try {
+      // Check if room is used by assets
+      const { data: assetsInRoom } = await supabase
+        .from('assets')
+        .select('asset_id, asset_name')
+        .eq('room_id', roomId)
+        .limit(5);
+      
+      if (assetsInRoom && assetsInRoom.length > 0) {
+        const assetList = assetsInRoom.map(a => a.asset_name || a.asset_id).join(', ');
+        const moreText = assetsInRoom.length === 5 ? ' and more' : '';
+        toast({ 
+          title: 'Cannot Delete Room', 
+          description: `Room is assigned to assets: ${assetList}${moreText}`, 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
       const { error } = await supabase.from('rooms').delete().eq('id', roomId);
       if (error) throw error;
       toast({ title: 'Success', description: 'Room deleted successfully' });
@@ -71,6 +89,24 @@ function FloorCard({ floorNumber, floorName, floorData, onEdit, canEdit, canDele
   const handleDeleteSelected = async () => {
     if (selectedRooms.length === 0) return;
     try {
+      // Check if any selected rooms have assets
+      const { data: assetsInRooms } = await supabase
+        .from('assets')
+        .select('room_id, asset_id, asset_name')
+        .in('room_id', selectedRooms);
+      
+      if (assetsInRooms && assetsInRooms.length > 0) {
+        const roomsWithAssets = new Set(assetsInRooms.map(a => a.room_id));
+        const affectedRooms = rooms.filter(r => roomsWithAssets.has(r.id));
+        const roomList = affectedRooms.map(r => r.room_number).join(', ');
+        toast({ 
+          title: 'Cannot Delete Rooms', 
+          description: `These rooms have assets assigned: ${roomList}`, 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
       const { error } = await supabase.from('rooms').delete().in('id', selectedRooms);
       if (error) throw error;
       toast({ title: 'Success', description: `${selectedRooms.length} rooms deleted successfully` });
@@ -406,6 +442,46 @@ export default function BuildingManage() {
     if (!floorToDelete) return;
     
     try {
+      // Check if floor has rooms with assets
+      const { data: roomsWithAssets } = await supabase
+        .from('rooms')
+        .select('id, room_number, assets(asset_id, asset_name)')
+        .eq('floor_id', floorToDelete.id);
+      
+      const roomsInUse = roomsWithAssets?.filter(r => r.assets && r.assets.length > 0) || [];
+      
+      if (roomsInUse.length > 0) {
+        const roomList = roomsInUse.map(r => r.room_number).join(', ');
+        toast({
+          title: "Cannot Delete Floor",
+          description: `Floor has rooms with assets: ${roomList}`,
+          variant: "destructive"
+        });
+        setDeleteConfirmOpen(false);
+        setFloorToDelete(null);
+        return;
+      }
+      
+      // Check if floor has assets directly assigned
+      const { data: assetsOnFloor } = await supabase
+        .from('assets')
+        .select('asset_id, asset_name')
+        .eq('floor_id', floorToDelete.id)
+        .limit(5);
+      
+      if (assetsOnFloor && assetsOnFloor.length > 0) {
+        const assetList = assetsOnFloor.map(a => a.asset_name || a.asset_id).join(', ');
+        const moreText = assetsOnFloor.length === 5 ? ' and more' : '';
+        toast({
+          title: "Cannot Delete Floor",
+          description: `Floor has assets assigned: ${assetList}${moreText}`,
+          variant: "destructive"
+        });
+        setDeleteConfirmOpen(false);
+        setFloorToDelete(null);
+        return;
+      }
+      
       // Delete floor
       await buildingsService.deleteFloor(floorToDelete.id);
       

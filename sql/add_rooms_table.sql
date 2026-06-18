@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS public.rooms (
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_rooms_floor_id ON public.rooms USING btree (floor_id) TABLESPACE pg_default;
 CREATE INDEX IF NOT EXISTS idx_rooms_building_id ON public.rooms USING btree (building_id) TABLESPACE pg_default;
+CREATE INDEX IF NOT EXISTS idx_rooms_category_id ON public.rooms USING btree (category_id) TABLESPACE pg_default;
+
+-- Prevent duplicate room numbers on the same floor, ignoring case/spacing differences.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_floor_room_number_unique
+  ON public.rooms USING btree (floor_id, lower(btrim(room_number)))
+  WHERE floor_id IS NOT NULL AND room_number IS NOT NULL;
 
 -- Add RLS policies
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;

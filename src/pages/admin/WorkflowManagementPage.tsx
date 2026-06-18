@@ -51,10 +51,18 @@ export const WorkflowManagementPage: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tenantSelectionOpen, setTenantSelectionOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
+  const [activeTab, setActiveTab] = useState<'tenant' | 'system'>('tenant');
+  const [systemUsers, setSystemUsers] = useState<any[]>([]);
+  const [filteredSystemUsers, setFilteredSystemUsers] = useState<any[]>([]);
+  const [systemUserSearchTerm, setSystemUserSearchTerm] = useState('');
+  const [selectedSystemUsers, setSelectedSystemUsers] = useState<string[]>([]);
+  const [usersInActiveWorkflows, setUsersInActiveWorkflows] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadTenants();
     loadWorkflows();
+    loadSystemUsers();
+    loadUsersInActiveWorkflows();
   }, []);
 
   useEffect(() => {
@@ -64,6 +72,10 @@ export const WorkflowManagementPage: React.FC = () => {
   useEffect(() => {
     applyTenantFilters();
   }, [tenants, tenantSearchTerm]);
+
+  useEffect(() => {
+    applySystemUserFilters();
+  }, [systemUsers, systemUserSearchTerm]);
 
   const applyTenantFilters = () => {
     let filtered = [...tenants];
@@ -75,6 +87,18 @@ export const WorkflowManagementPage: React.FC = () => {
       );
     }
     setFilteredTenants(filtered);
+  };
+
+  const applySystemUserFilters = () => {
+    let filtered = [...systemUsers];
+    if (systemUserSearchTerm) {
+      filtered = filtered.filter(
+        (u) =>
+          u.name.toLowerCase().includes(systemUserSearchTerm.toLowerCase()) ||
+          u.email.toLowerCase().includes(systemUserSearchTerm.toLowerCase())
+      );
+    }
+    setFilteredSystemUsers(filtered);
   };
 
   const loadTenants = async () => {
@@ -131,6 +155,41 @@ export const WorkflowManagementPage: React.FC = () => {
     }
   };
 
+  const loadSystemUsers = async () => {
+    try {
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .neq('role', 'Tenant')
+        .order('name');
+      
+      if (usersError) throw usersError;
+
+      setSystemUsers(usersData || []);
+      setFilteredSystemUsers(usersData || []);
+    } catch (error) {
+      console.error('Failed to load system users:', error);
+      toast.error('Failed to load system users');
+    }
+  };
+
+  const loadUsersInActiveWorkflows = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_users')
+        .select('user_id, workflows!inner(is_active, tenant_id)')
+        .eq('workflows.is_active', true)
+        .is('workflows.tenant_id', null);
+      
+      if (error) throw error;
+      
+      const userIds = new Set(data?.map(wu => wu.user_id) || []);
+      setUsersInActiveWorkflows(userIds);
+    } catch (error) {
+      console.error('Failed to load users in active workflows:', error);
+    }
+  };
+
   const loadWorkflows = async () => {
     try {
       const data = await workflowService.listWorkflows();
@@ -144,7 +203,7 @@ export const WorkflowManagementPage: React.FC = () => {
   };
 
   const getTenantName = (tenantId?: string) => {
-    if (!tenantId) return 'All Tenants';
+    if (!tenantId) return 'System Workflow';
     const tenant = tenants.find(t => t.id === tenantId);
     return tenant?.company || tenant?.name || 'Unknown';
   };
@@ -164,12 +223,42 @@ export const WorkflowManagementPage: React.FC = () => {
   };
 
   const handleCreate = () => {
+    setActiveTab('tenant');
+    setSelectedSystemUsers([]);
     setTenantSelectionOpen(true);
   };
 
   const handleTenantSelect = (tenantId: string) => {
     setTenantSelectionOpen(false);
     navigate(`/admin/workflows/builder?tenantId=${tenantId}`);
+  };
+
+  const handleSystemWorkflowCreate = () => {
+    if (selectedSystemUsers.length === 0) {
+      toast.error('Please select at least one system user');
+      return;
+    }
+    
+    // Check if any selected users are in active workflows
+    const conflictUsers = selectedSystemUsers.filter(uid => usersInActiveWorkflows.has(uid));
+    if (conflictUsers.length > 0) {
+      const conflictNames = conflictUsers
+        .map(uid => systemUsers.find(u => u.id === uid)?.name)
+        .filter(Boolean)
+        .join(', ');
+      toast.error(`Warning: ${conflictNames} already assigned to active workflows. Creating this workflow may fail.`);
+    }
+    
+    setTenantSelectionOpen(false);
+    navigate(`/admin/workflows/builder?system=true&users=${selectedSystemUsers.join(',')}`);
+  };
+
+  const toggleSystemUser = (userId: string) => {
+    setSelectedSystemUsers(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   const handleEdit = (workflowId: string) => {
@@ -180,7 +269,6 @@ export const WorkflowManagementPage: React.FC = () => {
     if (!selectedWorkflow) return;
 
     try {
-      // Check for any workflow instances
       const { data: allInstances } = await supabase
         .from('workflow_instances')
         .select('id, status')
@@ -200,23 +288,19 @@ export const WorkflowManagementPage: React.FC = () => {
           return;
         }
         
-        // Force delete: First delete all workflow instances and their steps
         if (allInstances && allInstances.length > 0) {
           const instanceIds = allInstances.map(i => i.id);
           
-          // Delete workflow instance steps
           await supabase
             .from('workflow_instance_steps')
             .delete()
             .in('instance_id', instanceIds);
           
-          // Delete workflow actions
           await supabase
             .from('workflow_actions')
             .delete()
             .in('instance_id', instanceIds);
           
-          // Delete workflow instances
           await supabase
             .from('workflow_instances')
             .delete()
@@ -224,7 +308,6 @@ export const WorkflowManagementPage: React.FC = () => {
         }
       }
       
-      // Now delete the workflow
       await workflowService.deleteWorkflow(selectedWorkflow.id);
       toast.success('Workflow and all related instances deleted successfully');
       setDeleteDialogOpen(false);
@@ -236,20 +319,9 @@ export const WorkflowManagementPage: React.FC = () => {
     }
   };
 
-  const handlePublish = async (workflow: Workflow) => {
-    try {
-      await workflowService.publishWorkflow(workflow.id);
-      toast.success('Workflow published successfully');
-      loadWorkflows();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to publish workflow');
-    }
-  };
-
   const handleToggleActive = async (workflow: Workflow) => {
     try {
       if (workflow.is_active) {
-        // Deactivate
         const { data, error } = await supabase
           .from('workflows')
           .update({ is_active: false })
@@ -260,7 +332,6 @@ export const WorkflowManagementPage: React.FC = () => {
         if (error) throw error;
         toast.success('Workflow deactivated successfully');
       } else {
-        // Activate (publish)
         await workflowService.publishWorkflow(workflow.id);
         toast.success('Workflow activated successfully');
       }
@@ -286,7 +357,6 @@ export const WorkflowManagementPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -313,7 +383,6 @@ export const WorkflowManagementPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Search */}
       <Card>
         <CardContent className="p-4">
           <div className="relative">
@@ -328,7 +397,6 @@ export const WorkflowManagementPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Workflows List */}
       {filteredWorkflows.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
@@ -436,7 +504,6 @@ export const WorkflowManagementPage: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -459,74 +526,175 @@ export const WorkflowManagementPage: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Tenant Selection Dialog */}
       <AlertDialog open={tenantSelectionOpen} onOpenChange={setTenantSelectionOpen}>
-        <AlertDialogContent className="max-w-5xl max-h-[85vh]">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Select Tenant for Workflow</AlertDialogTitle>
+        <AlertDialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
+          <AlertDialogHeader className="flex-shrink-0">
+            <AlertDialogTitle>Create Workflow</AlertDialogTitle>
             <AlertDialogDescription>
-              Choose a tenant to create approval workflow
+              Select tenant or system users for workflow
             </AlertDialogDescription>
           </AlertDialogHeader>
           
-          <div className="mb-4">
-            <Input
-              placeholder="Search tenants by name or company..."
-              value={tenantSearchTerm}
-              onChange={(e) => setTenantSearchTerm(e.target.value)}
-              className="w-full"
-            />
+          <div className="flex border-b flex-shrink-0">
+            <button
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'tenant'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setActiveTab('tenant')}
+            >
+              Tenants
+            </button>
+            <button
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'system'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setActiveTab('system')}
+            >
+              System Users
+            </button>
           </div>
 
-          <div className="overflow-y-auto max-h-[55vh]">
-            {filteredTenants.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No tenants found</p>
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Company</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Tenant Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Buildings</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {filteredTenants.map((tenant) => (
-                    <tr key={tenant.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium align-top">{tenant.company}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground align-top">{tenant.name}</td>
-                      <td className="px-4 py-3 align-top">
-                        {tenant.buildings && tenant.buildings.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {tenant.buildings.map((building: any) => (
-                              <span key={building.id} className="text-sm font-medium">
-                                {building.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">No buildings</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <Button
-                          size="sm"
-                          onClick={() => handleTenantSelect(tenant.id)}
-                        >
-                          Select
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {activeTab === 'tenant' && (
+              <>
+                <div className="mb-4 flex-shrink-0">
+                  <Input
+                    placeholder="Search tenants by name or company..."
+                    value={tenantSearchTerm}
+                    onChange={(e) => setTenantSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="overflow-y-auto flex-1">
+                  {filteredTenants.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No tenants found</p>
+                    </div>
+                  ) : (
+                    <table className="w-full">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Company</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Tenant Name</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Buildings</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {filteredTenants.map((tenant) => (
+                          <tr key={tenant.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium align-top">{tenant.company}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground align-top">{tenant.name}</td>
+                            <td className="px-4 py-3 align-top">
+                              {tenant.buildings && tenant.buildings.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {tenant.buildings.map((building: any) => (
+                                    <span key={building.id} className="text-sm font-medium">
+                                      {building.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No buildings</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <Button
+                                size="sm"
+                                onClick={() => handleTenantSelect(tenant.id)}
+                              >
+                                Select
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeTab === 'system' && (
+              <>
+                <div className="mb-4 flex-shrink-0">
+                  <Input
+                    placeholder="Search users by name or email..."
+                    value={systemUserSearchTerm}
+                    onChange={(e) => setSystemUserSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg flex-shrink-0">
+                  <p className="text-sm text-blue-700">
+                    Selected: {selectedSystemUsers.length} user(s)
+                  </p>
+                </div>
+
+                <div className="overflow-y-auto flex-1">
+                  {filteredSystemUsers.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No system users found</p>
+                    </div>
+                  ) : (
+                    <table className="w-full">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Select</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Name</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Email</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold">Role</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {filteredSystemUsers.map((user) => {
+                          const isInActiveWorkflow = usersInActiveWorkflows.has(user.id);
+                          return (
+                            <tr key={user.id} className={`hover:bg-gray-50 ${isInActiveWorkflow ? 'bg-yellow-50' : ''}`}>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSystemUsers.includes(user.id)}
+                                  onChange={() => toggleSystemUser(user.id)}
+                                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 font-medium">
+                                {user.name}
+                                {isInActiveWorkflow && (
+                                  <span className="ml-2 text-xs text-yellow-600 font-semibold">⚠ In Active Workflow</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{user.email}</td>
+                              <td className="px-4 py-3 text-sm">{user.role}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="mt-4 flex-shrink-0">
+                  <Button
+                    onClick={handleSystemWorkflowCreate}
+                    disabled={selectedSystemUsers.length === 0}
+                    className="w-full"
+                  >
+                    Create System Workflow ({selectedSystemUsers.length} users selected)
+                  </Button>
+                </div>
+              </>
             )}
           </div>
           
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-shrink-0">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>

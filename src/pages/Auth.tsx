@@ -138,7 +138,7 @@ const Auth = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="off"
-                  className="h-14 rounded-full border border-gray-300 px-6 pr-12 text-gray-600 placeholder:text-gray-400 focus:border-gray-400 focus:ring-0 bg-white"
+                  className="h-14 rounded-full border border-gray-300 px-6 pr-12 text-gray-600 placeholder:text-gray-400 focus:border-gray-400 focus:ring-0 bg-white appearance-none [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                 />
                 <button
                   type="button"

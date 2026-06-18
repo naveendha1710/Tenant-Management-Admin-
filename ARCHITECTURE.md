@@ -1,2780 +1,1108 @@
 # Rathinam Nexus Suite - Complete Architecture Documentation
 
-> **Purpose**: This document serves as the single source of truth for understanding the entire Rathinam Nexus Suite project. When starting a new chat or onboarding to this codebase, read this document to understand the system architecture, business logic, data flows, and technical implementation.
+**Last Updated:** January 2025  
+**Version:** 3.0  
+**Status:** Production-Ready
 
 ---
 
-## 1. System Overview
+## Table of Contents
 
-**Rathinam Nexus Suite** is a comprehensive enterprise property/tenant management platform designed for educational institutions and tech parks. It manages buildings, tenants, leases, billing, maintenance, assets, and helpdesk operations with sophisticated role-based access control.
-
-### Core Business Purpose
-- Manage multiple buildings, floors, and rental units across campus
-- Handle complete tenant lifecycle from application to lease termination
-- Automate billing, invoicing, and payment tracking with multi-charge support
-- Coordinate maintenance requests and work orders with technician assignment
-- Track fixed assets with SEZ compliance, depreciation, and physical audit
-- Provide role-specific dashboards and workflows for different user types
-- Generate financial reports, analytics, and export capabilities
-- Real-time notifications and email alerts for critical events
-
-### Tech Stack
-- **Frontend**: React 18.3 + TypeScript + Vite 7.2 + Tailwind CSS 3.4 + Radix UI
-- **Backend**: Node.js 18+ / Express 4.18 + Multer (file uploads)
-- **Database**: Supabase (PostgreSQL) with real-time subscriptions
-- **Email**: Nodemailer 7.0 with dynamic SMTP configuration
-- **State Management**: React Query 5.83 (server state), React Context (auth/notifications)
-- **Forms**: React Hook Form 7.61 + Zod 3.25 validation
-- **Export**: jsPDF 3.0 (PDF), ExcelJS 4.4 (Excel), Recharts 2.15 (Charts)
-- **Deployment**: Docker + Docker Compose + Nginx reverse proxy
+1. [System Overview](#system-overview)
+2. [Technology Stack](#technology-stack)
+3. [Core Modules](#core-modules)
+4. [Database Architecture](#database-architecture)
+5. [Authentication & Authorization](#authentication--authorization)
+6. [Key Features](#key-features)
+7. [API Architecture](#api-architecture)
+8. [Deployment Architecture](#deployment-architecture)
+9. [Security Implementation](#security-implementation)
+10. [Performance Optimizations](#performance-optimizations)
 
 ---
 
-## 2. Authentication & Authorization System
+## System Overview
 
-**Primary File**: `src/contexts/AuthContext.tsx`
+Rathinam Nexus Suite is a comprehensive enterprise management platform designed for multi-tenant property and asset management. The system provides end-to-end solutions for:
 
-### Authentication Flow
+- **Property Management**: Building, floor, and space allocation
+- **Tenant Management**: Onboarding, agreements, billing, and reporting
+- **Asset Management**: Complete lifecycle tracking with workflow approvals
+- **Preventive Maintenance**: Scheduled PM tasks with assignment and tracking
+- **Helpdesk System**: Ticket management with SLA tracking
+- **Workflow Engine**: Configurable multi-step approval workflows
+- **Financial Management**: Rent collection, invoicing, expenses, and deposits
+- **Reporting & Analytics**: Comprehensive tenant and PM reports
 
-1. **Login Process**:
-   - User enters email/password on `/auth` page
-   - System checks `users` table in Supabase first using `verify_user_password()` RPC function
-   - Password verification: Bcrypt hash comparison via PostgreSQL `crypt()` function
-   - If not found in users, checks `tenants` table (for tenant users with plain text passwords)
-   - Falls back to hardcoded demo users if Supabase fails
-   - On success: Updates `last_login`, stores user in localStorage
+### Architecture Pattern
 
-2. **Session Management**:
-   - Storage: `localStorage` with keys `demo_user` and `demo_role`
-   - Persistence: Survives page refresh, cleared on logout
-   - No JWT tokens - relies on localStorage state
-
-3. **Demo Users** (Fallback when database unavailable):
-   ```
-   admin@rathinam.tec / admin123 → Super Admin
-   finance@rathinam.tec / admin123 → Accountant
-   maintenance@rathinam.edu / admin123 → Maintenance Manager
-   tenant@techstart.com / admin123 → Tenant
-   ```
-
-### Role-Based Access Control (RBAC)
-
-**Available Roles**:
-- **Super Admin**: Full system access, all permissions, user management, system configuration
-- **Admin**: Similar to Super Admin with configurable permissions
-- **Accountant**: Financial operations (invoices, payments, reports, rent collection)
-- **Maintenance Manager**: Maintenance tickets, work orders, technician management, asset maintenance
-- **Helpdesk**: Ticket management, tenant support, issue resolution
-- **Technician**: Assigned maintenance tasks, ticket updates, field work
-- **Tenant**: Self-service portal (view lease, pay invoices, submit tickets, view assets)
-- **Viewer**: Read-only access to buildings, tenants, and reports
-- **Custom**: Granular module-level permissions with fine-grained control
-
-**Permission System** (`src/utils/permissions.ts`):
-- Each user has array of `Permission` objects stored in database
-- Each permission has: `module`, `view`, `add`, `edit`, `delete` flags
-- Modules: Overview, Buildings, Tenants, Companies, Rent Collection, Invoices, Expenses, Deposits, Financial Reports, Manage Tickets, Users, Settings, Helpdesk, Asset Management
-- `PermissionChecker` class validates actions before rendering UI/executing operations
-- Dynamic menu generation based on user permissions
-- Tenant-specific permissions for portal access control
-
-**Route Protection** (`src/components/RouteGuard.tsx`):
-- `ProtectedRoute`: Checks if user is authenticated
-- `PermissionGuard`: Checks module-level permissions
-- Redirects to `/not-authorized` if permission denied
-- Redirects to `/auth` if not logged in
-
-**Dashboard Routing Logic** (`src/App.tsx`):
-- On login, system checks user's first module with `view: true` permission
-- Routes to that module's dashboard (e.g., `/admin/buildings`)
-- Tenants always route to `/tenant/dashboard`
-- Fallback: `/admin/dashboard`
-
-### AuthContext Methods
-- `login(email, password)` - Authenticates user, returns user object
-- `logout()` - Clears localStorage and state
-- `refreshUser()` - Re-fetches user data from database
-- `clearCache()` - Nuclear option: clears all localStorage, redirects to login
+- **Frontend**: React 18 with TypeScript
+- **Backend**: Node.js/Express with Supabase (PostgreSQL)
+- **State Management**: React Query + Context API
+- **UI Framework**: Tailwind CSS + shadcn/ui components
+- **Real-time**: Supabase Realtime subscriptions
+- **File Storage**: Supabase Storage + Local uploads
 
 ---
 
-## 3. Backend Architecture
+## Technology Stack
 
-**Server Entry**: `server/index.js` (Express.js 4.18)  
-**Development Port**: Backend runs on port 3000 (configurable via `PORT` env var)  
-**Production Port**: Single port 3000 serves both API and built frontend
+### Frontend Technologies
 
-### Development vs Production Setup
-
-**Development Mode:**
-- Frontend: Vite dev server on port 8080 (hot reload, fast refresh)
-- Backend: Express server on port 3000 (API endpoints, file uploads, email)
-- Database: Direct Supabase connection from frontend (no backend proxy)
-- Start: Two separate processes
-  - Terminal 1: `cd server && node index.js` (backend)
-  - Terminal 2: `npm run dev` (frontend)
-
-**Production Mode:**
-- Single Port: 3000 serves both API and static React build
-- Backend serves compiled frontend from `client/build/`
-- Start: `cd server && node index.js` (unified server)
-- Access: `http://localhost:3000`
-
-**⚠️ IMPORTANT: Do NOT change port configurations or Nginx settings without understanding the full impact on development workflow.**
-
-### Database Connection Architecture
-
-**Frontend → Supabase (Direct):**
-- All database queries go directly from React to Supabase cloud
-- Uses Supabase JavaScript client (`@supabase/supabase-js`)
-- No backend proxy for database operations
-- Authentication, CRUD, real-time subscriptions all client-side
-
-**Backend is ONLY used for:**
-- File uploads via Multer (cannot be done client-side)
-- Email sending via Nodemailer (requires SMTP credentials)
-- Serving uploaded files from `/uploads/*`
-- Serving static React build in production
-
-**Backend is NOT needed for:**
-- Login/authentication (direct Supabase RPC)
-- Database queries (direct Supabase client)
-- Viewing/browsing data (direct Supabase)
-- Real-time notifications (Supabase subscriptions)
-
-### Server Startup Sequence
-1. Load environment variables from `.env`
-2. Create required directories: `uploads/`, `config/`, `logs/`
-3. Initialize SMTP config file if missing
-4. Register middleware (CORS, JSON parser, logging)
-5. Mount API routes
-6. Serve static files (React build, uploads)
-7. SPA fallback for client-side routing
-8. Start listening on port 3000
-
-### A. File Upload System
-
-**Technology**: Multer 1.4.5 with disk storage
-
-**Endpoints**:
-- `POST /api/upload` - Single file upload
-  - Query param: `category` (e.g., 'tenant-documents', 'general')
-  - Returns: `{ success, file: { name, originalname, size, mimetype, category, path, url } }`
-- `POST /api/upload-multiple` - Batch upload (max 10 files)
-  - Returns: `{ success, files: [...] }`
-- `DELETE /api/delete` - Delete file by path
-  - Body: `{ filePath: '/uploads/category/filename' }`
-- `GET /uploads/*` - Serve uploaded files
-  - Cache-Control: 1 year
-  - Path sanitization to prevent directory traversal
-- `GET /api/files/*` - Alternative file serving endpoint
-
-**Storage Structure**:
-```
-uploads/
-├── general/
-│   └── {timestamp}-{random}-{filename}
-├── tenant-documents/
-│   └── {timestamp}-{random}-{filename}
-└── {category}/
-    └── {timestamp}-{random}-{filename}
-```
-
-**Security**:
-- Path sanitization: Removes `../` and normalizes paths
-- File size limit: 200MB (configurable via `MAX_FILE_SIZE`)
-- Filename sanitization: Replaces spaces/quotes with underscores
-- Directory traversal protection: Validates resolved path is within upload directory
-
-### B. Email Service
-
-**File**: `server/services/emailService.js`
-**Technology**: Nodemailer 7.0
-
-**Configuration Priority**:
-1. Environment variables (`.env`)
-2. JSON config file (`server/config/smtpConfig.json`)
-3. Default empty config
-
-**SMTP Config Structure**:
-```json
+```typescript
 {
-  "host": "smtp.gmail.com",
-  "port": "587",
-  "secure": false,
-  "user": "your-email@gmail.com",
-  "pass": "your-app-password",
-  "from": "Rathinam Nexus <your-email@gmail.com>"
+  "framework": "React 18.3.1",
+  "language": "TypeScript 5.5.3",
+  "build": "Vite 5.4.2",
+  "routing": "React Router DOM 6.26.1",
+  "state": "TanStack Query 5.53.1",
+  "ui": "Tailwind CSS 3.4.10 + shadcn/ui",
+  "forms": "React Hook Form 7.53.0",
+  "charts": "Recharts 2.12.7",
+  "pdf": "jsPDF 2.5.1",
+  "excel": "xlsx 0.18.5",
+  "qr": "qrcode.react 3.1.0",
+  "workflow": "ReactFlow 11.11.4"
 }
 ```
 
-**Email Logging**:
-- Location: `server/logs/emailLogs.json`
-- Max records: 1000 (FIFO)
-- Logged data: timestamp, to, subject, status, messageId, error
+### Backend Technologies
 
-**API Endpoints**:
-- `GET /api/admin/smtp/get` - Retrieve config (password masked as `******`)
-- `POST /api/admin/smtp/save` - Save SMTP config
-  - Validates: email format, port range (1-65535), required fields
-  - Preserves existing password if sent as `******`
-- `POST /api/admin/smtp/send` - Send email
-  - Body: `{ to, subject, text?, html? }`
-  - Validates email format
-- `POST /api/admin/smtp/test` - Send test email
-  - Body: `{ testEmail }`
-  - Sends predefined test message
-- `GET /api/admin/smtp/logs` - Fetch email logs
-  - Query param: `limit` (default 100)
-- `POST /api/admin/smtp/reset` - Reset config to empty defaults
-
-### C. Asset Management Routes
-
-**File**: `server/routes/assetRoutes.js` (currently disabled in production)
-**Purpose**: CRUD operations for fixed assets and movements
-
-**Endpoints** (when enabled):
-- `GET /api/assets/assets` - List all assets
-- `GET /api/assets/assets/:id` - Get asset by ID
-- `POST /api/assets/assets` - Create asset
-- `PUT /api/assets/assets/:id` - Update asset
-- `DELETE /api/assets/assets/:id` - Delete asset
-- `GET /api/assets/movements` - List asset movements
-- `POST /api/assets/movements` - Create movement request
-- `GET /api/assets/dashboard/stats` - Asset statistics
-
-### D. Health & Monitoring
-
-- `GET /api/health` - Health check
-  - Returns: `{ status: 'ok', timestamp, uploadPath, port }`
-- `GET /api/test` - API connectivity test
-  - Returns: `{ message: 'API is working', timestamp }`
-
-### E. Middleware Stack
-
-**Request Flow**:
-```
-1. CORS (allow all origins)
-2. express.json() (parse JSON bodies)
-3. express.urlencoded() (parse form data)
-4. Logging middleware (logs all requests with timestamp)
-5. API Routes (/api/*)
-6. Static file serving (React build)
-7. Upload file serving (/uploads/*)
-8. SPA fallback (index.html for all other routes)
-9. Error handler (Multer errors, 500 errors)
-```
-
-**Error Handling**:
-- Multer errors: 400 with specific error message
-- File size exceeded: "File too large"
-- API not found: 404 with JSON error
-- Unhandled errors: 500 with generic message
-
----
-
-## 4. Frontend Architecture
-
-### A. Application Entry Point
-
-**File**: `src/main.tsx`
-- Renders React app into `#root` div
-- Wraps app with providers
-
-**File**: `src/App.tsx`
-- Main routing configuration
-- Provider hierarchy:
-  ```
-  QueryClientProvider (React Query)
-    └─ LoadingProvider (global loading state)
-        └─ AuthProvider (authentication)
-            └─ NotificationsProvider (real-time notifications)
-                └─ TooltipProvider (Radix UI)
-                    └─ BrowserRouter (React Router)
-                        └─ ErrorBoundary
-                            └─ Routes
-  ```
-
-### B. Routing Structure
-
-**Route Organization** (from `src/App.tsx`):
-
-1. **Public Routes** (no authentication required):
-   - `/auth` - Login page
-   - `/home` - Public homepage
-   - `/` - Redirects to `/auth`
-
-2. **Admin Routes** (`/admin/*`):
-   - `/admin/dashboard` - Overview dashboard with KPIs (permission: "Overview")
-   - `/admin/overview` - Alternative overview route
-   - `/admin/buildings` - Building management (permission: "Buildings")
-   - `/admin/building-manage/:buildingId` - Building detail/edit page
-   - `/admin/tenants` - Tenant list (permission: "Tenants")
-   - `/admin/tenant-management` - Advanced tenant management
-   - `/admin/tenant-profile/:tenantId` - Tenant profile view
-   - `/admin/tenants/manage/:tenantId` - Tenant detail management
-   - `/admin/company-group/:groupId` - Company group view
-   - `/admin/circular-view/:groupId` - Circular company view
-   - `/admin/applications` - Tenant applications
-   - `/admin/tenant-applications` - Application management
-   - `/admin/space-allocation` - Space assignment
-   - `/admin/spaces` - Space management
-   - `/admin/billing` - Billing management
-   - `/admin/accounts` - Financial accounts (permission: "Accounts")
-   - `/admin/helpdesk` - Unified helpdesk (permission: "Helpdesk")
-   - `/admin/create-ticket` - Create new ticket
-   - `/admin/user-management` - User management (permission: "Users")
-   - `/admin/settings` - System settings (permission: "Settings")
-   - `/admin/master-settings` - Master data configuration
-   - `/admin/settings/email` - SMTP configuration
-   - `/admin/approvals` - Approval workflows
-   - `/admin/add-tenant` - Add new tenant
-
-3. **Asset Routes** (`/assets/*`):
-   - `/assets/master` - Asset master list with CRUD operations
-   - `/assets/movement` - Asset movement requests (location, maintenance, disposal)
-   - `/assets/inventory` - Inventory management dashboard
-   - `/assets/configuration` - Asset ID configuration
-   - `/assets/preventive-maintenance` - PM scheduling and tracking
-   - `/assets/physical-audit` - QR code-based physical audit
-
-4. **Tenant Routes** (`/tenant/*`):
-   - `/tenant/dashboard` - Tenant dashboard
-   - `/tenant/lease` - Lease details
-   - `/tenant/invoices` - Invoice list
-   - `/tenant/documents` - Document repository
-   - `/tenant/maintenance-requests` - Maintenance tickets
-   - `/tenant/my-assets` - Assets assigned to tenant
-
-5. **Maintenance Routes** (`/maintenance/*`):
-   - `/maintenance/dashboard` - Maintenance dashboard
-   - `/maintenance/tickets` - Ticket list
-
-6. **Shared Routes**:
-   - `/notifications` - Notification center (all users)
-   - `/not-authorized` - Permission denied page
-   - `*` - 404 Not Found
-
-**Route Protection Pattern**:
-```tsx
-<Route path="/admin/buildings" element={
-  <ProtectedRoute>              {/* Check authentication */}
-    <PermissionGuard path="/admin/buildings">  {/* Check permissions */}
-      <BuildingsPage />
-    </PermissionGuard>
-  </ProtectedRoute>
-} />
-```
-
-### C. Context Providers
-
-**1. AuthContext** (`src/contexts/AuthContext.tsx`)
-- State: `user`, `role`, `loading`
-- Methods: `login()`, `logout()`, `refreshUser()`, `clearCache()`
-- Used by: All protected routes, permission checks
-
-**2. NotificationsContext** (`src/contexts/NotificationsContext.tsx`)
-- Real-time notification subscriptions
-- Notification count badge
-- Mark as read functionality
-
-**3. LoadingContext** (`src/contexts/LoadingContext.tsx`)
-- Global loading state for async operations
-- Used by: Data fetching, form submissions
-
-### D. Component Architecture
-
-**UI Components** (`src/components/ui/`):
-- **Radix UI Primitives**: Dialog, Dropdown, Tabs, Accordion, Alert, etc.
-- **Custom Components**:
-  - `responsive-table.tsx` - Mobile-friendly table
-  - `export-dropdown.tsx` - PDF/Excel export menu
-  - `star-rating.tsx` - Rating input
-  - `demo-notice.tsx` - Demo mode banner
-  - `back-to-home.tsx` - Navigation helper
-
-**Feature Components**:
-
-**Admin** (`src/components/admin/`):
-- `TenantForm.tsx` - Create/edit tenant with multi-charge support
-- `InvoiceForm.tsx` - Invoice creation with line items
-- `SpaceManagement.tsx` - Unit allocation and floor plans
-- `PermissionsEditor.tsx` - Role permission editor
-- `FloorPlansManager.tsx` - Floor plan upload/management
-- `RentCollectionManagement.tsx` - Rent payment tracking
-- `ExpensesManagement.tsx` - Expense entry and categorization
-- `DepositsManagement.tsx` - Security deposit tracking
-- `AuditLogs.tsx` - System audit trail
-- `BulkActions.tsx` - Batch operations for tenants/assets
-
-**CRM** (`src/components/crm/`):
-- Components removed - CRM functionality deprecated
-
-**Tenant** (`src/components/tenant/`):
-- `MaintenanceTicketForm.tsx` - Submit maintenance request with asset linking
-- `PaymentGateway.tsx` - Online payment integration
-- `LeaseManagement.tsx` - View lease agreement and terms
-- `DigitalSignature.tsx` - E-signature capture for documents
-- `ProfileManagement.tsx` - Update tenant profile and contact info
-- `AssetList.tsx` - View assets assigned to tenant
-
-**Finance** (`src/components/finance/`):
-- `InvoiceManagement.tsx` - Invoice list/search
-- `MonthlyRevenueChart.tsx` - Revenue visualization
-- `CreateInvoiceModal.tsx` - Quick invoice creation
-
-**Charts** (`src/components/charts/`):
-- `DashboardCharts.tsx` - Overview metrics and KPIs
-- `CashFlowChart.tsx` - Cash flow visualization
-- `IncomeVsExpensesChart.tsx` - P&L chart with trend analysis
-- `OccupancyChart.tsx` - Building occupancy rates
-- `AssetDepreciationChart.tsx` - Asset value depreciation
-
-**Layout** (`src/components/layout/`):
-- `DashboardLayout.tsx` - Main layout wrapper
-- `AppSidebar.tsx` - Navigation sidebar
-- `DynamicSidebar.tsx` - Role-based menu
-- `NotificationBadge.tsx` - Notification counter
-- `RoleBasedActionButton.tsx` - Conditional action buttons
-
-### E. Page Components
-
-**Admin Pages** (`src/pages/admin/`):
-- `Overview.tsx` - Dashboard with KPIs, charts, and quick actions
-- `BuildingsPage.tsx` - Building list with search and filters
-- `BuildingManage.tsx` - Building detail/edit with floor management
-- `TenantManagement.tsx` - Tenant list with advanced filters
-- `TenantProfile.tsx` - Tenant detail view with lease, invoices, tickets
-- `ApplicationsPage.tsx` - Tenant applications with approval workflow
-- `UnifiedHelpdeskPage.tsx` - Helpdesk ticket management with filters
-- `AdminCreateTicketPage.tsx` - Create ticket on behalf of tenant
-- `UserManagement.tsx` - User CRUD with role assignment
-- `Settings.tsx` - System settings and configuration
-- `MasterSettings.tsx` - Master data management (dropdowns, categories)
-- `EmailSettingsPage.tsx` - SMTP configuration and email logs
-- `AccountsPage.tsx` - Chart of accounts and financial setup
-- `CompanyGroup.tsx` - Company group management and hierarchy
-- `SpacesPage.tsx` - Space/unit management across buildings
-- `ApprovalsPage.tsx` - Approval workflow management
-
-**Tenant Pages** (`src/pages/tenant/`):
-- `TenantDashboard.tsx` - Tenant overview with quick stats
-- `MyLeasePage.tsx` - Lease agreement viewer with download
-- `MyInvoicesPage.tsx` - Invoice history with payment options
-- `MyDocumentsPage.tsx` - Document repository with upload
-- `MaintenanceRequestsPage.tsx` - Ticket list with status tracking
-- `MyAssetsPage.tsx` - Assets assigned to tenant with details
-
-**Asset Pages** (`src/pages/assets/`):
-- `AssetMaster.tsx` - Asset list with CRUD, QR code generation, bulk import
-  - View Mode: Movement History tab shows location change audit trail
-  - History Display: Grouped by movement request with table format
-  - Field Changes: Building, Floor, Room with old → new value mapping
-  - **Advanced Filters** (hierarchical cascading):
-    - Category → Sub-Category → Type (asset classification hierarchy)
-    - Building → Floor (location hierarchy)
-    - Status (independent filter)
-    - All filters work together with AND logic
-    - Dependent filters auto-clear when parent changes
-    - Disabled state for dependent filters when parent not selected
-- `AssetMovement.tsx` - Movement requests with three-tab inline form:
-  - Tab 1: Movement Details (tenant, type, dates, locations, handover details)
-  - Tab 2: Asset Selection (QR scanner, search, multiple checkbox selection, 60:40 split layout)
-  - Tab 3: Review & Submit (summary of selected assets and movement details)
-  - Single Request: Creates one movement record with multiple assets in JSONB array
-  - Approval: Only users with asset_movement_approver permission see approve/reject buttons
-  - Auto-update: On approval, asset locations updated and history records created
-- `AssetManagement.tsx` - Asset dashboard with analytics
-- `Configuration.tsx` - Asset ID configuration with multiple structures
-
-**Physical Audit Pages** (`src/pages/physical-audit/`):
-- `PhysicalAuditModule.tsx` - QR code scanning and manual verification
-
-**Preventive Maintenance Pages** (`src/pages/preventive-maintenance/`):
-- `PreventiveMaintenanceList.tsx` - PM scheduling and tracking
-
-**Shared Pages** (`src/pages/`):
-- `AdminDashboard.tsx` - Admin overview with role-based widgets
-- `MaintenanceDashboard.tsx` - Maintenance overview with ticket stats
-- `NotificationsPage.tsx` - Notification center with filters
-- `Auth.tsx` - Login page with role-based routing
-- `HomePage.tsx` - Public homepage
-- `NotFound.tsx` - 404 page
-- `NotAuthorized.tsx` - 403 permission denied page
-
----
-
-## 5. Data Layer & Services
-
-### A. Supabase Integration
-
-**File**: `src/lib/supabaseClient.ts`
-**Pattern**: Singleton instance
-
-**Configuration**:
 ```typescript
-VITE_SUPABASE_URL=https://jsejlncgwnddevsdbmot.supabase.co
-VITE_SUPABASE_ANON_KEY=<jwt_token>
+{
+  "runtime": "Node.js 20+",
+  "framework": "Express 4.19.2",
+  "database": "PostgreSQL 15 (Supabase)",
+  "orm": "Supabase Client 2.45.3",
+  "auth": "Supabase Auth + Custom JWT",
+  "storage": "Supabase Storage + Multer",
+  "email": "Nodemailer 6.9.15",
+  "validation": "Zod 3.23.8"
+}
 ```
 
-**Features**: Persistent sessions, auto token refresh, real-time subscriptions
+### Database
 
-### B. Service Layer (`src/services/`)
-
-| Service | Purpose | Key Methods |
-|---------|---------|-------------|
-| `tenantService.ts` | Tenant CRUD | `fetchTenantById()`, `updateTenant()`, `createTenant()` |
-| `enhancedTenantService.ts` | Advanced tenant ops | Real-time subscriptions, bulk operations |
-| `billingService.ts` | Invoice/payment ops | `createInvoice()`, `recordPayment()`, `generateReceipt()` |
-| `buildingService.ts` | Building CRUD | `getBuildings()`, `createBuilding()`, `updateBuilding()` |
-| `buildingsService.ts` | Building queries | Floor/unit management, occupancy tracking |
-| `spaceService.ts` | Unit allocation | `allocateSpace()`, `getAvailableUnits()`, `releaseSpace()` |
-| `assetService.ts` | Asset management | `createAsset()`, `trackMovement()`, `calculateDepreciation()` |
-| `maintenanceService.ts` | Ticket management | `createTicket()`, `assignTechnician()`, `updateStatus()` |
-| `helpdeskService.ts` | Helpdesk ops | `getTickets()`, `updateStatus()`, `addComment()` |
-| `emailService.ts` | Email notifications | `sendEmail()`, `sendBulkEmail()`, `loadSMTPConfig()` |
-| `notificationService.ts` | Real-time notifications | `createNotification()`, `markAsRead()`, `subscribe()` |
-| `floorPlanService.ts` | Floor plan management | `uploadFloorPlan()`, `getFloorPlans()`, `deleteFloorPlan()` |
-| `settingsService.ts` | System settings | `getSettings()`, `updateSettings()`, `getMasterData()` |
-| `companyGroupService.ts` | Company groups | `getGroups()`, `createGroup()`, `updateHierarchy()` |
-| `tenantApplicationService.ts` | Application workflow | `submitApplication()`, `approveApplication()`, `rejectApplication()` |
-| `tenantPortalService.ts` | Tenant self-service | `getTenantData()`, `makePayment()`, `uploadDocument()` |
-
-### C. Mock Data (`src/data/`)
-
-| File | Purpose |
-|------|----------|
-| `mockData.ts` | General mock data |
-| `mockTenantData.ts` | Tenant fixtures |
-| `mockFloorPlans.ts` | Floor plan fixtures |
-| `userData.ts` | User/role data |
-| `invoiceData.ts` | Invoice fixtures |
-| `agreementData.ts` | Lease agreement templates |
-
-### D. Custom Hooks (`src/hooks/`)
-
-| Hook | Purpose |
-|------|----------|
-| `useNotifications` | Real-time notification subscription |
-| `useTenantProfile` | Tenant profile data |
-| `useGlobalLoading` | Global loading state |
-| `use-mobile` | Responsive breakpoint detection |
-
-### E. Utilities (`src/utils/`)
-
-**Core Utils**:
-- `permissions.ts` - Permission checking logic
-- `roleBasedMenus.ts` - Dynamic menu generation
-- `idUtils.ts` - ID generation
-- `numberToWords.ts` - Currency conversion
-
-**Export Utils**:
-- `exportAdmin.ts`, `exportBilling.ts`, `exportMaintenance.ts`, `exportFinance.ts`, `exportTenantData.ts`
-- `chartGenerator.ts`, `reportGenerator.ts`
-- Formats: PDF (jsPDF), Excel (ExcelJS), CSV
-- Support for charts, tables, and formatted reports
+- **Primary**: PostgreSQL 15 (Supabase)
+- **Real-time**: Supabase Realtime
+- **Row Level Security**: Enabled for all tables
+- **Migrations**: SQL-based versioned migrations
 
 ---
 
-## 6. Database Schema & Business Entities
+## Core Modules
 
-### Core Tables (Supabase PostgreSQL)
+### 1. Tenant Management Module
 
-**Users & Authentication**:
-- `users` - System users (admin, staff, managers)
-  - Fields: id, email, password, name, role, isActive, isApprover, asset_movement_approver, permissions, lastLogin, created_at, updated_at
-  - Roles: Super Admin, Admin, Accountant, Maintenance Manager, Helpdesk, Technician, Viewer, Custom
-  - Password: Bcrypt hashed (automatically via trigger)
-  - Asset Movement Approver: Boolean flag for approve/reject permissions on asset movements
-  - Password Security:
-    - Extension: `pgcrypto` for bcrypt hashing
-    - Trigger: `hash_password_trigger` auto-hashes passwords on INSERT/UPDATE
-    - Function: `hash_password()` uses `crypt(password, gen_salt('bf'))`
-    - Verification: `verify_user_password(email, password)` RPC function returns boolean
-    - Algorithm: Bcrypt with automatic salt generation
+**Purpose**: Complete tenant lifecycle management from application to move-out
 
-**Property Management**:
-- `buildings` - Property buildings
-  - Fields: id, name, address, city, state, pincode, total_floors, total_units, status, created_at, updated_at
-  - Status: Active, Inactive, Under Construction
-- `floors` - Building floors
-  - Fields: id, building_id, floor_number, floor_name, total_units, area_sqft, created_at
-- `units` - Rental units/spaces
-  - Fields: id, floor_id, building_id, unit_number, unit_name, area_sqft, rent_amount, status, tenant_id, lease_start, lease_end, created_at
-  - Status: Available, Occupied, Maintenance, Reserved
-- `space_categories` - Unit types (office, retail, warehouse, lab)
+**Key Features**:
+- Tenant onboarding with digital signatures
+- Agreement management with space assignments
+- Branch and parent-child tenant relationships
+- Company group management
+- Tenant-specific permissions and access control
+- Document management (ID proofs, agreements, etc.)
 
-**Tenant Management**:
-- `tenants` - Tenant companies
-  - Fields: id, tenant_id, company_name, contact_person, email, phone, mobile, status, monthly_rent, lease_start_date, lease_end_date, security_deposit, pan_number, gst_number, address, city, state, pincode, website, industry, employee_count, created_at, updated_at
-  - Status: Active, Inactive, Pending, Suspended, Terminated
-- `tenant_charges` - Additional charges per tenant
-  - Fields: id, tenant_id, charge_type, charge_name, amount, frequency, start_date, end_date, is_active
-  - Types: General Charges, Service Charges, Utility Charges
-- `tenant_applications` - Application submissions
-  - Fields: id, company_name, contact_person, email, phone, status, submitted_date, approved_date, approved_by, rejection_reason, documents
-  - Status: Pending, Approved, Rejected, Under Review
-- `agreements` - Lease agreements
-  - Fields: id, tenant_id, agreement_type, start_date, end_date, rent_amount, security_deposit, terms, document_url, status, signed_date, created_at
-  - Status: Draft, Active, Expired, Terminated, Renewed
+**Database Tables**:
+- `tenants` - Core tenant information
+- `agreements` - Lease agreements with JSONB fields
+- `tenant_applications` - Application workflow
+- `tenant_documents` - Document storage references
 
-**Financial Management**:
-- `invoices` - Billing invoices
-  - Fields: id, invoice_number, tenant_id, invoice_date, due_date, amount, tax_amount, total_amount, status, payment_date, payment_method, notes, created_at, updated_at
-  - Status: Draft, Pending, Paid, Overdue, Cancelled, Partially Paid
-- `invoice_items` - Invoice line items
-  - Fields: id, invoice_id, description, quantity, unit_price, amount, tax_rate, tax_amount
-- `payments` - Payment records
-  - Fields: id, invoice_id, tenant_id, amount, payment_date, payment_method, transaction_id, reference_number, notes, created_at
-  - Methods: Cash, Cheque, Bank Transfer, UPI, Card, Online
-- `expenses` - Operating expenses
-  - Fields: id, category, subcategory, amount, date, description, vendor, invoice_number, payment_method, status, created_at
-  - Categories: Utilities, Maintenance, Salaries, Taxes, Insurance, Others
-- `deposits` - Security deposits
-  - Fields: id, tenant_id, amount, deposit_date, refund_date, refund_amount, status, notes, created_at
-  - Status: Held, Refunded, Partially Refunded, Forfeited
-- `rent_collection` - Rent payment tracking
-  - Fields: id, tenant_id, month, year, amount, due_date, payment_date, status, late_fee, discount, notes
+**Components**:
+- `TenantManagement.tsx` - Main tenant list and management
+- `TenantForm.tsx` - Create/edit tenant
+- `TenantViewDialog.tsx` - Detailed tenant view
+- `AgreementViewModal.tsx` - Agreement details
+- `TenantCompanyProfile.tsx` - Tenant portal profile
 
-**Maintenance & Helpdesk**:
-- `maintenance_tickets` - Maintenance requests
-  - Fields: id, ticket_number, tenant_id, category, subcategory, priority, status, title, description, location, building_id, floor_id, unit_id, assigned_to, reported_by, created_date, updated_date, resolved_date, resolution_notes, rating, feedback
-  - Status: Open, In Progress, Pending, On Hold, Resolved, Closed, Cancelled
-  - Priority: Low, Medium, High, Critical, Emergency
-  - Categories: Electrical, Plumbing, HVAC, Carpentry, Painting, Cleaning, IT, Security, Others
-- `ticket_comments` - Ticket communication
-  - Fields: id, ticket_id, user_id, comment, attachments, is_internal, created_date
-- `ticket_assets` - Junction table linking tickets to assets
-  - Fields: id, ticket_id, asset_id, created_at
-- `technicians` - Maintenance staff
-  - Fields: id, user_id, name, email, phone, specialization, category, status, availability, created_at
-  - Status: Active, Inactive, On Leave, Busy
+**Services**:
+- `tenantService.ts` - CRUD operations
+- `enhancedTenantService.ts` - Advanced queries
+- `realTimeTenantService.ts` - Real-time subscriptions
+- `tenantReportService.ts` - Comprehensive reporting
 
-**Asset Management**:
-- `assets` - Fixed assets
-  - Fields: id, asset_id, manual_asset_id, name, description, category, sub_type, manufacturer, model, serial_number, purchase_date, purchase_cost, supplier, warranty_expiry, status, location, building_id, floor_id, room_rack, tenant_id, handover_type, handover_name, handover_email, handover_contact, depreciation_method, depreciation_rate, current_value, last_depreciation_date, sez_status, customs_category, boe_number, boe_date, cif_value, duty_foregone, image_url, qr_code, pm_enabled, pm_start_date, pm_end_date, pm_frequency_days, pm_next_date, id_config_id, created_at, updated_at, created_by, updated_by
-  - Status: Active, In Use, Maintenance, Idle, Disposed, Scrapped, Under Repair
-  - Depreciation Methods: Straight Line, Written Down Value (WDV), None
-  - SEZ Status: SEZ, DTA, Bonded
-  - Customs Category: Capital Goods, Consumables, Spares, Raw Materials
-- `asset_movements` - Asset transfers
-  - Fields: id, asset_id, assets (JSONB array), movement_type, from_location, to_location, from_building_id, to_building_id, from_floor_id, to_floor_id, movement_date, expected_return_date, actual_return_date, reason, requested_by, approved_by, approval_date, status, gate_pass_number, vendor_name, vendor_contact, handover_to, handover_name, handover_email, handover_mobile, notes, created_at
-  - Types: Location (internal), Maintenance (external), Disposal
-  - Status: Pending, Approved, Rejected, In Transit, Completed, Cancelled
-  - Supports: Multiple asset selection for bulk movement requests (stored as JSONB array)
-  - QR Scan: Integrated QR code scanner for quick asset addition
-  - Handover: Tenant or Other (manual entry) with contact details
-- `asset_history` - Location change tracking
-  - Fields: id, asset_id, change_type, field_name, old_value, new_value, changed_by, changed_at, movement_request_id, remarks
-  - Change Types: location
-  - Field Names: building, floor, room_rack
-  - Purpose: Audit trail for all asset location changes
-  - Linked to movement requests for full traceability
+---
+
+### 2. Asset Management Module
+
+**Purpose**: Complete asset lifecycle tracking from procurement to disposal
+
+**Key Features**:
+- Asset master data with hierarchical categorization (Type > Category > Sub-Category)
+- Asset combinations (Color, Material, Size)
+- Multiple asset images (max 2 per asset)
+- QR code generation for asset tracking
+- Location tracking (Building > Floor > Room)
+- Handover management (Tenant or Other)
+- Depreciation calculation (automatic yearly)
+- SEZ/Customs classification
+- Vendor/Contract management
+- Asset history and audit trail
+- Bulk asset creation with auto-generated IDs
+- Thermal label printing (2x1 inch format)
+
+**Database Tables**:
+- `assets` - Core asset information
+- `asset_movements` - Movement requests and approvals
+- `asset_history` - Change tracking
 - `physical_audits` - Physical verification records
-  - Fields: id, asset_id, audit_date, auditor_name, scan_type, asset_found, location_match, tenant_match, serial_match, physical_condition, audit_result, remarks, created_at
-  - Scan Types: QR Code, Manual
-  - Physical Condition: Good, Fair, Damaged, Scrap
-  - Audit Result: Pass, Issues
-- `dropdown_configs` - Dynamic dropdown configurations
-  - Fields: id, entity_type, field_name, config_data (JSONB), created_at, updated_at
-  - Entity Types: asset, tenant, invoice, ticket
-  - Stores categories, sub-types, manufacturers, statuses dynamically
-- `id_configs` - ID generation configurations
-  - Fields: id, entity_type, structure, separator, start_value, digits, valid_from, valid_till, is_active, created_at, created_by, updated_at, updated_by
-  - Structures: cat-type-seq, cat-year-seq, type-seq, cat-seq, year-seq, seq-only
-  - Separators: -, /, _
-  - Supports multiple active configurations with date ranges
+- `asset_service_records` - Service and maintenance history
+- `preventive_maintenance` - PM schedules
+- `pm_task_instances` - Date-specific PM tasks
+- `form_dropdowns` - Asset categories
+- `form_subcategories` - Asset sub-categories
+- `form_sub_subcategories` - Asset types
+- `sub_subcategory_combinations` - Color/Material/Size combinations
+- `id_configs` - Asset ID generation configuration
 
-**Notifications & Audit**:
-- `notifications` - User notifications
-  - Fields: id, user_id, title, message, type, read, link, metadata, created_date
-  - Types: Invoice, Payment, Maintenance, Lease, Approval, System, Asset, Ticket
-- `audit_logs` - System audit trail
-  - Fields: id, user_id, action, entity_type, entity_id, changes, ip_address, user_agent, timestamp
-  - Actions: Create, Update, Delete, Login, Logout, Export, Approve, Reject
+**Components**:
+- `AssetMaster.tsx` - Main asset management interface
+- `AssetList.tsx` - Asset listing with filters
+- `AssetForm.tsx` - Create/edit asset
+- `AssetMovement.tsx` - Movement request creation
+- `PMTaskBoard.tsx` - PM task assignment and tracking
+- `PMSchedule.tsx` - PM schedule configuration
+- `PhysicalAuditModule.tsx` - Physical audit interface
 
-**Company Groups**:
-- `company_groups` - Tenant groupings
-  - Fields: id, group_name, parent_company, description, total_tenants, total_rent, created_at, updated_at
+**Services**:
+- `assetService.ts` - CRUD and business logic
+- `pmTaskService.ts` - PM task management
+- `pmService.ts` - PM schedule operations
 
-**Master Settings**:
-- `app_settings` - Application configuration
-  - Fields: id, setting_key, setting_value, category, description, is_public, created_at, updated_at
-- `form_dropdowns` - Form dropdown options
-  - Fields: id, form_name, field_name, options (JSONB), is_active, created_at, updated_at
+**Key Workflows**:
+1. **Asset Creation**: Category selection → Auto-ID generation → Location assignment → Handover
+2. **Asset Movement**: Request creation → Workflow approval → Location update → History tracking
+3. **PM Scheduling**: Asset selection → Frequency setup → Task generation → Assignment → Completion
+4. **Physical Audit**: Asset scan → Location verification → Condition check → GPS capture
 
-### Key Relationships
+---
 
+### 3. Workflow Engine Module
+
+**Purpose**: Configurable multi-step approval workflows for asset movements and other processes
+
+**Key Features**:
+- Visual workflow builder with drag-and-drop
+- Node types: Movement Request, Approval, Condition (Approved/Rejected), End
+- Approval types: Any One, All Must Approve
+- SLA tracking with escalation
+- Real-time notifications
+- Workflow versioning
+- Tenant-specific workflows with fallback to default
+- Complete audit trail
+- Workflow execution viewer
+
+**Database Tables**:
+- `workflows` - Workflow definitions
+- `workflow_nodes` - Individual workflow nodes
+- `workflow_edges` - Node connections
+- `workflow_instances` - Runtime workflow executions
+- `workflow_instance_steps` - Step-by-step execution tracking
+- `workflow_actions` - User actions (approve/reject)
+- `workflow_notifications` - Notification delivery tracking
+
+**Components**:
+- `WorkflowBuilder.tsx` - Visual workflow designer
+- `WorkflowManagementPage.tsx` - Workflow list and management
+- `PendingApprovalsDashboard.tsx` - Approval queue
+- `ApprovalList.tsx` - User-specific approvals
+- `WorkflowExecutionViewer.tsx` - Workflow progress visualization
+
+**Services**:
+- `workflowEngine.ts` - Core execution engine
+- `workflowService.ts` - Workflow CRUD operations
+
+**Workflow Execution Flow**:
+1. **Trigger**: Asset movement request created
+2. **Instance Creation**: Workflow instance created with context data
+3. **Node Traversal**: Engine moves through nodes based on graph
+4. **Approval Steps**: Users approve/reject at each approval node
+5. **Condition Evaluation**: Routes based on approval/rejection
+6. **Completion**: Reaches END node (approved or rejected)
+7. **Entity Update**: Asset locations updated on approval
+
+**Graph Structure**:
 ```
-buildings (1) ──> (N) floors ──> (N) units ──> (1) tenants
-tenants (1) ──> (N) tenant_charges
-tenants (1) ──> (N) invoices ──> (N) invoice_items
-invoices (1) ──> (N) payments
-tenants (1) ──> (N) maintenance_tickets ──> (N) ticket_comments
-maintenance_tickets (N) ──> (N) assets (via ticket_assets junction)
-tenants (1) ──> (N) agreements
-tenants (1) ──> (N) assets (handover)
-assets (1) ──> (N) asset_movements
-assets (1) ──> (N) physical_audits
-assets (N) ──> (1) id_configs
-users (1) ──> (N) notifications
-users (1) ──> (N) audit_logs
-company_groups (1) ──> (N) tenants
+MOVEMENT_REQUEST → APPROVAL_1 → CONDITION_APPROVED → APPROVAL_2 → END (Approved)
+                              ↓
+                         CONDITION_REJECTED → END (Rejected)
 ```
 
 ---
 
-## 7. Real-Time Notification System
+### 4. Preventive Maintenance (PM) Module
 
-### Architecture
+**Purpose**: Scheduled preventive maintenance task management with assignment and tracking
 
-**Supabase Edge Functions** (`supabase/functions/`):
-- `send-email/` - Email delivery via SMTP
-- `trigger-notification/` - Create notification records
-- `fetch-notifications/` - Retrieve user notifications
-- `mark-read/` - Mark notifications as read
-- `archive-notification/` - Archive old notifications
-- `get-notification-settings/` - User preferences
-- `update-notification-settings/` - Update preferences
+**Key Features**:
+- PM schedule configuration per asset
+- Automatic task instance generation based on frequency
+- Date-specific task assignment
+- Task status tracking (Overdue, Due Today, Upcoming, Completed)
+- Bulk assignment to auditors
+- Multi-level filtering (Category, Building, Floor, Tenant, etc.)
+- PM task board with Kanban-style view
+- Integration with physical audit module
+- Excel export for reporting
 
-**Frontend Components**:
-- `NotificationBell.tsx` - Header notification icon with badge
-- `NotificationsDrawer.tsx` - Slide-out notification panel
-- `NotificationItem.tsx` - Individual notification card
-- `NotificationsContext.tsx` - Real-time subscription management
+**Database Tables**:
+- `preventive_maintenance` - PM schedules per asset
+- `pm_task_instances` - Date-specific task instances
+- `physical_audits` - Audit completion records
 
-### Notification Flow
+**Components**:
+- `PMTaskBoard.tsx` - Main PM task interface
+- `PMSchedule.tsx` - Schedule configuration
+- `PMReportModal.tsx` - PM reporting interface
+- `PMReportFilters.tsx` - Report filter options
 
-1. **Event Trigger** (e.g., invoice created, ticket assigned)
-2. **Service Layer** calls `notificationService.createNotification()`
-3. **Supabase Edge Function** `trigger-notification` executes
-4. **Database Insert** into `notifications` table
-5. **Real-Time Broadcast** via Supabase subscriptions
-6. **Frontend Update** - NotificationsContext receives event
-7. **UI Update** - Badge count increments, drawer updates
-8. **Email Notification** (optional) via `send-email` function
+**Services**:
+- `pmTaskService.ts` - Task management and assignment
+- `pmService.ts` - Schedule CRUD operations
+- `pmReportService.ts` - Report generation
+- `pmExcelExportService.ts` - Excel export
 
-### Notification Types & Triggers
+**PM Task Lifecycle**:
+1. **Schedule Creation**: Asset + Frequency + Start Date
+2. **Task Generation**: Automatic daily task instance creation
+3. **Assignment**: Assign to auditor (individual or bulk)
+4. **Execution**: Auditor performs physical audit
+5. **Completion**: Audit result recorded, task marked complete
+6. **Next Cycle**: New task generated based on frequency
 
-| Type | Trigger Event | Recipients |
-|------|---------------|------------|
-| **Invoice** | Invoice created/due | Tenant, Accountant |
-| **Payment** | Payment received | Tenant, Accountant |
-| **Maintenance** | Ticket created/updated | Tenant, Maintenance Manager, Technician |
-| **Lease** | Lease expiring (30/60/90 days) | Tenant, Admin |
-| **Approval** | Application submitted | Admin |
-| **System** | User created, settings changed | Super Admin |
-| **Reminder** | Overdue invoice, pending approval | Relevant users |
+**Status Logic**:
+- **OVERDUE**: Task date < today AND not completed
+- **PENDING** (Due Today): Task date = today AND not completed
+- **UPCOMING**: Task date > today OR completed
+- **COMPLETED**: Audit completed for the task
 
-### Real-Time Subscription Pattern
+---
+
+### 5. Tenant Reporting Module
+
+**Purpose**: Comprehensive 360° tenant reporting with multi-sheet Excel export
+
+**Key Features**:
+- 5-sheet Excel report generation
+- Advanced filtering (Tenant, Company Group, Date Range, Building, Status)
+- Real-time data aggregation
+- Financial breakdown with escalations
+- Space allocation tracking
+- Compliance monitoring
+
+**Report Sheets**:
+1. **Tenant Summary**: Overview with counts and totals
+2. **Agreement Details**: Lease information with expiry tracking
+3. **Space Allocation**: Building/Floor/Room assignments
+4. **Financial Breakdown**: Rent, charges, escalations
+5. **Compliance**: GST, PAN, documents
+
+**Components**:
+- `TenantReportModal.tsx` - Report generation interface
+- `TenantReportFilters.tsx` - Filter configuration
+- `TenantReportPreview.tsx` - Report preview
+
+**Services**:
+- `tenantReportService.ts` - Data aggregation and report generation
+- `tenantExcelExportService.ts` - Excel file creation
+
+**Data Flow**:
+1. User selects filters
+2. Service queries database with filters
+3. Data aggregated across multiple tables
+4. Report structure built with 5 sheets
+5. Excel file generated and downloaded
+
+---
+
+### 6. Helpdesk Module
+
+**Purpose**: Unified ticket management system for maintenance requests with email notifications
+
+**Key Features**:
+- Ticket creation with asset linking
+- Priority and category management
+- Status workflow (Open → In Progress → Resolved → Closed)
+- Technician assignment
+- SLA tracking
+- Tenant and admin views
+- Real-time email notifications with user preferences
+- Ticket history and comments
+- Configurable email templates per event and role
+
+**Database Tables**:
+- `maintenance_tickets` - Core ticket data
+- `ticket_assets_junction` - Asset-ticket relationships
+- `ticket_comments` - Ticket communication
+- `ticket_attachments` - File attachments
+- `email_global_settings` - Global email on/off switch
+- `notification_settings` - Per-event notification rules
+- `email_templates` - Email templates per event and role
+- `email_branding` - Company branding for emails
+- `notification_logs` - Email delivery logs
+
+**Components**:
+- `UnifiedHelpdeskPage.tsx` - Admin helpdesk interface
+- `MaintenanceRequestsPage.tsx` - Tenant ticket view
+- `MaintenanceTicketForm.tsx` - Ticket creation
+- `TicketDetailView.tsx` - Ticket details and actions
+
+**Services**:
+- `helpdeskService.ts` - Ticket CRUD operations
+- `ticketNotifications.ts` - Notification handling
+
+**Email Notification System**:
+- Global email toggle in `email_global_settings` table
+- Per-event notification rules in `notification_settings` table
+- Per-user notification preferences via `receive_ticket_notifications` column
+- Email templates per event and role (creator, manager, helpdesk)
+- Batch email sending with rate limiting
+- Complete notification logging in `notification_logs` table
+
+**Notification Flow**:
+1. **Ticket Event**: Ticket status changes (created, assigned, resolved, etc.)
+2. **Global Check**: Verify global email notifications are enabled
+3. **Event Check**: Check if event has notifications enabled
+4. **User Filter**: Only send to users with `receive_ticket_notifications = true`
+5. **Template Render**: Fetch and render email template for user role
+6. **Batch Send**: Send emails via SMTP with rate limiting
+7. **Log Result**: Record success/failure in notification logs
+
+**User Notification Control**:
+- Users can enable/disable ticket email notifications in UserForm.tsx
+- Setting stored in `users.receive_ticket_notifications` column
+- Only applies to users with Manage Tickets, Helpdesk, or Tenant roles
+- Checked before sending any ticket-related emails
+
+---
+
+### 7. Financial Management Module
+
+**Purpose**: Complete financial operations including rent, invoices, expenses, and deposits
+
+**Key Features**:
+- Rent collection tracking
+- Invoice generation and approval
+- Expense management
+- Deposit tracking
+- Payment recording
+- Financial reports and analytics
+
+**Database Tables**:
+- `rent_collections` - Rent payment records
+- `invoices` - Invoice generation
+- `expenses` - Expense tracking
+- `deposits` - Deposit management
+- `payments` - Payment records
+
+**Components**:
+- `RentCollectionManagement.tsx` - Rent tracking
+- `InvoiceManagement.tsx` - Invoice operations
+- `ExpensesManagement.tsx` - Expense tracking
+- `DepositsManagement.tsx` - Deposit management
+
+**Services**:
+- `billingService.ts` - Billing operations
+
+---
+
+## Database Architecture
+
+### Core Tables
+
+#### Users & Authentication
+```sql
+users (
+  id UUID PRIMARY KEY,
+  email TEXT UNIQUE,
+  name TEXT,
+  role TEXT,
+  permissions JSONB,
+  is_active BOOLEAN,
+  is_approver BOOLEAN,
+  asset_movement_approver BOOLEAN,
+  asset_incharge BOOLEAN,
+  asset_auditor BOOLEAN,
+  tenant_id UUID REFERENCES tenants(id),
+  branch_access UUID[],
+  user_management_access JSONB,
+  notifications_enabled BOOLEAN,
+  receive_ticket_notifications BOOLEAN DEFAULT true,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+```
+
+#### Tenants
+```sql
+tenants (
+  id UUID PRIMARY KEY,
+  company TEXT,
+  name TEXT,
+  email TEXT,
+  phone_numbers TEXT,
+  status TEXT,
+  is_main_branch BOOLEAN,
+  parent_tenant_id UUID REFERENCES tenants(id),
+  companygroup TEXT,
+  is_gst_company BOOLEAN,
+  gst_number TEXT,
+  pan_number TEXT,
+  tan_number TEXT,
+  cin_number TEXT,
+  branch_access UUID[],
+  permissions JSONB,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+```
+
+#### Assets
+```sql
+assets (
+  id UUID PRIMARY KEY,
+  asset_id TEXT UNIQUE,
+  asset_name TEXT,
+  asset_category TEXT,
+  asset_sub_category TEXT,
+  asset_type TEXT,
+  asset_combination UUID REFERENCES sub_subcategory_combinations(id),
+  manufacturer TEXT,
+  make_model TEXT,
+  serial_number TEXT,
+  asset_description TEXT,
+  asset_spec TEXT,
+  asset_value NUMERIC,
+  asset_status TEXT,
+  status TEXT,
+  building UUID REFERENCES buildings(id),
+  floor_id UUID REFERENCES floors(id),
+  room_id UUID REFERENCES rooms(id),
+  handover_to UUID REFERENCES tenants(id),
+  handover_other_name TEXT,
+  handover_other_email TEXT,
+  handover_other_contact TEXT,
+  asset_pictures TEXT, -- JSON array
+  asset_incharge UUID REFERENCES users(id),
+  purchase_date DATE,
+  warranty_date DATE,
+  depreciation_date DATE,
+  depreciation_percentage NUMERIC,
+  last_depreciation_date DATE,
+  sez_status TEXT,
+  customs_category TEXT,
+  contract TEXT,
+  vendor_id UUID REFERENCES users(id),
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  created_by TEXT,
+  updated_by TEXT
+)
+```
+
+#### Asset Movements
+```sql
+asset_movements (
+  id UUID PRIMARY KEY,
+  request_number TEXT UNIQUE,
+  assets UUID[], -- Array of asset IDs
+  movement_type TEXT,
+  movement_date DATE,
+  from_building UUID REFERENCES buildings(id),
+  from_floor UUID REFERENCES floors(id),
+  from_room TEXT,
+  to_building UUID REFERENCES buildings(id),
+  to_floor UUID REFERENCES floors(id),
+  to_room TEXT,
+  from_tenant TEXT,
+  to_tenant TEXT,
+  handover_to TEXT,
+  handover_name TEXT,
+  handover_email TEXT,
+  handover_mobile TEXT,
+  movement_reason TEXT,
+  remarks TEXT,
+  approval_required BOOLEAN,
+  approval_status TEXT,
+  movement_status TEXT,
+  workflow_approver_ids UUID[], -- All approvers in workflow
+  requested_by TEXT,
+  created_at TIMESTAMP
+)
+```
+
+#### Preventive Maintenance
+```sql
+preventive_maintenance (
+  id UUID PRIMARY KEY,
+  asset_id UUID REFERENCES assets(id),
+  pm_enabled BOOLEAN,
+  pm_frequency_days INTEGER,
+  pm_next_date DATE,
+  pm_end_date DATE,
+  pm_last_completed_date DATE,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+
+pm_task_instances (
+  id UUID PRIMARY KEY,
+  asset_id UUID REFERENCES assets(id),
+  pm_schedule_id UUID REFERENCES preventive_maintenance(id),
+  task_date DATE,
+  status TEXT, -- OVERDUE, PENDING, UPCOMING, COMPLETED
+  assigned_to UUID REFERENCES users(id),
+  assigned_at TIMESTAMP,
+  assignment_notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(asset_id, task_date)
+)
+```
+
+#### Workflow Engine
+```sql
+workflows (
+  id UUID PRIMARY KEY,
+  name TEXT,
+  description TEXT,
+  tenant_id UUID REFERENCES tenants(id),
+  entity_type TEXT,
+  version INTEGER,
+  is_active BOOLEAN,
+  is_default BOOLEAN,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+
+workflow_nodes (
+  id UUID PRIMARY KEY,
+  workflow_id UUID REFERENCES workflows(id),
+  node_id TEXT,
+  node_type TEXT, -- start, approval, condition, end
+  label TEXT,
+  position_x NUMERIC,
+  position_y NUMERIC,
+  approval_type TEXT, -- single, all, any
+  approver_user_ids UUID[],
+  sla_hours INTEGER,
+  end_type TEXT, -- approved, rejected (for END nodes)
+  created_at TIMESTAMP
+)
+
+workflow_edges (
+  id UUID PRIMARY KEY,
+  workflow_id UUID REFERENCES workflows(id),
+  edge_id TEXT,
+  source_node_id TEXT,
+  target_node_id TEXT,
+  condition_label TEXT,
+  created_at TIMESTAMP
+)
+
+workflow_instances (
+  id UUID PRIMARY KEY,
+  workflow_id UUID REFERENCES workflows(id),
+  workflow_version INTEGER,
+  entity_type TEXT,
+  entity_id UUID,
+  tenant_id UUID REFERENCES tenants(id),
+  status TEXT, -- pending, in_progress, completed, rejected
+  current_node_id TEXT,
+  context_data JSONB,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+)
+
+workflow_instance_steps (
+  id UUID PRIMARY KEY,
+  instance_id UUID REFERENCES workflow_instances(id),
+  node_id TEXT,
+  step_number INTEGER,
+  node_type TEXT,
+  status TEXT, -- pending, approved, rejected
+  assigned_user_ids UUID[],
+  approval_type TEXT,
+  required_approvals INTEGER,
+  received_approvals INTEGER,
+  sla_deadline TIMESTAMP,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+)
+
+workflow_actions (
+  id UUID PRIMARY KEY,
+  instance_id UUID REFERENCES workflow_instances(id),
+  step_id UUID REFERENCES workflow_instance_steps(id),
+  action_type TEXT, -- approve, reject
+  action_by UUID REFERENCES users(id),
+  action_at TIMESTAMP,
+  remarks TEXT,
+  attachments JSONB
+)
+```
+
+### Row Level Security (RLS)
+
+All tables have RLS enabled with policies based on:
+- User role (Super Admin, Admin, Tenant, etc.)
+- Tenant ID for multi-tenancy
+- Branch access for hierarchical permissions
+- Module-specific permissions
+
+Example RLS Policy:
+```sql
+CREATE POLICY "Users can view their tenant's assets"
+ON assets FOR SELECT
+USING (
+  auth.uid() IN (
+    SELECT id FROM users 
+    WHERE tenant_id = assets.handover_to
+  )
+);
+```
+
+---
+
+## Authentication & Authorization
+
+### Authentication Flow
+
+1. **Login**: Email + Password → Supabase Auth
+2. **Password Verification**: RPC function `verify_user_password` or `verify_tenant_password`
+3. **Session Creation**: JWT token stored in localStorage
+4. **User Context**: AuthContext provides user data across app
+
+### Authorization Levels
+
+1. **Super Admin**: Full system access
+2. **Admin**: Tenant-specific admin access
+3. **Accountant**: Financial module access
+4. **Helpdesk**: Ticket management access
+5. **Technician**: Ticket resolution access
+6. **Maintenance Manager**: PM and asset access
+7. **Tenant**: Limited portal access
+8. **Vendor**: Contract-specific access
+
+### Permission System
+
+Permissions stored as JSONB array:
+```json
+[
+  {
+    "module": "Assets",
+    "view": true,
+    "create": true,
+    "edit": true,
+    "delete": false
+  },
+  {
+    "module": "Tenants",
+    "view": true,
+    "create": false,
+    "edit": false,
+    "delete": false
+  }
+]
+```
+
+### Route Protection
 
 ```typescript
-// NotificationsContext.tsx
-const subscription = supabase
-  .channel('notifications')
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'notifications',
-    filter: `user_id=eq.${userId}`
-  }, (payload) => {
-    setNotifications(prev => [payload.new, ...prev]);
-    setUnreadCount(prev => prev + 1);
-  })
-  .subscribe();
+<PermissionGuard path="/admin/assets">
+  <AssetMaster />
+</PermissionGuard>
 ```
-
-### Email Integration
-
-**SMTP Configuration**: `server/config/smtpConfig.json`
-**Email Templates**: HTML + plain text
-**Delivery**: Async via Nodemailer
-**Logging**: `server/logs/emailLogs.json`
-
-**Email Types**:
-- Invoice notifications
-- Payment confirmations
-- Maintenance ticket updates
-- Lease renewal reminders
-- Application status updates
-- Password reset (if implemented)
 
 ---
 
-## 8. Export & Reporting
+## Key Features
 
-### Export Utilities (`src/utils/`)
-- `exportAdmin.ts` - Admin data export
-- `exportBilling.ts` - Billing reports
-- `exportMaintenance.ts` - Maintenance logs
-- `exportFinance.ts` - Financial statements
-- `chartGenerator.ts` - Chart generation
-- `reportGenerator.ts` - PDF report generation
+### 1. Multi-Tenancy
+- Tenant isolation at database level
+- Branch access control
+- Parent-child tenant relationships
+- Tenant-specific workflows
 
-**Formats**: PDF, Excel, CSV
+### 2. Real-Time Updates
+- Supabase Realtime subscriptions
+- Live notifications
+- Collaborative editing
+- Status updates
+
+### 3. Document Management
+- Supabase Storage integration
+- File upload with compression
+- Document categorization
+- Access control
+
+### 4. Reporting & Analytics
+- Excel export (XLSX)
+- PDF generation (jsPDF)
+- Custom report builders
+- Dashboard analytics
+
+### 5. Mobile Responsiveness
+- Responsive design with Tailwind
+- Touch-optimized interfaces
+- Mobile-first components
+- Progressive Web App (PWA) ready
+
+### 6. Audit Trail
+- Complete change history
+- User action tracking
+- Timestamp logging
+- Rollback capability
 
 ---
 
-## 9. Deployment & DevOps
+## API Architecture
 
-### Docker Deployment
+### REST API Endpoints
 
-**Dockerfile** (Multi-stage build):
-```dockerfile
-# Stage 1: Build React frontend
-FROM node:18 AS frontend-build
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-# Stage 2: Production server
-FROM node:18-slim
-WORKDIR /app
-COPY server/package*.json ./
-RUN npm install --production
-COPY server/ ./
-COPY --from=frontend-build /app/dist ./client/build
-EXPOSE 3000
-CMD ["node", "index.js"]
+#### Assets
+```
+GET    /api/assets              - List assets
+POST   /api/assets              - Create asset
+GET    /api/assets/:id          - Get asset details
+PUT    /api/assets/:id          - Update asset
+DELETE /api/assets/:id          - Delete asset
+POST   /api/assets/bulk         - Bulk create assets
 ```
 
-**docker-compose.yml**:
-```yaml
-services:
-  rathinam-techpark:
-    image: naveen171007/rathinam-techpark:1.5.4
-    container_name: rathinam-techpark
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./uploads:/app/uploads
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - UPLOAD_PATH=/app/uploads
-      - MAX_FILE_SIZE=209715200
-    restart: unless-stopped
+#### Asset Movements
+```
+GET    /api/movements           - List movements
+POST   /api/movements           - Create movement request
+GET    /api/movements/:id       - Get movement details
+PUT    /api/movements/:id       - Update movement status
 ```
 
-**Deployment Commands**:
-```bash
-# Build image
-docker build -t rathinam-techpark:latest .
+#### Workflows
+```
+GET    /api/workflows           - List workflows
+POST   /api/workflows           - Create workflow
+GET    /api/workflows/:id       - Get workflow details
+PUT    /api/workflows/:id       - Update workflow
+DELETE /api/workflows/:id       - Delete workflow
+POST   /api/workflows/:id/publish - Publish workflow
+```
 
-# Run with docker-compose
-docker-compose up -d
+#### Approvals
+```
+GET    /api/approvals           - Get pending approvals
+POST   /api/approvals/:id/approve - Approve step
+POST   /api/approvals/:id/reject  - Reject step
+```
 
-# View logs
-docker-compose logs -f
+#### PM Tasks
+```
+GET    /api/pm-tasks            - List PM tasks
+POST   /api/pm-tasks/assign     - Assign task
+POST   /api/pm-tasks/bulk-assign - Bulk assign tasks
+GET    /api/pm-tasks/stats      - Get task statistics
+```
 
-# Stop
-docker-compose down
+### Supabase RPC Functions
+
+```sql
+-- Password verification
+verify_user_password(user_email TEXT, user_password TEXT) RETURNS BOOLEAN
+
+-- Workflow helpers
+get_active_workflow(p_tenant_id UUID, p_entity_type TEXT) RETURNS TABLE(...)
+can_user_approve_step(p_step_id UUID, p_user_id UUID) RETURNS BOOLEAN
+
+-- PM task generation
+generate_pm_task_instances(p_start_date DATE, p_end_date DATE) RETURNS VOID
+```
+
+---
+
+## Deployment Architecture
+
+### Production Deployment
+
+```
+┌─────────────────┐
+│   Cloudflare    │ (CDN + DDoS Protection)
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   Nginx/Apache  │ (Reverse Proxy + SSL)
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   React App     │ (Static Build)
+│   (Vite Build)  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Node.js API    │ (Express Server)
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   Supabase      │ (PostgreSQL + Auth + Storage)
+└─────────────────┘
 ```
 
 ### Environment Variables
 
-**Frontend** (`.env`):
-```
-VITE_SUPABASE_URL=https://jsejlncgwnddevsdbmot.supabase.co
-VITE_SUPABASE_ANON_KEY=<jwt_token>
-```
+```env
+# Supabase
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=xxx
 
-**Backend** (`server/.env`):
-```
-PORT=3000
-UPLOAD_PATH=./uploads
-MAX_FILE_SIZE=209715200
+# API
+VITE_API_URL=https://api.rathinam-nexus.com
+
+# Email
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-SMTP_FROM=Rathinam Nexus <your-email@gmail.com>
+SMTP_USER=xxx
+SMTP_PASS=xxx
+
+# Storage
+UPLOAD_DIR=/uploads
+MAX_FILE_SIZE=10485760
 ```
 
-### Nginx Configuration
-
-**⚠️ WARNING: Do NOT modify Nginx configuration without full system understanding**
-
-**nginx.conf** (Reverse proxy for production deployment only):
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location /api {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    location /uploads {
-        proxy_pass http://localhost:3000;
-        proxy_cache_valid 200 1y;
-    }
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-### Build Scripts
-
-**package.json scripts**:
-```json
-{
-  "dev": "vite",
-  "build": "vite build",
-  "build:dev": "vite build --mode development",
-  "preview": "vite preview",
-  "db:reset": "node scripts/reset-database.js",
-  "db:seed": "node scripts/seed.js"
-}
-```
-
-### Deployment Checklist
-
-- [ ] Set environment variables
-- [ ] Configure SMTP settings
-- [ ] Set up Supabase project
-- [ ] Run database migrations
-- [ ] Build Docker image
-- [ ] Configure Nginx reverse proxy
-- [ ] Set up SSL certificate (Let's Encrypt)
-- [ ] Configure firewall rules
-- [ ] Set up backup strategy
-- [ ] Configure monitoring/logging
-
----
-
-## 10. Security Considerations
-
-### ✅ Implemented
-- Path sanitization for file uploads
-- CORS enabled
-- Password masking in SMTP config
-- Email validation (regex)
-- Port validation (1-65535)
-- **Bcrypt password hashing** with automatic trigger
-- **Password verification** via secure RPC function
-- **pgcrypto extension** for cryptographic functions
-- **Rate limiting** via `express-rate-limit`: 100 req/min (all API), 50 uploads/hr, 20 emails/hr
-
-### ⚠️ Concerns
-- Credentials in `.env` files
-- No request validation middleware
-- localStorage for sensitive data
-- Tenant users synced to `users` table (role: `Tenant`) — bcrypt hashing applies via same trigger; `tenants` table fallback remains for un-synced tenants
-
----
-
-## 11. Data Flow Examples
-
-### Tenant Onboarding Flow
-```
-1. Application Submission → tenant_applications table
-2. Admin Reviews → Application status updated
-3. Approval/Rejection → Email notification sent
-4. If Approved → Tenant record created in tenants table
-5. Space Allocation → Unit assigned, status updated to Occupied
-6. Lease Agreement → Agreement record created, document uploaded
-7. Charges Configuration → tenant_charges records created
-8. Initial Invoice → Invoice generated with security deposit + first month rent
-9. Email Notification → Welcome email + invoice sent
-10. Tenant Portal Access → Credentials created, permissions assigned
-```
-
-### Maintenance Request Flow
-```
-1. Tenant Submits Ticket → maintenance_tickets table
-2. Optional: Link Assets → ticket_assets junction table
-3. Notification → Maintenance Manager receives alert
-4. Ticket Assignment → Technician assigned based on category
-5. Status Updates → Open → In Progress → Resolved
-6. Comments/Updates → ticket_comments table
-7. Email Notifications → Sent at each status change
-8. Completion → Tenant rates service, ticket closed
-9. Audit Trail → All changes logged in audit_logs
-```
-
-### Invoice & Payment Flow
-```
-1. Admin Creates Invoice → invoices + invoice_items tables
-2. Charges Calculation → Rent + tenant_charges aggregated
-3. Tax Calculation → GST/tax applied per line item
-4. Invoice Finalization → Status: Draft → Pending
-5. Email Sent → Invoice PDF attached
-6. Tenant Pays → Payment recorded in payments table
-7. Invoice Updated → Status: Paid, payment_date set
-8. Receipt Generated → PDF receipt created
-9. Accounting Updated → rent_collection table updated
-10. Notification → Payment confirmation sent
-```
-
-### Asset Lifecycle Flow
-```
-1. Asset Creation → assets table with auto-generated ID
-2. ID Generation → Based on active id_configs configuration
-3. QR Code Generation → QR code created and stored
-4. Initial Location → Building, floor, room assigned
-5. Handover → Assigned to tenant or other party
-6. Movement Request → asset_movements table (Pending)
-   - Single or multiple assets can be selected
-   - QR code scanning for quick asset selection
-   - Search and filter assets by ID, name, category
-7. Approval → Movement approved, status updated
-   - Only users with asset_movement_approver permission can approve/reject
-   - Approval creates history records in asset_history table
-   - Asset location fields (building, floor, room_rack) updated automatically
-8. Physical Movement → Location updated, gate pass generated
-9. History Tracking → All location changes logged with:
-   - Old value → New value mapping
-   - Movement request reference
-   - Changed by user
-   - Timestamp
-10. PM Scheduling → If pm_enabled, next PM date calculated
-```
-
-### Asset Movement History System
-```
-1. Movement Approval → Triggers history creation
-2. History Records → asset_history table stores:
-   - Field changes (building, floor, room_rack)
-   - Old/new values (UUIDs converted to names)
-   - Movement request ID for linking
-   - Changed by user and timestamp
-3. Grouping → Changes from same movement grouped in single card
-4. Display → Table format showing all field changes:
-   - Field | Old Value → New Value
-   - Movement request number badge
-   - Changed by information
-5. Enrichment → UUIDs replaced with actual names:
-   - Building IDs → Building names
-   - Floor IDs → Floor names/numbers
-   - Null values → "N/A"
-```
-10. Physical Audit → QR code scanned, verification recorded
-11. Depreciation → Automatic calculation based on method
-12. Disposal → Movement type: Disposal, status: Disposed
-```
-
-### Asset Movement Flow
-```
-1. User Opens Movement Module → AssetMovement page
-2. Tab 1: Asset Selection
-   - QR Code Scan → Html5Qrcode library captures asset ID
-   - Search Assets → Filter by ID, name, category
-   - Multiple Selection → Checkbox-based selection
-   - Excel-style Table → Display selected assets with remove option
-3. Tab 2: Movement Details
-   - Movement Type → Location/Maintenance/Disposal
-   - Date & Time → Movement date and time
-   - Conditional Sections:
-     - Location: From/To building, floor, room
-     - Maintenance: Vendor details, gate pass
-     - Disposal: Reason and remarks
-4. Tab 3: Review & Submit
-   - Summary → Selected assets count and details
-   - Movement Details → Type, date, location/vendor info
-   - Submit → Create movement records for all selected assets
-5. Database Insert → asset_movements table (one record per asset)
-6. Status → Pending (awaiting approval)
-7. Notification → Approver receives alert
-```
-
-### Physical Audit Flow
-```
-1. Auditor Opens Module → PhysicalAuditModule page
-2. QR Code Scan → Html5Qrcode library captures asset ID
-3. Asset Lookup → Fetch asset details from database
-4. Verification Checklist → Asset found, location match, condition
-5. Record Audit → physical_audits table entry created
-6. Discrepancy Handling → If issues, remarks added
-7. Audit Report → Export audit results to Excel/PDF
-8. Follow-up Actions → Tickets created for damaged assets
-```
-
----
-
-## 12. Performance Optimizations
-
-- React Query for caching & background sync
-- Lazy loading of routes
-- Image optimization (Recharts for charts)
-- Pagination on large datasets
-- Email logging with 1000-record limit
-
----
-
-## 13. Scalability Considerations
-
-### Current Limitations
-- Single Node.js server (no clustering)
-- File storage on local disk (not cloud)
-- Email logs in JSON (not database)
-- No API rate limiting
-
-### Recommendations
-- Migrate to cloud storage (S3, Azure Blob)
-- Implement Redis for caching
-- Add API gateway with rate limiting
-- Use message queue (Bull, RabbitMQ) for emails
-- Implement database connection pooling
-
----
-
-## 14. Testing & Debugging
-
-### Health Checks
-- `GET /api/health` - Server status
-- `GET /api/test` - API connectivity
-
-### Logging
-- Console logs with timestamps
-- Email logs in `server/logs/emailLogs.json`
-- Route listing on startup
-
----
-
-## 15. Project Structure
-
-```
-rathinam-nexus-suite-main/
-├── server/                    # Node.js/Express backend
-│   ├── index.js              # Main server entry
-│   ├── services/
-│   │   └── emailService.js   # SMTP email handling
-│   ├── routes/
-│   │   └── assetRoutes.js    # Asset management API
-│   ├── config/
-│   │   └── smtpConfig.json   # Email configuration
-│   └── logs/
-│       └── emailLogs.json    # Email audit trail
-├── src/                       # React frontend
-│   ├── contexts/
-│   │   ├── AuthContext.tsx   # Authentication & RBAC
-│   │   └── NotificationsContext.tsx
-│   ├── services/             # Business logic
-│   ├── components/           # React components
-│   ├── pages/                # Route pages
-│   ├── lib/                  # Utilities & Supabase
-│   ├── utils/                # Export & reporting
-│   └── App.tsx               # Main routing
-├── supabase/                 # Database & Edge Functions
-│   ├── functions/            # Serverless functions
-│   └── migrations/           # Schema migrations
-├── public/                   # Static assets
-└── docker-compose.yml        # Full stack deployment
-```
-
----
-
-## 16. API Endpoints Summary
-
-### Authentication
-- `POST /auth/login` - User login
-- `POST /auth/logout` - User logout
-
-### File Management
-- `POST /api/upload` - Single file upload
-- `POST /api/upload-multiple` - Batch upload
-- `DELETE /api/delete` - Delete file
-- `GET /uploads/*` - Serve uploaded files
-
-### Email Configuration
-- `GET /api/admin/smtp/get` - Get SMTP config
-- `POST /api/admin/smtp/save` - Save SMTP config
-- `POST /api/admin/smtp/send` - Send email
-- `POST /api/admin/smtp/test` - Test SMTP
-- `GET /api/admin/smtp/logs` - Get email logs
-- `POST /api/admin/smtp/reset` - Reset config
-
-### Asset Management
-- `GET /api/assets/assets` - List assets
-- `GET /api/assets/assets/:id` - Get asset
-- `POST /api/assets/assets` - Create asset
-- `PUT /api/assets/assets/:id` - Update asset
-- `DELETE /api/assets/assets/:id` - Delete asset
-- `GET /api/assets/movements` - List movements
-- `POST /api/assets/movements` - Create movement
-- `GET /api/assets/dashboard/stats` - Asset stats
-
-### Health & Testing
-- `GET /api/health` - Health check
-- `GET /api/test` - API test
-
----
-
-## Summary
-
-**Rathinam Nexus Suite** is a **production-ready enterprise application** with:
-- ✅ Comprehensive tenant/property management with multi-building support
-- ✅ Multi-role access control with custom permissions and dynamic menus
-- ✅ Integrated email/notification systems with real-time updates
-- ✅ Real-time data synchronization via Supabase subscriptions
-- ✅ Advanced asset management with SEZ compliance and QR code tracking
-- ✅ Preventive maintenance scheduling and physical audit system
-- ✅ Flexible billing with multi-charge support and automated invoicing
-- ✅ Helpdesk system with technician assignment and SLA tracking
-- ✅ Export & reporting capabilities (PDF, Excel, CSV)
-- ✅ Docker deployment support with Nginx reverse proxy
-- ✅ Master data management with dynamic dropdown configurations
-- ✅ Audit trail for all critical operations
-
-The architecture is **modular and extensible**, with clear separation of concerns:
-- **Frontend**: React + TypeScript with component-based architecture
-- **Backend**: Node.js/Express with RESTful API design
-- **Database**: PostgreSQL (Supabase) with real-time capabilities
-- **State Management**: React Query for server state, Context API for global state
-- **Authentication**: Role-based with granular permissions
-
-**Security Considerations**:
-- ✅ Bcrypt hashing for all users including tenant users (synced to `users` table via `syncTenantUsers`)
-- ✅ Path sanitization for file uploads
-- ✅ CORS enabled with configurable origins
-- ✅ Email validation and input sanitization
-- ✅ Rate limiting implemented (API, upload, email endpoints)
-- ⚠️ localStorage for session management (consider JWT tokens)
-
-**Scalability Recommendations**:
-- Migrate file storage to cloud (AWS S3, Azure Blob)
-- Implement Redis for caching and session management
-- Add API gateway with rate limiting
-- Use message queue (Bull, RabbitMQ) for email/notifications
-- Implement database connection pooling
-- Add horizontal scaling with load balancer
-- Implement CDN for static assets
-
-**Production Readiness**:
-- ✅ Docker containerization
-- ✅ Environment-based configuration
-- ✅ Error handling and logging
-- ✅ Health check endpoints
-- ✅ Audit trail for compliance
-- ⚠️ Security hardening needed (password hashing, rate limiting)
-- ⚠️ Monitoring and alerting setup recommended
-
----
-
-**Document Version**: 3.0  
-**Last Updated**: 2025-01-20  
-**Maintained By**: Development Team
-
----
-
-## 22. Workflow Engine System
-
-### Overview
-Advanced workflow automation engine for multi-step approval processes with graph-based execution, conditional routing, and SLA tracking.
-
-### Core Architecture
-
-**Workflow Components**:
-- **Workflows**: Template definitions with versioning
-- **Workflow Nodes**: Individual steps (Start, Approval, Condition, End)
-- **Workflow Edges**: Connections between nodes with conditional routing
-- **Workflow Instances**: Runtime execution of workflows
-- **Workflow Steps**: Individual step executions with approval tracking
-- **Workflow Actions**: User actions (Approve, Reject, Comment)
-
-**Node Types**:
-- `MOVEMENT_REQUEST`: Start node for asset movement workflows
-- `APPROVAL`: Approval step with configurable approval types
-- `CONDITION_APPROVED`: Conditional routing for approved path
-- `CONDITION_REJECTED`: Conditional routing for rejected path
-- `END`: Terminal node with type (approved/rejected)
-
-**Approval Types**:
-- `SINGLE`: First approver completes the step
-- `ALL`: All approvers must approve
-- `ANY`: Any single approver can complete
-
-### Workflow Execution Flow
-
-**1. Workflow Initiation**:
-```typescript
-// Start workflow for asset movement
-const instance = await workflowEngine.startWorkflow(
-  'asset_movement',  // entity type
-  movementId,        // entity ID
-  tenantId,          // tenant context
-  contextData        // additional data
-);
-```
-
-**2. Graph Traversal**:
-- Load workflow graph (nodes + edges)
-- Find start node (MOVEMENT_REQUEST)
-- Follow edges based on node type and conditions
-- Create approval steps for APPROVAL nodes
-- Auto-traverse CONDITION nodes
-- Complete at END node
-
-**3. Approval Processing**:
-```typescript
-// Approve step
-await workflowEngine.approveStep(
-  stepId,
-  userId,
-  remarks,
-  attachments
-);
-
-// Reject step
-await workflowEngine.rejectStep(
-  stepId,
-  userId,
-  remarks,
-  attachments
-);
-```
-
-**4. Conditional Routing**:
-- Approval → CONDITION_APPROVED → Next approval or END (approved)
-- Rejection → CONDITION_REJECTED → END (rejected)
-- Conditions evaluate context data for dynamic routing
-
-**5. Workflow Completion**:
-- Update workflow instance status (COMPLETED/REJECTED)
-- Update entity based on result
-- For asset movements:
-  - Update asset locations (building, floor, room)
-  - Update handover details (tenant or other)
-  - Create asset history records
-  - Resolve UUIDs to names for history
-
-### Database Schema
-
-**workflows table**:
-```sql
-id, name, description, entity_type, version, is_active, 
-tenant_id, created_by, created_at, updated_at
-```
-
-**workflow_nodes table**:
-```sql
-id, workflow_id, node_id, node_type, node_label, 
-approver_user_ids, approval_type, sla_hours, 
-condition_field, condition_operator, condition_value,
-position_x, position_y, end_type, created_at
-```
-
-**workflow_edges table**:
-```sql
-id, workflow_id, edge_id, source_node_id, target_node_id,
-edge_label, condition_value, created_at
-```
-
-**workflow_instances table**:
-```sql
-id, workflow_id, workflow_version, entity_type, entity_id,
-tenant_id, status, current_node_id, context_data,
-started_at, completed_at, created_at
-```
-
-**workflow_instance_steps table**:
-```sql
-id, instance_id, node_id, step_number, node_type, status,
-assigned_user_ids, approval_type, required_approvals,
-received_approvals, sla_deadline, started_at, completed_at
-```
-
-**workflow_actions table**:
-```sql
-id, instance_id, step_id, action_type, action_by,
-remarks, attachments, action_at
-```
-
-### Integration Points
-
-**Asset Movement Integration**:
-- Workflow triggered on movement creation
-- All approver IDs stored in `workflow_approver_ids` field
-- Approval updates movement status
-- Rejection updates movement status
-- Completion updates asset locations and creates history
-
-**User Permissions**:
-- `asset_movement_approver` flag on users table
-- Only approvers see approve/reject buttons
-- Approvers receive notifications for pending steps
-
-**History Tracking**:
-- Asset history records created on approval
-- Old value → New value mapping
-- Movement request ID linked
-- Changed by user tracked
-- UUIDs resolved to human-readable names
-
-### Workflow Builder UI
-
-**Visual Editor** (`WorkflowBuilder.tsx`):
-- Drag-and-drop node placement
-- Visual edge connections
-- Node configuration panels
-- Real-time validation
-- Save/publish workflows
-
-**Node Configuration**:
-- Approval nodes: Select approvers, approval type, SLA
-- Condition nodes: Field, operator, value
-- End nodes: Type (approved/rejected)
-
-**Pending Approvals Dashboard** (`PendingApprovalsDashboard.tsx`):
-- List of pending approval steps
-- Filter by entity type, status
-- Approve/reject actions
-- Remarks and attachments
-- SLA countdown
-
-### Advanced Features
-
-**Multi-Tenant Support**:
-- Workflows scoped to tenants
-- Global workflows for all tenants
-- Tenant-specific approval chains
-
-**Versioning**:
-- Workflow versions tracked
-- Instances reference specific version
-- Version history maintained
-
-**SLA Tracking**:
-- Configurable SLA hours per approval node
-- SLA deadline calculated on step creation
-- Overdue alerts and notifications
-
-**Parallel Approvals**:
-- ALL approval type requires all approvers
-- Tracks received vs required approvals
-- Completes when threshold met
-
-**Audit Trail**:
-- All actions logged with timestamp
-- Remarks and attachments preserved
-- User attribution for accountability
-
-### Best Practices
-
-**Workflow Design**:
-- Always include MOVEMENT_REQUEST start node
-- Use CONDITION nodes for routing
-- Define clear END nodes for both paths
-- Set realistic SLA hours
-- Assign appropriate approvers
-
-**Error Handling**:
-- Validate graph completeness before activation
-- Handle missing nodes gracefully
-- Log all errors for debugging
-- Provide user-friendly error messages
-
-**Performance**:
-- Cache workflow graphs in memory
-- Batch database operations
-- Use RPC functions for complex queries
-- Index frequently queried fields
-
----
-
-## 23. PM Task Board System
-
-### Overview
-Date-based preventive maintenance task scheduling and assignment system with automatic task instance generation.
-
-### Core Concepts
-
-**PM Schedules** (preventive_maintenance table):
-- Asset-level PM configuration
-- Start date, end date, frequency in days
-- Next PM date auto-calculated
-- PM enabled flag
-
-**PM Task Instances** (pm_task_instances table):
-- Date-specific task records
-- Generated automatically based on schedules
-- Assignment tracking (user, notes, date)
-- Status tracking (PENDING, OVERDUE, UPCOMING, COMPLETED)
-
-**Key Difference**:
-- PM schedules are templates (one per asset)
-- Task instances are daily tasks (many per asset)
-- Instances generated on-demand for date ranges
-
-### Task Generation Logic
-
-**Automatic Generation**:
-```typescript
-// Generate instances for date range
-await supabase.rpc('generate_pm_task_instances', {
-  p_start_date: '2025-01-20',
-  p_end_date: '2025-01-20'
-});
-```
-
-**Manual Fallback**:
-- If RPC fails, manual generation kicks in
-- Iterates through active PM schedules
-- Calculates task dates based on frequency
-- Creates instances for target date
-- Prevents duplicates with upsert
-
-**Status Auto-Update**:
-- Past dates → OVERDUE
-- Today → PENDING
-- Future dates → UPCOMING
-- Runs on every task fetch
-
-### Task Assignment
-
-**Date-Specific Assignment**:
-```typescript
-// Assign task for specific date
-await pmTaskService.assignTask(
-  assetId,
-  userId,
-  notes,
-  taskDate  // '2025-01-20'
-);
-```
-
-**Bulk Assignment**:
-```typescript
-// Assign multiple tasks for same date
-await pmTaskService.bulkAssignTasks({
-  asset_ids: ['id1', 'id2'],
-  assigned_to: userId,
-  assignment_notes: 'Batch assignment',
-  task_date: '2025-01-20'
-});
-```
-
-### Filtering System
-
-**Available Filters**:
-- Date (default: today)
-- Tenant ID
-- Building ID
-- Floor ID
-- Status (OVERDUE, DUE_TODAY, UPCOMING)
-- Show only unassigned
-- Assigned to specific user
-
-**Hierarchical Filtering**:
-- Filters applied after task instance fetch
-- Asset data joined for location filtering
-- Tenant data joined for tenant filtering
-- User data joined for assignment display
-
-### UI Components
-
-**PMTaskBoard** (`PMTaskBoard.tsx`):
-- Date picker for task date selection
-- Filter panel (tenant, building, floor, status, assignment)
-- Task list with status badges
-- Assign/unassign actions
-- Bulk assignment dialog
-- Export to CSV
-
-**Task Display**:
-- Asset name and code
-- Location (building / floor)
-- Tenant name
-- PM next date
-- Status badge (color-coded)
-- Days overdue (if applicable)
-- Assigned user
-- Last audit date and result
-
-### Database Schema
-
-**pm_task_instances table**:
-```sql
-id, asset_id, pm_schedule_id, task_date, status,
-assigned_to, assigned_at, assignment_notes,
-completed_at, completed_by, completion_notes,
-created_at, updated_at
-```
-
-**Unique Constraint**: `(asset_id, task_date)`
-- Prevents duplicate tasks for same asset on same date
-- Enables upsert operations
-
-### Integration Points
-
-**Asset Management**:
-- PM schedules linked to assets
-- Asset location used for filtering
-- Asset handover (tenant) used for filtering
-
-**User Management**:
-- Auditors/technicians assigned to tasks
-- User names displayed in task list
-- Assignment history tracked
-
-**Physical Audit**:
-- Last audit date displayed
-- Last audit result displayed
-- Audit completion updates PM status
-
-### Best Practices
-
-**Task Generation**:
-- Generate instances on-demand (not in advance)
-- Use RPC function for performance
-- Fallback to manual generation if RPC fails
-- Update statuses before displaying tasks
-
-**Assignment**:
-- Assign tasks for specific dates
-- Use bulk assignment for efficiency
-- Add notes for context
-- Track assignment timestamp
-
-**Status Management**:
-- Auto-update statuses on every fetch
-- Use database status as source of truth
-- Display days overdue for OVERDUE tasks
-- Filter by status for focused views
-
----
-
-## 24. Asset Movement History System
-
-### Overview
-Comprehensive audit trail for asset location and handover changes with movement request linking.
-
-### History Record Structure
-
-**asset_history table**:
-```sql
-id, asset_id, change_type, field_name, old_value, new_value,
-changed_by, changed_at, movement_request_id, remarks
-```
-
-**Change Types**:
-- `location`: Building, floor, room changes
-- `handover`: Tenant/owner changes
-
-**Field Names**:
-- `building`: Building location
-- `floor_id`: Floor location
-- `room_id`: Room location
-- `handover_to`: Tenant handover
-
-### History Creation Flow
-
-**1. Movement Approval**:
-- Workflow engine approves movement request
-- Asset locations updated in assets table
-- History records created for each change
-
-**2. Field Change Detection**:
-```typescript
-// Compare old vs new values
-if (asset.building !== newBuildingId) {
-  historyRecords.push({
-    asset_id: assetId,
-    change_type: 'location',
-    field_name: 'building',
-    old_value: oldBuildingName,  // Human-readable
-    new_value: newBuildingName,  // Human-readable
-    changed_by: userName,
-    movement_request_id: movementId
-  });
-}
-```
-
-**3. UUID Resolution**:
-- Asset table stores UUIDs (building, floor_id, room_id)
-- History table stores names (for readability)
-- UUIDs resolved to names during history creation
-- Null values displayed as "N/A"
-
-### History Display
-
-**Movement History Tab** (AssetMaster.tsx):
-- Grouped by movement request
-- Table format showing all field changes
-- Old value → New value mapping
-- Movement request number badge
-- Changed by user and timestamp
-- Sorted by date (newest first)
-
-**Grouping Logic**:
-```typescript
-// Group history by movement request
-const grouped = history.reduce((acc, record) => {
-  const key = record.movement_request_id || 'manual';
-  if (!acc[key]) acc[key] = [];
-  acc[key].push(record);
-  return acc;
-}, {});
-```
-
-**Display Format**:
-```
-┌─────────────────────────────────────────────┐
-│ Movement Request: MV-2025-001               │
-│ Changed by: System | 2025-01-20 10:30 AM   │
-├─────────────┬───────────────┬───────────────┤
-│ Field       │ Old Value     │ New Value     │
-├─────────────┼───────────────┼───────────────┤
-│ Building    │ Building A    │ Building B    │
-│ Floor       │ Floor 1       │ Floor 2       │
-│ Room        │ Room 101      │ Room 201      │
-└─────────────┴───────────────┴───────────────┘
-```
-
-### Integration with Workflow Engine
-
-**Automatic History Creation**:
-- Workflow engine creates history on approval
-- Movement request ID linked for traceability
-- All location changes tracked
-- Handover changes tracked
-
-**UUID to Name Resolution**:
-```typescript
-// Resolve building UUID to name
-if (buildingId) {
-  const { data: building } = await supabase
-    .from('buildings')
-    .select('name')
-    .eq('id', buildingId)
-    .single();
-  buildingName = building?.name || buildingId;
-}
-```
-
-### Best Practices
-
-**History Creation**:
-- Always link to movement request
-- Store human-readable values
-- Track changed by user
-- Include timestamp
-- Add remarks for context
-
-**History Display**:
-- Group by movement request
-- Show all changes in single view
-- Use table format for clarity
-- Sort by date (newest first)
-- Display movement request badge
-
-**Performance**:
-- Index movement_request_id
-- Index asset_id
-- Paginate large history lists
-- Cache building/floor/room names
-
----
-
-## 17. Development Workflow & Scripts
-
-### Database Management Scripts (`scripts/`)
-
-| Script | Purpose |
-|--------|----------|
-| `export-db.ts` | Export database to JSON |
-| `export-schema.ts` | Export database schema |
-| `import-database.ts` | Import database from JSON |
-| `import-simple.ts` | Simple import utility |
-| `migrate-agreements.ts` | Migrate agreement data |
-| `make-responsive.js` | UI responsiveness helper |
-
-### Development Commands
+### Build Process
 
 ```bash
-# Frontend development
-npm run dev                    # Start Vite dev server
-npm run build                  # Production build
-npm run preview                # Preview production build
+# Install dependencies
+npm install
 
-# Database operations
-npm run db:reset               # Reset database
-npm run db:seed                # Seed initial data
-npm run db:reset-and-seed      # Reset + seed
-npm run db:status              # Check database status
+# Build frontend
+npm run build
 
-# User management
-npm run create-users           # Create initial users
-npm run update-roles           # Update user roles
+# Build backend
+cd server && npm run build
 
-# Utilities
-npm run check-connection       # Test Supabase connection
-npm run migrate:agreements     # Migrate agreements
-
-# Backend server
-cd server
-npm start                      # Production mode
-npm run dev                    # Development mode
+# Deploy
+npm run deploy
 ```
-
-### Project Configuration Files
-
-| File | Purpose |
-|------|----------|
-| `vite.config.ts` | Vite bundler configuration |
-| `tsconfig.json` | TypeScript compiler options |
-| `tailwind.config.ts` | Tailwind CSS configuration |
-| `postcss.config.js` | PostCSS configuration |
-| `components.json` | Radix UI component config |
-
-## 18. Key Features by Role
-
-### Super Admin
-- Full system access, user management, role assignment, permission configuration
-- Building management, floor plans, space allocation
-- Tenant management, application approval, lease management
-- Financial oversight, invoice creation, payment tracking, expense management
-- Asset management, movement approval, depreciation tracking
-- System settings, SMTP configuration, master data management
-- Audit logs, bulk operations, data export
-- Helpdesk management, ticket assignment, technician management
-
-### Admin
-- Similar to Super Admin with configurable permissions
-- Building and tenant management
-- Financial operations based on assigned permissions
-- Asset management and tracking
-- Helpdesk and maintenance coordination
-
-### Accountant
-- Invoice creation, payment recording, receipt generation
-- Rent collection tracking, overdue management
-- Expense management, deposit tracking
-- Financial reports, tax compliance, GST reports
-- Export data to Excel/PDF, chart generation
-- View tenant financial history
-
-### Maintenance Manager
-- View all tickets across all tenants
-- Assign technicians based on category and availability
-- Track ticket status, SLA compliance
-- Maintenance analytics, technician performance
-- Work order scheduling, preventive maintenance
-- Asset maintenance tracking
-
-### Helpdesk
-- Create tickets on behalf of tenants
-- Update ticket status, add comments
-- View ticket history, search and filter
-- Tenant communication, issue resolution
-- Escalation management
-
-### Technician
-- View assigned tickets
-- Update ticket status, add resolution notes
-- Upload photos/documents
-- Mark tickets as resolved
-- View work history
-
-### Tenant
-- View dashboard with lease summary, payment status
-- View/download lease agreement
-- View/pay invoices online
-- Submit maintenance requests with asset linking
-- View maintenance ticket status and history
-- Access document repository
-- View assigned assets
-- Update profile information
-- Rate completed services
-
-### Viewer
-- Read-only access to buildings, tenants, reports
-- View dashboards and analytics
-- Export reports
-- No create/edit/delete permissions
-
-## 19. Troubleshooting Guide
-
-### Common Issues
-
-**Missing Supabase environment variables**: Check `.env` file has `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
-
-**File upload fails**: Check `uploads/` directory exists with write permissions, verify `MAX_FILE_SIZE`
-
-**Email not sending**: Check SMTP configuration at `/admin/settings/email`, verify credentials, check `server/logs/emailLogs.json`
-
-**Permission denied**: Check user permissions in database, verify `PermissionGuard`, call `refreshUser()`
-
-**Real-time notifications not working**: Check Supabase connection, verify `NotificationsContext` mounted, check console for errors
-
-**Docker container won't start**: Check logs with `docker-compose logs`, verify environment variables, ensure port 3000 available
 
 ---
 
-## 20. Asset Management Module - Complete Analysis
+## Security Implementation
 
-### Overview
-Comprehensive fixed asset tracking system with SEZ compliance, depreciation automation, movement tracking, maintenance scheduling, physical audit, preventive maintenance, and QR code generation.
+### 1. Authentication Security
+- Encrypted password storage (bcrypt)
+- JWT token-based sessions
+- Session timeout (8 hours)
+- Password complexity requirements
 
-### Core Features
+### 2. Authorization Security
+- Role-based access control (RBAC)
+- Row-level security (RLS)
+- Module-level permissions
+- API endpoint protection
 
-**1. Asset Master Management** (`src/pages/assets/AssetMaster.tsx`)
-- Complete asset lifecycle tracking from purchase to disposal
-- Auto-generated asset IDs with configurable structure (see Configuration)
-- Multi-category classification (IT Equipment, Furniture, Machinery, Vehicles, Office Equipment)
-- Image upload with preview and storage
-- Serial number and manufacturer tracking
-- Purchase order number field for procurement tracking
-- Warranty expiry and PM date tracking
-- QR code generation for physical tagging
-- Bulk import via Excel template
-- Flexible handover system:
-  - Tenant handover (dropdown selection from active tenants)
-  - Other handover (manual entry with name, email, contact)
-  - Toggle between handover types
-- HeroUI-inspired table design with avatars and status badges
-- Advanced search and filtering
-- Export to Excel/PDF with charts
+### 3. Data Security
+- SQL injection prevention (parameterized queries)
+- XSS protection (input sanitization)
+- CSRF protection (token validation)
+- File upload validation
 
-**2. Asset ID Configuration** (`src/pages/assets/Configuration.tsx`)
-- Configurable ID generation rules per entity type
-- Multiple structure options:
-  - **Category-SubType-Number** (e.g., ITE-LPT-0001)
-  - **Category-Year-Number** (e.g., ITE-2024-0001)
-  - **SubType-Number** (e.g., LPT-0001)
-  - **Category-Number** (e.g., ITE-0001)
-  - **Year-Number** (e.g., 2024-0001)
-  - **Number Only** (e.g., 0001)
-- Separator options: Hyphen (-), Slash (/), Underscore (_)
-- Configurable start value and digit count (3-6 digits)
-- Live preview of generated IDs
-- Multiple saved configurations with date ranges
-- Activate/deactivate configurations
-- Valid from/till date support for configuration transitions
-- Stored in `id_configs` table
+### 4. Network Security
+- HTTPS/SSL encryption
+- CORS configuration
+- Rate limiting
+- DDoS protection (Cloudflare)
 
-**3. SEZ/Customs Compliance**
-- SEZ vs DTA classification for customs tracking
-- Customs category tracking (Capital Goods, Consumables, Spares, Raw Materials)
-- BOE (Bill of Entry) number and date recording
-- CIF (Cost, Insurance, Freight) value recording
-- Duty foregone amount calculation for SEZ benefits
-- Import date and customs location tracking
-- Usage purpose documentation for compliance
-
-**4. Financial Management**
-- Asset cost and capitalization date
-- Multiple depreciation methods:
-  - **Straight Line**: Equal depreciation per year
-  - **Written Down Value (WDV)**: Reducing balance method
-  - **None**: Non-depreciable assets
-- Automatic yearly depreciation calculation
-- Net book value tracking (purchase cost - accumulated depreciation)
-- Cost center allocation for departmental accounting
-- GL (General Ledger) code mapping
-- Depreciation percentage configuration
-- Last depreciation date tracking
-
-**5. Location Tracking**
-- Building-wise allocation with dropdown
-- Floor-level tracking within buildings
-- Room/Rack identification for precise location
-- SEZ zone classification (SEZ, DTA, Bonded)
-- Unit/Department assignment
-- Handover tracking (Tenant or Other party)
-- Location history via asset_movements
-
-**6. Asset Movement System** (`src/pages/assets/AssetMovement.tsx`)
-- Three movement types:
-  - **Location**: Internal relocation within campus
-  - **Maintenance**: External vendor movement for repairs
-  - **Disposal**: Asset retirement/scrapping
-- Movement request workflow:
-  1. Request creation with reason and justification
-  2. Approval authority assignment
-  3. Approve/Reject actions with comments
-  4. Actual movement date recording
-  5. Return date tracking (for maintenance)
-- Gate pass number generation for security
-- Expected return date tracking
-- From → To location mapping (building, floor, room)
-- Vendor details for external movements (name, contact)
-- Movement history audit trail
-- Status tracking: Pending, Approved, Rejected, In Transit, Completed, Cancelled
-
-**7. Maintenance Management**
-- Preventive maintenance scheduling (see PM System)
-- Breakdown maintenance tracking via tickets
-- AMC (Annual Maintenance Contract) management
-- Vendor/Engineer assignment
-- SLA time tracking for response and resolution
-- Downtime hours recording for availability metrics
-- Repair cost tracking
-- Next due date calculation
-- Maintenance status workflow
-- Integration with helpdesk tickets via ticket_assets junction
-
-**8. Physical Audit System** (`src/pages/physical-audit/PhysicalAuditModule.tsx`)
-- QR code scanning with Html5Qrcode library
-- Manual asset ID entry fallback for damaged QR codes
-- Real-time asset validation against database
-- Verification checklist:
-  - **Asset Found**: Yes/No (physical presence)
-  - **Location Match**: Yes/No (matches recorded location)
-  - **Tenant Match**: Yes/No (matches assigned tenant)
-  - **Serial Number Match**: Yes/No (serial number verification)
-- Physical condition assessment:
-  - Good: Fully functional
-  - Fair: Minor issues
-  - Damaged: Requires repair
-  - Scrap: Beyond repair
-- Audit result: Pass (all checks), Issues (discrepancies found)
-- Remarks field for detailed observations
-- Audit history with pagination
-- Auditor name tracking for accountability
-- Scan type tracking (QR Code vs Manual)
-- Asset details display with image
-- Building and floor name resolution
-- Stored in `physical_audits` table
-- Export audit reports to Excel/PDF
-
-**9. Preventive Maintenance (PM) System** (`src/pages/preventive-maintenance/PreventiveMaintenanceList.tsx`)
-- PM schedule creation interface
-- Bulk asset selection for PM scheduling
-- Configurable PM parameters:
-  - **Start date**: PM schedule start (required)
-  - **End date**: PM schedule end (optional, null = ongoing)
-  - **Frequency in days**: PM interval (required, e.g., 90 days)
-- Automatic next PM date calculation:
-  - Formula: `last_pm_date + frequency_days`
-  - Recalculates after each PM completion
-- PM status indicators:
-  - **Overdue**: Past due date (red badge)
-  - **Due**: Within 7 days (yellow badge)
-  - **Upcoming**: More than 7 days (green badge)
-- Filter by tenant and asset status
-- Sort by PM date (ascending/descending)
-- Asset search by name or ID
-- PM-enabled assets tracking (boolean flag)
-- Tenant name resolution for handover tracking
-- Building and floor name resolution
-- Pagination support for large datasets
-- Stored in assets table fields:
-  - `pm_enabled` (boolean)
-  - `pm_start_date` (date)
-  - `pm_end_date` (date, nullable)
-  - `pm_frequency_days` (integer)
-  - `pm_next_date` (date, auto-calculated)
-
-**10. QR Code System**
-- Individual QR code generation per asset
-- Bulk QR code printing for multiple assets
-- Logo embedding in QR codes for branding
-- Print-optimized layout (grid format)
-- Asset ID and name on labels
-- Scannable for quick asset lookup
-- Html5Qrcode integration for scanning
-- QR code stored as image URL in database
-- Mobile-friendly scanning interface
-
-**11. Dashboard & Analytics**
-- Total assets count by status
-- Asset value summary (purchase cost, current value)
-- Depreciation summary
-- Assets by category (pie chart)
-- Assets by location (bar chart)
-- Upcoming PM schedule (calendar view)
-- Overdue PM alerts
-- Movement requests pending approval
-- Recent audit results
-- Asset utilization metrics
-
-**12. Dynamic Dropdown Configuration**
-- Master data management via `dropdown_configs` table
-- Configurable categories with codes (e.g., ITE, FUR, MCH)
-- Sub-types per category with codes (e.g., LPT, DSK, MON)
-- Manufacturer lists per category
-- Asset status options (Active, Maintenance, Disposed, etc.)
-- SEZ status options (SEZ, DTA, Bonded)
-- Customs category options
-- JSONB storage for flexible schema
-- Admin interface for adding/editing options
-- Cascade updates to existing assets
-
-**13. Integration Points**
-- **Helpdesk**: Link assets to maintenance tickets via `ticket_assets`
-- **Tenants**: Assign assets to tenants for handover tracking
-- **Buildings**: Associate assets with buildings and floors
-- **Users**: Track created_by and updated_by for audit
-- **Notifications**: Alerts for PM due, movement approvals, audit discrepancies
-- **Email**: Notifications for movement approvals, PM reminders
-
-**14. Security & Compliance**
-- Role-based access control for asset operations
-- Audit trail for all asset changes
-- SEZ compliance reporting
-- Customs documentation tracking
-- Depreciation audit trail
-- Movement approval workflow
-- Physical audit verification
-
-**15. Export & Reporting**
-- Asset register report (Excel/PDF)
-- Depreciation schedule report
-- Movement history report
-- PM schedule report
-- Audit discrepancy report
-- Asset valuation report
-- SEZ compliance report
-- Custom filters and date ranges
-
-### Database Schema
-
-**assets table** (primary table):
-```sql
-id, asset_id, manual_asset_id, name, description, category, sub_type, 
-manufacturer, model, serial_number, purchase_date, purchase_cost, 
-supplier, warranty_expiry, status, location, building_id, floor_id, 
-room_rack, tenant_id, handover_type, handover_name, handover_email, 
-handover_contact, depreciation_method, depreciation_rate, current_value, 
-last_depreciation_date, sez_status, customs_category, boe_number, 
-boe_date, cif_value, duty_foregone, image_url, qr_code, pm_enabled, 
-pm_start_date, pm_end_date, pm_frequency_days, pm_next_date, 
-id_config_id, created_at, updated_at, created_by, updated_by
-```
-
-**asset_movements table**:
-```sql
-id, asset_id, movement_type, from_location, to_location, 
-from_building_id, to_building_id, from_floor_id, to_floor_id, 
-movement_date, expected_return_date, actual_return_date, reason, 
-requested_by, approved_by, approval_date, status, gate_pass_number, 
-vendor_name, vendor_contact, notes, created_at
-```
-
-**physical_audits table**:
-```sql
-id, asset_id, audit_date, auditor_name, scan_type, asset_found, 
-location_match, tenant_match, serial_match, physical_condition, 
-audit_result, remarks, created_at
-```
-
-**id_configs table**:
-```sql
-id, entity_type, structure, separator, start_value, digits, 
-valid_from, valid_till, is_active, created_at, created_by, 
-updated_at, updated_by
-```
-
-**dropdown_configs table**:
-```sql
-id, entity_type, field_name, config_data (JSONB), created_at, updated_at
-```
-
-**ticket_assets table** (junction):
-```sql
-id, ticket_id, asset_id, created_at
-```
-
-### Technical Implementation
-
-**Frontend Components**:
-- `AssetMaster.tsx` - Main asset list and CRUD
-- `AssetMovement.tsx` - Movement request management
-- `Configuration.tsx` - ID configuration interface
-- `PreventiveMaintenanceList.tsx` - PM scheduling
-- `PhysicalAuditModule.tsx` - QR scanning and audit
-- `AssetForm.tsx` - Asset creation/edit form
-- `AssetCard.tsx` - Asset detail card
-- `QRCodeGenerator.tsx` - QR code generation
-- `QRCodeScanner.tsx` - QR code scanning
-
-**Services**:
-- `assetService.ts` - Asset CRUD operations
-- `assetMovementService.ts` - Movement operations
-- `physicalAuditService.ts` - Audit operations
-- `idConfigService.ts` - ID configuration
-- `dropdownConfigService.ts` - Master data
-
-**Utilities**:
-- `assetIdGenerator.ts` - ID generation logic
-- `depreciationCalculator.ts` - Depreciation calculations
-- `qrCodeUtils.ts` - QR code generation/parsing
-- `assetExport.ts` - Export functionality
-
-### Best Practices
-
-1. **Asset ID Management**:
-   - Always use configured ID structure
-   - Validate uniqueness before creation
-   - Support manual override for legacy assets
-
-2. **Movement Tracking**:
-   - Require approval for all movements
-   - Generate gate pass for security
-   - Track return dates for external movements
-
-3. **Physical Audit**:
-   - Conduct regular audits (quarterly/annually)
-   - Use QR codes for efficiency
-   - Document all discrepancies
-   - Follow up on issues promptly
-
-4. **Preventive Maintenance**:
-   - Schedule PM based on manufacturer recommendations
-   - Track PM completion dates
-   - Alert before PM due dates
-   - Link PM to maintenance tickets
-
-5. **Depreciation**:
-   - Run depreciation calculation monthly/yearly
-   - Maintain audit trail of calculations
-   - Review depreciation rates annually
-   - Generate depreciation reports for accounting
-
-6. **SEZ Compliance**:
-   - Maintain accurate BOE records
-   - Track duty foregone amounts
-   - Generate compliance reports
-   - Audit SEZ asset movements
+### 5. Audit & Compliance
+- Complete audit trail
+- User action logging
+- Data retention policies
+- GDPR compliance ready
 
 ---
-- Bonded assets (SEZ) count
-- Gross asset value
-- Net book value
-- Duty foregone amount
-- Pending approvals
-- Under maintenance count
-- Audit due alerts
-- Warranty expiring alerts
-- Movement today count
-- PM overdue count
-- Physical audit pending count
 
-### Database Schema
+## Performance Optimizations
 
-**assets table**:
-```sql
-- id (uuid, primary key)
-- asset_id (text, auto-generated, unique)
-- asset_name (text)
-- asset_category (text)
-- asset_type (text)
-- manufacturer (text)
-- make_model (text)
-- serial_number (text)
-- asset_description (text)
-- asset_spec (text)
-- asset_value (numeric)
-- quantity (integer)
-- asset_status (enum: Active, Idle, Repair, Scrap)
-- status (enum: Working, Not Working)
-- asset_incharge (text)
-- purchase_date (date)
-- warranty_date (date)
-- pm_date (date)
-- depreciation_date (date)
-- depreciation_percentage (numeric)
-- last_depreciation_date (date)
-- comments (text)
-- asset_picture (text, URL)
-- contract (enum: Yes, No)
-- vendor_id (uuid)
-- po_number (text)
+### 1. Frontend Optimizations
+- Code splitting with React.lazy()
+- Image compression and lazy loading
+- Virtual scrolling for large lists
+- Debounced search inputs
+- Memoized components (React.memo)
+- Optimized re-renders
 
--- Handover fields
-- handover_type (text: 'tenant' | 'other')
-- handover_to (uuid, FK to tenants, nullable)
-- handover_other_name (text)
-- handover_other_email (text)
-- handover_other_contact (text)
+### 2. Backend Optimizations
+- Database indexing on frequently queried columns
+- Query optimization with EXPLAIN ANALYZE
+- Connection pooling
+- Caching with Redis (optional)
+- Batch operations for bulk updates
 
--- SEZ/Customs fields
-- sez_classification (text)
-- sez_status (enum: SEZ, DTA)
-- customs_category (enum: Capital Goods, Consumables, Spares)
-- usage_purpose (text)
-- vendor_name (text)
-- invoice_number (text)
-- invoice_date (date)
-- boe_number (text)
-- boe_date (date)
-- cif_value (numeric)
-- duty_foregone_amount (numeric)
-- import_date (date)
-- customs_location (text)
+### 3. Database Optimizations
+- Composite indexes for multi-column queries
+- Partial indexes for filtered queries
+- JSONB indexing for metadata fields
+- Materialized views for complex reports
+- Query result caching
 
--- Financial fields
-- asset_cost (numeric)
-- capitalization_date (date)
-- depreciation_method (enum: Straight Line, WDV, None)
-- useful_life (integer, years)
-- net_book_value (numeric)
-- cost_center (text)
-- gl_code (text)
+### 4. Asset Loading
+- Lazy loading of asset lists (pagination)
+- On-demand data fetching
+- Optimistic UI updates
+- Background data synchronization
 
--- Location fields
-- sez_zone (text)
-- unit (text)
-- building (uuid, FK to buildings)
-- floor (uuid, FK to floors)
-- room_rack (text)
-
--- PM fields
-- pm_enabled (boolean)
-- pm_start_date (date)
-- pm_end_date (date)
-- pm_frequency_days (integer)
-- pm_next_date (date)
-```
-
-**id_configs table**:
-```sql
-- id (uuid, primary key)
-- entity_type (text: 'asset')
-- structure (text: 'cat-type-seq', 'cat-year-seq', etc.)
-- separator (text: '-', '/', '_')
-- start_value (integer)
-- digits (integer: 3-6)
-- is_active (boolean)
-- created_at (timestamp)
-```
-
-**physical_audits table**:
-```sql
-- id (uuid, primary key)
-- asset_id (text, FK to assets.asset_id)
-- audit_date (timestamp)
-- auditor_name (text)
-- barcode_scanned (boolean)
-- asset_found (boolean)
-- location_match (boolean)
-- tenant_match (boolean)
-- serial_match (boolean)
-- condition (text: 'Good', 'Damaged', 'Scrap')
-- audit_result (text: 'Pass', 'Issues')
-- remarks (text)
-```
-
-**dropdown_configs table**:
-```sql
-- id (uuid, primary key)
-- entity_type (text: 'asset')
-- field_name (text: 'categories')
-- config_data (jsonb)
-  - Array of categories with:
-    - id, name, code
-    - subTypes: [{id, name, code}]
-    - manufacturers: [string]
-```
-- floor (text)
-- room_rack (text)
-- handover_to (text)
-- decommission_date (date)
-
--- Audit fields
-- created_at (timestamp)
-- updated_at (timestamp)
-- created_by (text)
-- updated_by (text)
-```
-
-**asset_movements table**:
-```sql
-- id (uuid, primary key)
-- request_number (text, auto-generated)
-- asset_id (text, FK to assets.asset_id)
-- movement_type (enum: Intra, Inter, Temporary)
-- from_location (text)
-- to_location (text)
-- reason (text)
-- expected_return_date (date)
-- approval_authority (text)
-- gate_pass_number (text)
-- movement_status (enum: Pending, Approved, Rejected, Completed)
-- actual_movement_date (timestamp)
-- created_at (timestamp)
-```
-
-**asset_maintenance table**:
-```sql
-- id (uuid, primary key)
-- asset_id (text, FK to assets.asset_id)
-- maintenance_type (enum: Preventive, Breakdown)
-- schedule_date (date)
-- vendor_engineer (text)
-- amc_reference (text)
-- sla_time (integer, hours)
-- downtime_hours (numeric)
-- repair_cost (numeric)
-- next_due_date (date)
-- maintenance_status (enum: Scheduled, In Progress, Completed, Cancelled)
-- notes (text)
-- created_at (timestamp)
-```
-
-**asset_amc table**:
-```sql
-- id (uuid, primary key)
-- asset_id (text, FK to assets.asset_id)
-- vendor_name (text)
-- amc_number (text)
-- start_date (date)
-- end_date (date)          
-- amc_value (numeric)
-- coverage_details (text)
-- sla_hours (integer)
-- status (enum: Active, Expired, Cancelled)
-- created_at (timestamp)
-```
-
-**asset_physical_audit table**:
-```sql
-- id (uuid, primary key)
-- audit_id (text, auto-generated)
-- audit_name (text)
-- audit_cycle (enum: Quarterly, Half-Yearly, Yearly)
-- start_date (date)
-- end_date (date)
-- audit_team (text[])
-- status (enum: Scheduled, In Progress, Completed, Cancelled)
-- total_assets (integer)
-- verified_assets (integer)
-- discrepancies (integer)
-- created_at (timestamp)
-- completed_at (timestamp)
-```
-
-**asset_audit_records table**:
-```sql
-- id (uuid, primary key)
-- audit_id (uuid, FK to asset_physical_audit)
-- asset_id (text, FK to assets.asset_id)
-- verification_status (enum: Verified, Missing, Damaged, Misplaced)
-- physical_condition (enum: Good, Fair, Poor, Damaged)
-- location_verified (boolean)
-- actual_location (text)
-- remarks (text)
-- verified_by (text)
-- verified_at (timestamp)
-- photos (text[])
-```
-
-**asset_pm_schedule table**:
-```sql
-- id (uuid, primary key)
-- pm_id (text, auto-generated)
-- asset_id (text, FK to assets.asset_id)
-- pm_type (enum: Time-Based, Usage-Based, Condition-Based)
-- frequency (enum: Monthly, Quarterly, Half-Yearly, Yearly)
-- last_pm_date (date)
-- next_pm_date (date)
-- pm_checklist (jsonb)
-- assigned_to (text)
-- status (enum: Scheduled, Overdue, Completed, Skipped)
-- created_at (timestamp)
-```
-
-**asset_pm_records table**:
-```sql
-- id (uuid, primary key)
-- pm_schedule_id (uuid, FK to asset_pm_schedule)
-- asset_id (text, FK to assets.asset_id)
-- pm_date (date)
-- technician (text)
-- checklist_completed (jsonb)
-- issues_found (text)
-- actions_taken (text)
-- parts_replaced (text)
-- cost (numeric)
-- downtime_hours (numeric)
-- next_pm_date (date)
-- status (enum: Completed, Incomplete, Cancelled)
-- completed_at (timestamp)
-```
-
-### Key Workflows
-
-**Asset Creation Flow**:
-1. User fills asset form with basic details
-2. System generates unique asset_id via RPC function
-3. Optional: Upload asset image
-4. Optional: Add SEZ/Customs details
-5. Optional: Configure depreciation
-6. Save to database with created_by audit
-7. Generate QR code for physical tagging
-
-**Depreciation Automation**:
-1. System checks depreciation_date on asset load
-2. Compares with last_depreciation_date
-3. If yearly cycle complete and date reached:
-   - Calculate: current_value * (depreciation_percentage / 100)
-   - Update: asset_value = current_value - depreciation_amount
-   - Update: last_depreciation_date = today
-4. Runs automatically on every asset list load
-
-**Movement Request Flow**:
-1. User selects asset and movement type
-2. Fills from/to location details
-3. Adds reason and remarks
-4. System generates request_number
-5. Status set to 'Pending'
-6. Approval authority reviews
-7. Approve → Status: 'Approved', record actual_movement_date
-8. Reject → Status: 'Rejected'
-9. Complete → Status: 'Completed'
-
-**QR Code Printing Flow**:
-1. User selects multiple assets via checkboxes
-2. Clicks "Print QR" button
-3. System generates QR codes with embedded logo
-4. Creates print-optimized HTML layout
-5. Each label shows: QR code, Asset ID, Asset Name
-6. Browser print dialog opens
-7. User prints on label sheets
-
-**Physical Audit Flow**:
-1. Admin creates audit schedule (cycle, dates, team)
-2. System generates audit ID and asset list
-3. Audit team receives notification
-4. Team scans QR codes to verify assets
-5. Records verification status:
-   - Verified: Asset found, condition good
-   - Missing: Asset not found at location
-   - Damaged: Asset found but damaged
-   - Misplaced: Asset found at wrong location
-6. Captures photos and remarks
-7. System tracks progress (verified/total)
-8. Generates discrepancy report
-9. Admin reviews and reconciles
-10. Audit marked complete with report
-
-**Preventive Maintenance Flow**:
-1. PM schedule created for asset with frequency
-2. System calculates next_pm_date based on last_pm_date
-3. Notification sent 30/15/7 days before due
-4. PM work order generated on due date
-5. Technician assigned and notified
-6. Technician completes PM checklist:
-   - Visual inspection
-   - Functional tests
-   - Cleaning/Lubrication
-   - Parts replacement
-   - Calibration
-7. Records issues found and actions taken
-8. Updates asset condition and status
-9. System calculates next PM date
-10. PM record saved with cost and downtime
-11. If overdue: Alert sent to manager
-
-### UI Components
-
-**AssetList.tsx** (`src/pages/assets/AssetList.tsx`):
-- HeroUI-styled table with gray header
-- Circular avatar placeholders for assets
-- Asset image thumbnails
-- Status badges with color coding
-- Multi-select checkboxes
-- Bulk QR code printing
-- Search functionality
-- Action buttons: View, Edit, Delete
-- Responsive design
-
-**AssetMovement.tsx** (`src/pages/assets/AssetMovement.tsx`):
-- Dashboard stats cards
-- Movement request form
-- From → To location mapping
-- Vendor details section
-- Approval workflow buttons
-- Movement history table
-- Status badges
-
-**AssetService.ts** (`src/services/assetService.ts`):
-- Complete CRUD operations
-- Auto-depreciation logic
-- Movement management
-- Maintenance tracking
-- AMC management
-- Dashboard statistics
-- Audit log retrieval
-
-### Recent UI Improvements
-
-**HeroUI Design Implementation**:
-- Light mode styling with white backgrounds
-- Gray-50 table headers
-- Uppercase header labels
-- Status badges with soft colors
-- Hover effects on rows
-- Improved typography hierarchy
-- Action button tooltips
-- Responsive grid layouts
-
-**Table Enhancements**:
-- Asset image display in table
-- Serial number as subtitle
-- Category with type breakdown
-- Value formatting with ₹ symbol
-- Status color coding:
-  - Active: Green
-  - Idle: Red
-  - Repair: Yellow
-- Centered action column
-
-### Integration Points
-
-**Building Service Integration**:
-- Links assets to buildings table
-- Floor-level allocation
-- Location hierarchy: Building → Floor → Room
-
-**User Service Integration**:
-- Asset incharge assignment
-- Created by / Updated by tracking
-- Approval authority mapping
-
-**Vendor Management**:
-- Vendor linking for purchases
-- AMC vendor tracking
-- Maintenance vendor assignment
-
-### Export & Reporting
-
-**Available Exports**:
-- Asset master list (Excel/PDF)
-- Movement history report
-- Maintenance schedule
-- Depreciation report
-- SEZ compliance report
-- Asset valuation summary
-
-**QR Code Features**:
-- Individual QR generation
-- Bulk printing
-- Logo embedding
-- Print-optimized layout
-- Asset ID encoding
-
-### Security & Permissions
-
-**Access Control**:
-- View assets: All users with Assets permission
-- Create assets: Add permission required
-- Edit assets: Edit permission required
-- Delete assets: Delete permission required
-- Approve movements: Manager/Admin only
-
-**Audit Trail**:
-- Created by tracking
-- Updated by tracking
-- Timestamp recording
-- Movement history
-- Maintenance logs
-
-### Performance Optimizations
-
-- Lazy loading of asset images
-- Pagination for large datasets
-- Indexed database queries
-- Cached building/floor data
-- Optimized QR code generation
-- Batch depreciation processing
-
-### Future Enhancements
-
-**Planned Features**:
-- Barcode scanning mobile app
-- Asset transfer between companies
-- Insurance tracking
-- Lease asset management
-- Asset disposal workflow
-- Physical verification module (✅ Documented)
-- Asset tagging history
-- Geolocation tracking
-- IoT sensor integration
-- Predictive maintenance using AI
-- Mobile app for PM execution
-- Offline audit capability
-- Asset lifecycle analytics
-
-**Physical Audit Enhancements**:
-- Mobile app with offline mode
-- Barcode/RFID scanning
-- GPS location tracking
-- Photo comparison (before/after)
-- Automated discrepancy alerts
-- Integration with accounting systems
-
-**PM System Enhancements**:
-- Predictive maintenance algorithms
-- IoT sensor integration
-- Automated work order creation
-- Spare parts inventory integration
-- Vendor portal for external PM
-- PM effectiveness metrics
-- Failure pattern analysis
-
-### Troubleshooting
-
-**Common Issues**:
-
-**QR codes not printing**: Check browser print settings, ensure logo image loads
-
-**Depreciation not calculating**: Verify depreciation_date and depreciation_percentage are set
-
-**Movement approval fails**: Check user has approval authority permission
-
-**Asset image not uploading**: Verify file size < 200MB, check upload directory permissions
-
-**Building not showing in dropdown**: Ensure building exists in buildings table
-
-**PM notifications not sending**: Check pm_date is set, verify notification service is running
-
-**Audit progress not updating**: Ensure asset_audit_records are being created, check audit_id FK
-
-**PM overdue not showing**: Verify next_pm_date < today, check PM schedule status is 'Scheduled'
-
-**Audit discrepancies not calculating**: Check verification_status values, ensure audit is 'In Progress'
+### 5. File Handling
+- Image compression before upload
+- Thumbnail generation
+- CDN for static assets
+- Chunked file uploads for large files
 
 ---
 
-## 21. Recent UI/UX Improvements
+## Module Integration Flow
 
-### Sidebar Enhancements
-- Increased collapsed width from 3rem to 3.6rem (20% wider)
-- Hidden toggle button on desktop (mobile-only)
-- Removed sidebar rail component
-- Desktop hover expand/collapse
-- Cleaner edge appearance
+### Asset Movement with Workflow Approval
 
-### Table Styling - HeroUI Design
-- Applied to Asset Master and Tenant Management
-- Circular gradient avatars with initials
-- Tooltips on all action buttons
-- Enhanced typography with bold headers
-- Softer status badge colors (light green for Active)
-- Hover effects on table rows
-- Gray-50 header backgrounds
-- Improved visual hierarchy
+```
+1. User creates asset movement request
+   ↓
+2. System checks if workflow exists for tenant
+   ↓
+3. Workflow instance created
+   ↓
+4. First approval step created
+   ↓
+5. Notifications sent to approvers
+   ↓
+6. Approver approves/rejects
+   ↓
+7. Workflow engine moves to next node
+   ↓
+8. Process repeats until END node
+   ↓
+9. If approved: Asset locations updated
+   ↓
+10. Asset history records created
+```
 
-### Tenant Management Updates
-- Space assignment deletion with confirmation
-- Multi-select checkbox for bulk operations
-- Real-time UI refresh after changes
-- Save button for quick updates
-- Database synchronization improvements
-- Floor sqft recalculation
-- Company/tenant display with avatar
-- Current rent with subtitle
-- Tooltip-enabled action buttons
+### PM Task Execution Flow
 
-### Code Quality
-- Removed all testing console.log statements
-- Cleaned up debug logging
-- Minimal code approach
-- Optimized component rendering
+```
+1. PM schedule created for asset
+   ↓
+2. Daily cron job generates task instances
+   ↓
+3. Tasks appear on PM Task Board
+   ↓
+4. Admin assigns tasks to auditors
+   ↓
+5. Auditor performs physical audit
+   ↓
+6. Audit result recorded
+   ↓
+7. Task marked as completed
+   ↓
+8. Next task generated based on frequency
+```
+
+### Tenant Reporting Flow
+
+```
+1. User selects report filters
+   ↓
+2. Service queries multiple tables
+   ↓
+3. Data aggregated and transformed
+   ↓
+4. 5-sheet Excel structure created
+   ↓
+5. Financial calculations performed
+   ↓
+6. Excel file generated
+   ↓
+7. File downloaded to user
+```
+
+---
+
+## Future Enhancements
+
+### Planned Features
+1. **Mobile App**: React Native mobile application
+2. **Advanced Analytics**: AI-powered insights and predictions
+3. **IoT Integration**: Sensor data for asset monitoring
+4. **Blockchain**: Immutable audit trail
+5. **Multi-language**: Internationalization (i18n)
+6. **Advanced Workflows**: More node types and conditions
+7. **API Gateway**: GraphQL API layer
+8. **Microservices**: Service-oriented architecture
+
+### Scalability Roadmap
+1. **Horizontal Scaling**: Load balancer + multiple app servers
+2. **Database Sharding**: Tenant-based data partitioning
+3. **Caching Layer**: Redis for session and query caching
+4. **Message Queue**: RabbitMQ for async processing
+5. **CDN**: Global content delivery network
+6. **Monitoring**: Application performance monitoring (APM)
+
+---
+
+## Development Guidelines
+
+### Code Standards
+- TypeScript strict mode enabled
+- ESLint + Prettier for code formatting
+- Component-based architecture
+- Functional components with hooks
+- Custom hooks for reusable logic
+- Service layer for business logic
+
+### Git Workflow
+- Feature branches from `main`
+- Pull request reviews required
+- Automated testing on PR
+- Semantic versioning
+- Changelog maintenance
+
+### Testing Strategy
+- Unit tests with Jest
+- Integration tests with React Testing Library
+- E2E tests with Playwright
+- API tests with Supertest
+- Performance testing with Lighthouse
+
+---
+
+## Support & Maintenance
+
+### Monitoring
+- Application logs (Winston)
+- Error tracking (Sentry)
+- Performance monitoring (New Relic)
+- Uptime monitoring (UptimeRobot)
+
+### Backup Strategy
+- Daily database backups
+- Weekly full system backups
+- Point-in-time recovery enabled
+- Backup retention: 30 days
+
+### Update Process
+1. Development → Staging → Production
+2. Database migrations tested in staging
+3. Rollback plan prepared
+4. User notification before updates
+5. Post-deployment verification
+
+---
+
+## Contact & Documentation
+
+**Project Repository**: [GitHub Link]  
+**Documentation**: [Docs Link]  
+**Support Email**: support@rathinam-nexus.com  
+**Developer**: Rathinam Development Team
+
+---
+
+**End of Architecture Documentation**

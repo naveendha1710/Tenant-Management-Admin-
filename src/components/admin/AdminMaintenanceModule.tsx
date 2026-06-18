@@ -93,9 +93,10 @@ export function AdminMaintenanceModule() {
     const formData = new FormData(e.currentTarget);
     
     try {
+      const assignedValue = (formData.get('assigned_to') as string) || '';
       const updates: UpdateTicketData = {
         status: formData.get('status') as string,
-        assigned_to: formData.get('assigned_to') as string || undefined,
+        assigned_to: assignedValue && assignedValue !== '__unassigned' ? assignedValue : undefined,
         resolution_notes: formData.get('resolution_notes') as string || undefined,
         cost: parseFloat(formData.get('cost') as string) || 0
       };
@@ -590,75 +591,12 @@ export function AdminMaintenanceModule() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="assigned_to">Assign To</Label>
-                  <Select name="assigned_to" defaultValue={selectedTicket.assigned_to || ''}>
+                  <Select name="assigned_to" defaultValue={selectedTicket.assigned_to || '__unassigned'}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select staff member" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
-                      {maintenanceStaff.map((staff) => (
-                        <SelectItem key={staff.id} value={staff.id}>
-                          {staff.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="cost">Cost (₹)</Label>
-                <Input 
-                  name="cost" 
-                  type="number" 
-                  step="0.01" 
-                  defaultValue={selectedTicket.cost}
-                  placeholder="0.00"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="resolution_notes">Resolution Notes</Label>
-                <Textarea 
-                  name="resolution_notes" 
-                  placeholder="Describe the work performed..."
-                  defaultValue={selectedTicket.resolution_notes || ''}
-                  rows={4}
-                />
-              </div>
-              
-              <Button type="submit" className="w-full">
-                Update Ticket
-              </Button>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}   <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select name="status" defaultValue={selectedTicket.status}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
-                      <SelectItem value="closed">Closed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="assigned_to">Assign To</Label>
-                  <Select name="assigned_to" defaultValue={selectedTicket.assigned_to || ''}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select staff member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="__unassigned">Unassigned</SelectItem>
                       {maintenanceStaff.map((staff) => (
                         <SelectItem key={staff.id} value={staff.id}>
                           {staff.full_name}

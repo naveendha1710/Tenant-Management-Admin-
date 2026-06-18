@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { mockSpaces } from '@/data/mockData';
 import { tenantDataService, type Tenant } from '@/data/tenantData';
 import { TenantForm } from '@/components/admin/TenantForm';
+import { SpaceAssignment } from '@/components/admin/SpaceAssignment';
 import { TenantViewDialog } from '@/components/admin/TenantViewDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/utils/permissions';
@@ -32,6 +33,7 @@ export default function CompanyGroup() {
   const [viewingTenant, setViewingTenant] = useState<Tenant | null>(null);
   const [assigningTenant, setAssigningTenant] = useState<Tenant | null>(null);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [pendingAssignments, setPendingAssignments] = useState<any | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState('');
   const [selectedFloors, setSelectedFloors] = useState<number[]>([]);
   const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
@@ -153,6 +155,153 @@ export default function CompanyGroup() {
         toast({ title: "Error", description: "Failed to add tenant" });
       }
       setIsAddTenantOpen(false);
+      setPendingAssignments(null);
+    }
+  };
+
+  const handleSpaceAssignment = async (spaceData: any) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const affectedFloorIds = new Set<string>();
+      spaceData.assignments.forEach((a: any) => {
+        if (a.floorId) affectedFloorIds.add(a.floorId);
+      });
+
+      const skipClose = !!spaceData.skipClose;
+      const isParentFormOpen = isAddTenantOpen || isEditTenantOpen;
+
+      // Find agreement to update (prefer explicit editing index)
+      let agreementId: string | null = null;
+      if (editingAgreementIndex !== null && editingAgreementIndex >= 0) {
+        agreementId = assigningTenant?.agreements?.[editingAgreementIndex]?.id || null;
+      } else if (assigningTenant?.agreements && assigningTenant.agreements.length > 0) {
+        agreementId = assigningTenant.agreements[0].id || null;
+      }
+
+      if (agreementId) {
+        // If add/edit tenant form is open, don't persist here — merge into parent form instead
+        if (isParentFormOpen) {
+          const updatedTenant = assigningTenant ? { ...assigningTenant } as any : null;
+          if (updatedTenant) {
+            const newAgreements = (updatedTenant.agreements || []).slice();
+            if (editingAgreementIndex !== null && editingAgreementIndex >= 0) {
+              const idx = editingAgreementIndex;
+              const existing = { ...(newAgreements[idx] || {}) };
+              existing.space_assignments = spaceData.assignments;
+              existing.rent_amount = spaceData.totalAmount;
+              newAgreements[idx] = existing;
+            } else {
+              const existing = { ...(newAgreements[0] || {}) };
+              existing.space_assignments = spaceData.assignments;
+              existing.rent_amount = spaceData.totalAmount;
+              newAgreements[0] = existing;
+            }
+            updatedTenant.agreements = newAgreements;
+            // Also expose top-level spaceAssignments for the add form
+            (updatedTenant as any).spaceAssignments = spaceData.assignments;
+          }
+          setAssigningTenant(updatedTenant);
+          setEditingTenant(updatedTenant);
+          setPendingAssignments({ assignments: spaceData.assignments, totalAmount: spaceData.totalAmount });
+          toast({ title: 'Success', description: 'Space assignment updated in form' });
+          setIsAssignUnitsOpen(false);
+          return;
+        }
+
+        const { error } = await supabase
+          .from('agreements')
+          .update({ space_assignments: spaceData.assignments, rent_amount: spaceData.totalAmount })
+          .eq('id', agreementId);
+
+        if (error) {
+          console.error('Error updating agreement:', error);
+        } else {
+          for (const floorId of affectedFloorIds) {
+            await supabase.rpc('recalculate_floor_occupied_sqft', { p_floor_id: floorId });
+          }
+          toast({ title: 'Success', description: 'Space assignments updated' });
+
+          if (skipClose) {
+            // Keep modal open: propagate assignments to form without reinitializing the whole form
+            setPendingAssignments({ assignments: spaceData.assignments, totalAmount: spaceData.totalAmount });
+            return;
+          }
+
+          // Reload tenants and update editing/assigning tenant so form reflects changes
+          const decodedGroupId = groupId ? decodeURIComponent(groupId) : '';
+          const updatedTenants = await tenantDataService.getTenantsByGroup(decodedGroupId);
+          const updated = updatedTenants.find(t => t.id === assigningTenant?.id) || null;
+          if (updated) {
+            setEditingTenant(updated);
+            setAssigningTenant(updated);
+          }
+          setIsAssignUnitsOpen(false);
+        }
+        return;
+      }
+
+      // No existing agreement - if tenant exists, insert a new agreement
+      if (assigningTenant?.id) {
+        if (isParentFormOpen) {
+          // Merge a new agreement into the parent form (don't persist yet)
+          const updatedTenant = { ...(assigningTenant || {}) } as any;
+          const newAgreement = {
+            id: undefined,
+            tenant_id: assigningTenant.id,
+            status: 'Active',
+            space_assignments: spaceData.assignments,
+            rent_amount: spaceData.totalAmount
+          };
+          updatedTenant.agreements = [...(updatedTenant.agreements || []), newAgreement];
+          updatedTenant.spaceAssignments = spaceData.assignments;
+          setAssigningTenant(updatedTenant);
+          setEditingTenant(updatedTenant);
+          setPendingAssignments({ assignments: spaceData.assignments, totalAmount: spaceData.totalAmount });
+          toast({ title: 'Success', description: 'Space assignment applied to form' });
+          setIsAssignUnitsOpen(false);
+          return;
+        }
+
+        const { error } = await supabase.from('agreements').insert([{
+          tenant_id: assigningTenant.id,
+          status: 'Active',
+          space_assignments: spaceData.assignments,
+          rent_amount: spaceData.totalAmount
+        }]);
+
+        if (error) {
+          console.error('Error inserting agreement:', error);
+        } else {
+          for (const floorId of affectedFloorIds) {
+            await supabase.rpc('recalculate_floor_occupied_sqft', { p_floor_id: floorId });
+          }
+          toast({ title: 'Success', description: 'Space assignments saved' });
+
+          if (skipClose) {
+            setPendingAssignments({ assignments: spaceData.assignments, totalAmount: spaceData.totalAmount });
+            return;
+          }
+
+          const decodedGroupId = groupId ? decodeURIComponent(groupId) : '';
+          const updatedTenants = await tenantDataService.getTenantsByGroup(decodedGroupId);
+          const updated = updatedTenants.find(t => t.id === assigningTenant?.id) || null;
+          if (updated) {
+            setEditingTenant(updated);
+            setAssigningTenant(updated);
+          }
+          setIsAssignUnitsOpen(false);
+        }
+        return;
+      }
+
+      // New tenant (no id) - merge assignments into pending assigningTenant so the Add form shows them
+      const merged = { ...(assigningTenant || {}), spaceAssignments: spaceData.assignments, rentAmount: spaceData.totalAmount } as Tenant;
+      setAssigningTenant(merged);
+      setPendingAssignments({ assignments: spaceData.assignments, totalAmount: spaceData.totalAmount });
+      toast({ title: 'Success', description: 'Space assignment updated in form' });
+      if (!skipClose) setIsAssignUnitsOpen(false);
+    } catch (error) {
+      console.error('Error in handleSpaceAssignment:', error);
     }
   };
 
@@ -225,6 +374,7 @@ export default function CompanyGroup() {
       setIsEditTenantOpen(false);
       setEditingTenant(null);
       setEditingAgreementIndex(null);
+      setPendingAssignments(null);
     }
   };
 
@@ -400,10 +550,16 @@ export default function CompanyGroup() {
             </div>
             <div className="flex-1 overflow-y-auto px-6">
               <TenantForm
+                tenant={assigningTenant || undefined}
+                isAddingNew={true}
+                pendingAssignments={pendingAssignments}
                 onSubmit={handleAddTenant}
                 onCancel={() => setIsAddTenantOpen(false)}
                 defaultCompanyGroup={groupId ? decodeURIComponent(groupId) : ''}
-                onAssignSpace={() => {}}
+                onAssignSpace={(tenantData) => {
+                  // Keep the Add dialog open; just open the SpaceAssignment modal
+                  handleAssignment(tenantData as Tenant);
+                }}
               />
             </div>
           </DialogContent>
@@ -429,13 +585,17 @@ export default function CompanyGroup() {
                     : undefined}
                   agreementIndex={editingAgreementIndex}
                   mode={editingAgreementIndex !== null ? 'agreement-only' : 'full'}
+                  pendingAssignments={pendingAssignments}
                   onSubmit={handleEditTenant}
                   onCancel={() => {
                     setIsEditTenantOpen(false);
                     setEditingTenant(null);
                     setEditingAgreementIndex(null);
                   }}
-                  onAssignSpace={() => {}}
+                    onAssignSpace={(tenantData) => {
+                      // Keep the Edit dialog open; just open the SpaceAssignment modal
+                      handleAssignment(tenantData as Tenant);
+                    }}
                 />
               )}
             </div>
@@ -443,6 +603,20 @@ export default function CompanyGroup() {
         </Dialog>
 
         {/* View Tenant Dialog */}
+        {/* Space Assignment Modal */}
+        <SpaceAssignment
+          isOpen={isAssignUnitsOpen}
+          onClose={() => { setIsAssignUnitsOpen(false); }}
+          tenant={
+            editingAgreementIndex !== null && editingAgreementIndex >= 0
+              ? { ...assigningTenant, spaceAssignments: assigningTenant?.agreements?.[editingAgreementIndex]?.spaceAssignments || [] }
+              : editingAgreementIndex === -1
+              ? { ...assigningTenant, spaceAssignments: [] }
+              : assigningTenant
+          }
+          onAssign={handleSpaceAssignment}
+        />
+
         <TenantViewDialog
           tenant={viewingTenant}
           isOpen={isViewTenantOpen}

@@ -1,0 +1,1190 @@
+id,tenant_id,title,description,category,priority,status,building,floor,room,spot_description,preferred_date,preferred_time,safety_risk,previous_occurrence,notes,image_url,video_url,assigned_to,resolution_notes,cost,created_at,updated_at,resolved_at,status_history,previous_submissions,related_ticket_id,sla_hours,work_started_at,work_completed_at,work_duration_hours,tenant_satisfaction,tenant_feedback,manager_rejected_submissions,tenant_rejected_submissions,opex_code,ticket_number,sub_category,skip_tenant_approval,assigned_technicians,draft_data,approval_history,rejection_reason,timeline_events,target_date,photos,video,asset_id,created_by_user_id,creator_satisfaction,creator_feedback,root_cause,findings
+012276ec-5c6e-4063-9bea-23851fb2bb13,d1edc7d1-105d-477e-8c05-45ad2d1e4815,check the running cupboard lock,"Kindly arrange one person to check the running cupboard lock. After the inspection, please share the quotation.",Carpentry,High,work_started,SEZ - A1 Block,Floor G,,,2026-03-12,Anytime,false,false,"Kindly arrange one person to check the running cupboard lock. After the inspection, please share the quotation.",,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Need to change the handle .
+Findings: lock - 3nos, handle - 1nos
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+pedestral lock | 3 NOS | ₹250.00 | 0% | ₹0.00 | ₹750.00
+Handle(normal) | 1 NOS | ₹150.00 | 0% | ₹0.00 | ₹150.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹900.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹900.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹900.00
+Notes: New spares Need to change.",900,2026-03-12 05:11:07.164539+00,2026-05-04 10:08:46.503+00,,"
+[3/13/2026, 3:36:43 PM] MANAGER APPROVED
+[5/4/2026, 3:38:46 PM] WORK STARTED - SLA: 1 hours",,,1.00,2026-05-04 10:08:46.503+00,,,,,,,,RTP-26030013,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-13,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+0160c690-619a-4d0a-837f-eb15b647c49f,8a658e42-7c75-4f63-814a-10861e47139b,Ac not working,Ground floor 4tr VRF ac not work and ac colling not flow.,HVAC,Critical,assigned,A1 Extension Block,Floor 1,"Data center ","GROUND FLOOR ",2026-04-19,Morning (8AM-12PM),false,false,DATA CENTER VERY IMPORTANT PLACE SO PLS NEED TO CHECK.,,,siva (HVAC Technician),Technicians: siva (HVAC Technician),0,2026-04-19 04:02:26.02125+00,2026-04-20 12:55:53.194+00,,,,,,,,,,,,,,RTP-26040030,,false,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],2026-04-20,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+01f5faa9-50ce-4ba1-801b-8555bf0fa894,ac5b417f-698d-4c0c-b4b7-bee90349440a,"Access Door and Main door issues ","
+•	The main entrance glass door is closing very slowly. The door closer (swing mechanism) may need servicing or adjustment to increase the closing speed.
+•	The access door is creating noise and vibration while closing. This may require inspection and repair.
+",Carpentry,Medium,assigned,ADMIN Block,Floor 3,,,,,false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-03-09 12:11:29.949014+00,2026-03-13 05:25:27.609+00,,,,,,,,,,,,,,RTP-26030009,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,800427ac-399b-4a26-8744-c08c3354bb2b,,,,
+0842eb56-f420-4187-b7a7-e163b6276d58,87ca3b19-061a-4557-935e-bbbedbd773a2,AC compressor gets automatically off,AC Compressor gets automatically off (kindly check high priority),HVAC,High,work_completed,ADMIN Block,Floor 3,VS,Visual sculptors,,,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Need to check compressor condition.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-03 07:38:51.857518+00,2026-05-06 10:11:13.378+00,,"
+[4/17/2026, 4:22:52 PM] MANAGER APPROVED
+[5/6/2026, 3:41:11 PM] WORK STARTED - SLA: 1 hours
+[5/6/2026, 3:41:13 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-06 10:11:11.744+00,2026-05-06 10:11:13.378+00,0.00,,,,,,RTP-26040004,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,4d389e69-d1c7-44dd-9875-64b413ed41d5,,,,
+084d03d4-73ab-4214-8c37-42e69e9b570b,ed50cb46-49cf-4791-bc38-714caee083cb,Strip light not working,"Strip light in 2 areas are not working ",Electrical,High,work_completed,SEZ - A2 Block,Floor 1,2,,2026-04-01,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: drive serviced.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-01 05:56:30.006649+00,2026-04-21 04:41:54.571+00,,"
+[4/7/2026, 3:06:05 PM] MANAGER APPROVED",,,1.00,2026-04-21 04:41:52.515+00,2026-04-21 04:41:54.571+00,0.00,,,,,,RTP-26040001,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-01,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+154d3c00-b845-4a96-819c-d3619580075f,8a658e42-7c75-4f63-814a-10861e47139b,UPVC door dismantling issue.,4th floor service area UPVC door,Carpentry,High,assigned,A1 Extension Block,Floor 2,Service area one UPVC Door,"4th floor dishwashing machine area ",2026-04-13,Morning (8AM-12PM),false,false,"4th floor dishwashing machine area ",,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-04-13 13:48:49.685584+00,2026-04-20 13:00:33.497+00,,,,,,,,,,,,,,RTP-26040022,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-18,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+17be8b5c-1b15-4767-8677-27410b916d14,d1edc7d1-105d-477e-8c05-45ad2d1e4815,Repair Required for Ground Floor Pantry Sink,"Hi Team ,
+The wash basin in the pentry area on the ground floor continues to leak water. We have reported this issue multiple times, and although your team has visited and carried out patch work, the problem keeps recurring.
+Due to the repeated leakage, the plywood and Gypsum Sheet are now getting damaged, and the situation has become quite serious.
+It is worth mentioning that your team fixed this issue about eight months ago, yet the same problem persists. We request you to provide a permanent and proper solution at the earliest, as the recurring leakage is causing inconvenience and further damage.
+Kindly treat this as urgent.",Others,Critical,work_completed,SEZ - A1 Block,Floor G,,,2026-03-12,,false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: Outlet pipe blocked
+Findings: clear the outlet pipe blockage  
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 6
+Labor Cost: ₹1200.00
+Total: ₹1200.00
+Notes: span control (no laborer cost in nimble) ",1200,2026-03-12 05:20:10.415044+00,2026-05-04 08:16:23.801+00,,"
+[4/21/2026, 1:34:51 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/27/2026, 5:42:43 PM] APPROVED
+[5/4/2026, 1:46:22 PM] WORK STARTED - SLA: 3 hours
+[5/4/2026, 1:46:23 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""Technicians: Muni (General Maintenance)\n\n=== RCA ===\nRoot Cause: Outlet pipe blocked\nFindings: clear the outlet pipe blockage  \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 6\nLabor Cost: ₹1200.00\nTotal: ₹1200.00\nNotes: span control (no labourer cost in nimble)"",""cost"":1200,""opex_code"":null,""change_requested_at"":""2026-04-21T08:04:51.857Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,3.00,2026-05-04 08:16:22.188+00,2026-05-04 08:16:23.801+00,0.00,,,,,,RTP-26030014,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-16,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+24785559-0e26-4828-920a-ea122c11ef92,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Urinary blockage issue ","2nd floor 1st and 2nd- Gents restroom urinary blockage issue ",Plumbing,Medium,pending_tenant_approval,SEZ - A2 Block,Floor 2,,,2026-03-30,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: pipe blockage need to clean.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-03-30 10:34:47.172104+00,2026-04-29 06:15:52.297+00,,"
+[4/7/2026, 3:07:41 PM] MANAGER APPROVED
+[4/24/2026, 3:31:26 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/24/2026, 3:34:24 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/29/2026, 11:45:52 AM] PENDING TENANT APPROVAL","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: pipe blockage need to clean.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""cost"":0,""opex_code"":null,""change_requested_at"":""2026-04-24T10:01:26.426Z"",""change_requested_by"":""Helpdesk"",""manager_approved_at"":""4/7/2026, 3:07:41 PM"",""previous_status"":""pending_tenant_approval""},{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""Technicians: Muni\n\n=== RCA ===\nRoot Cause: pipe blockage need to clean.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 2\nLabor Cost: ₹400.00\nTotal: ₹400.00\nNotes: "",""cost"":400,""opex_code"":null,""change_requested_at"":""2026-04-24T10:04:24.498Z"",""change_requested_by"":""Helpdesk"",""manager_approved_at"":""4/7/2026, 3:07:41 PM"",""previous_status"":""pending_approval""}]",,,,,,,,,,,RTP-26030037,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-30,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+26700073-2b6f-4c72-8729-0eb5c7d12eb5,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Urinary blockage issue ","Ground floor Gents restroom urinary blockage issue ",Plumbing,High,work_completed,SEZ - A2 Block,Floor G,,,2026-03-30,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: Need to clear the blockage.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: span control",800,2026-03-30 10:35:35.2071+00,2026-05-04 08:11:24.818+00,,"
+[4/2/2026, 12:48:59 PM] MANAGER APPROVED
+[4/24/2026, 3:17:55 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/27/2026, 4:27:29 PM] APPROVED
+[5/4/2026, 1:41:22 PM] WORK STARTED - SLA: 5 hours
+[5/4/2026, 1:41:24 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: Need to clear the blockage.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""cost"":0,""opex_code"":null,""change_requested_at"":""2026-04-24T09:47:55.208Z"",""change_requested_by"":""Helpdesk"",""manager_approved_at"":""4/2/2026, 12:48:59 PM"",""previous_status"":""pending_tenant_approval""}]",,5.00,2026-05-04 08:11:22.713+00,2026-05-04 08:11:24.818+00,0.00,,,,,,RTP-26030038,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-30,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+2722b542-ea71-49d8-9c7b-bd73e499f558,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Light dimming issue ",SEZ Ground floor pantry area light dimming issue,Electrical,Medium,pending_tenant_approval,SEZ - A2 Block,Floor G,,,2026-03-17,Anytime,false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: drive issue
+Findings: 15 w drive 6 no change
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+drive 18w | 6 NOS | ₹200.00 | 0% | ₹0.00 | ₹1200.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹1200.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹1200.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹1600.00
+Notes: span control",1600,2026-03-17 04:09:45.620362+00,2026-04-27 10:55:26.605+00,,"[4/27/2026, 4:25:26 PM] PENDING TENANT APPROVAL",,,,,,,,,,,,RTP-26030025,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-17,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+2ad07722-d4d1-4491-b738-44bbaab6143b,87ca3b19-061a-4557-935e-bbbedbd773a2,Need relocation of AC in server room (high priority),"Need relocation of AC in server room (high priority) , this issue has been previously raised but still hasn't been resolved. Please check into this issue as most priority.
+thanks",HVAC,Critical,assigned,ADMIN Block,Floor 3,VS,visual sculptors,,,false,true,,,,siva (HVAC Technician),"
+
+=== RCA ===
+Root Cause: Position Change.
+Findings: ",0,2026-04-14 07:28:56.010691+00,2026-04-17 10:46:09.022+00,,,,a64f4e77-3489-44d0-805f-73ca104ab95e,,,,,,,,,,RTP-26040024,,false,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],,[],,,4d389e69-d1c7-44dd-9875-64b413ed41d5,,,,
+2cbd2fe4-91c9-4fe4-8876-ccb8f210d6ff,700698e2-3dc6-4835-8728-c3ad93ae1c18," Lights are not working ",In our office 15 Lights are not working kindly rectify asap,Electrical,High,pending_tenant_approval,SEZ - A1 Block,Floor 2,,,2026-03-25,Afternoon (12PM-4PM),false,false,Consider this as a priority  and rectify asap,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: light Issue need to change the light.
+Findings: 
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+18 w surface light | 10 NOS | ₹1250.00 | 0% | ₹0.00 | ₹12500.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹12500.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹12500.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹12500.00
+Notes: ",12500,2026-03-25 06:11:33.529677+00,2026-03-28 08:17:06.535+00,,"
+[3/28/2026, 1:47:06 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030033,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-26,[],,,ed6166fd-9b36-4bf2-a14a-1dd516656b49,,,,
+2d497f4f-4e45-4e07-b40b-7822f20b4bfd,8a658e42-7c75-4f63-814a-10861e47139b,"First floor handicap rest room urinal smell issue ",First floor handicap rest room urinal smell issue from past 6 months kindly look into the same ASAP,Plumbing,Critical,pending,A1 Extension Block,Floor 1,,,2026-05-02,Afternoon (12PM-4PM),false,false,,,,,,0,2026-04-30 09:24:11.745705+00,2026-04-30 09:24:11.745705+00,,,,,,,,,,,,,,RTP-26040048,,false,[],{},,,[],2026-05-02,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+2feaa949-1460-4f2b-9967-51830a4abdfd,ed50cb46-49cf-4791-bc38-714caee083cb,"Door handle to be fixed ","Door handle has been broken has be fixed ",Others,High,approved,SEZ - A2 Block,Floor 1,1,"1st blue room ",2026-03-07,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: New Handle Have to fix.
+Findings: 
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+Door handle | 1 NOS | ₹2100.00 | 0% | ₹0.00 | ₹2100.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹2100.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹2100.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹2100.00
+Notes: ",2100,2026-03-04 05:39:03.487805+00,2026-03-18 08:04:25.768+00,,"
+[3/18/2026, 1:34:25 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030004,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-11,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+313b1b18-5c43-44f4-affc-f0aec8ccd2f1,8a658e42-7c75-4f63-814a-10861e47139b,All floors WUC bottom water leakage,All floors WUC bottom water leakage kindly check the same ASAP,Plumbing,Critical,assigned,A1 Extension Block,Floor 1,,,,,false,false,,,,babu (Plumber),Technicians: babu (Plumber),0,2026-04-30 09:26:18.687713+00,2026-05-06 09:24:30.867+00,,"[5/6/2026, 2:54:30 PM] ASSIGNED",,,,,,,,,,,,RTP-26040050,,false,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+33fc6c9d-187f-4653-a06a-1cd836977bc6,ed50cb46-49cf-4791-bc38-714caee083cb,"health faucet gun issue ","health faucet gun Leakage ",Plumbing,Low,work_completed,SEZ - A2 Block,Floor 1,1,"Middle wash room ",2026-02-25,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: New gun changed.
+Findings: 
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+parryware health faucet | 1 NOS | ₹1249.99 | 0% | ₹0.00 | ₹1249.99
+------------------------------------------------------------
+
+Material Cost (without GST): ₹1249.99
+Total GST: ₹0.00
+Material Cost (with GST): ₹1249.99
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹1249.99
+Notes: new fitting fix",1249.99,2026-02-25 05:14:22.936169+00,2026-05-04 10:12:35.831+00,,"
+[3/16/2026, 10:25:25 AM] MANAGER APPROVED
+[5/4/2026, 3:42:11 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 3:42:35 PM] WORK COMPLETED - Duration: 0.01 hours",,,0.50,2026-05-04 10:12:11.117+00,2026-05-04 10:12:35.831+00,0.01,,,,,,RTP-26020003,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-02-28,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+3496dd51-7b10-4034-87e1-fd9bb260fbe5,ed50cb46-49cf-4791-bc38-714caee083cb,"Pipe broken ","Pipe broken in gents washroom ",Plumbing,High,work_completed,SEZ - A2 Block,Floor 1,11,"Gents toilet ",2026-04-06,Morning (8AM-12PM),false,false,,,,babu (Plumber),"
+
+=== RCA ===
+Root Cause: Pipe line broken, issue rectified.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-06 03:36:39.727746+00,2026-04-21 04:41:35.96+00,,"
+[4/7/2026, 3:05:38 PM] MANAGER APPROVED",,,1.00,2026-04-21 04:41:34.629+00,2026-04-21 04:41:35.96+00,0.00,,,,,,RTP-26040005,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-06,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+389d873d-13ae-4f4d-9270-b497d537ab6a,75f3adcf-f53e-4ae1-b028-b51fe74001e2,Cafeteria cupboard issue,"Ground floor cafeteria cupboard issue ",Carpentry,Medium,work_completed,SEZ - A2 Block,Floor G,,,,,false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: cupboard inches issue
+Findings: change new inches 20 no
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+Hinchers(normal) | 20 NOS | ₹90.00 | 0% | ₹0.00 | ₹1800.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹1800.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹1800.00
+Labor Hours: 6
+Labor Cost: ₹1200.00
+Total: ₹3000.00
+Notes: span control",3000,2026-03-13 08:23:01.32639+00,2026-05-04 07:42:39.845+00,,"[4/27/2026, 4:25:42 PM] APPROVED
+[5/4/2026, 1:12:33 PM] WORK STARTED - SLA: 12 hours
+[5/4/2026, 1:12:39 PM] WORK COMPLETED - Duration: 0.00 hours",,,12.00,2026-05-04 07:42:33.125+00,2026-05-04 07:42:39.845+00,0.00,,,,,,RTP-26030019,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,"[""/uploads/tenant-ticketing/lti_mindtree_limited/1773390180820-723026511-1000042515.jpg""]",,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+39e9664f-e216-447c-a53b-82e9fcba40db,ed50cb46-49cf-4791-bc38-714caee083cb,"Strip light ","Strip light flickering ",Electrical,High,pending_approval,SEZ - A2 Block,Floor 1,1,"Near the path way ",2026-03-07,Anytime,false,false,"Need this to be rectified today because it causing eye trouble ",,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: Drive issue 
+Findings: Drive change
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-07 04:31:03.962378+00,2026-04-21 07:57:02.857+00,,,,,,,,,,,,,,RTP-26030007,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-07,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+408a90d8-451c-4cd8-aee9-e01c3c3df405,ed50cb46-49cf-4791-bc38-714caee083cb,"Chair repair ","Chair maintenance has be done for overall office ",Others,High,pending_approval,SEZ - A2 Block,Floor 1,,,2026-03-07,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Chair General Services.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 18
+Labor Cost: ₹3600.00
+Total: ₹3600.00
+Notes: Labourer cost not for tenant (span control)",3600,2026-03-04 05:35:55.940535+00,2026-04-22 13:19:39.181+00,,,,,,,,,,,,,,RTP-26030003,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-14,"[""/uploads/tenant-ticketing/rently_software_development_private_limited/1772602555429-966369984-IMG_20260304_102910.jpeg""]",,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+472f482b-7c2c-4221-a17e-bd7e99e0e6f2,ed50cb46-49cf-4791-bc38-714caee083cb,"Rats inside the office ","We can see rats running inside the AC went need to close the path through which they are getting inside ",Others,High,work_completed,SEZ - A2 Block,Floor 1,,"All over the office ",2026-03-16,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Need to check the Holes.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-16 11:56:56.946504+00,2026-05-06 10:11:54.816+00,,"
+[3/16/2026, 5:51:46 PM] MANAGER APPROVED
+[17/03/2026, 09:49:50] TENANT APPROVED
+[5/6/2026, 3:41:53 PM] WORK STARTED - SLA: 1 hours
+[5/6/2026, 3:41:54 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-06 10:11:53.292+00,2026-05-06 10:11:54.815+00,0.00,,,,,,RTP-26030024,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-17,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+4b9b054b-55a1-4029-9973-5bdbdea89c97,ed50cb46-49cf-4791-bc38-714caee083cb,"Door lock not working ","Door lock not working of the blue room ",Electrical,High,work_completed,SEZ - A2 Block,Floor 1,1,"Blue room ",2026-03-19,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: New Door Handle need to change.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: Service the door",0,2026-03-19 09:10:06.527903+00,2026-05-04 07:39:52.54+00,,"
+[4/7/2026, 3:20:48 PM] MANAGER APPROVED
+[10/04/2026, 11:21:30] TENANT APPROVED
+[5/4/2026, 1:09:35 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:09:52 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-04 07:39:35.068+00,2026-05-04 07:39:52.54+00,0.00,,,,,,RTP-26030032,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-19,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+4f4a3349-bcaf-4b51-95e3-d048190aa868,ed50cb46-49cf-4791-bc38-714caee083cb,"Blockage ","Blockage in gents urinal ",Plumbing,High,pending_tenant_approval,SEZ - A2 Block,Floor 1,2,"Gents urinal ",2026-03-13,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Blockage cleared.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹4.00
+Total: ₹4.00
+Notes: ",4,2026-03-13 09:05:38.736505+00,2026-04-21 11:43:23.719+00,,"
+[4/21/2026, 5:13:23 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030021,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-13,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+50472d9a-2d4d-4d31-a5d5-5c4a8872c1d5,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Sez ground floor urinal basin blockage issue ","Sez ground floor urinal basin blockage issue ",Plumbing,High,pending_approval,SEZ - A2 Block,Floor 2,,"Sez Ground floor gents restroom ",2026-04-29,Anytime,false,false,,,,babu (Plumber),"Technicians: babu (Plumber)
+
+=== RCA ===
+Root Cause: urinal salt block issue  
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-04-29 11:38:16.222467+00,2026-05-06 11:18:51.144+00,,"[4/29/2026, 6:29:56 PM] ASSIGNED
+[5/6/2026, 4:48:51 PM] PENDING APPROVAL",,,,,,,,,,,,RTP-26040041,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-29,"[""/uploads/tenant-ticketing/lti_mindtree_limited/1777462695757-670663599-1000061254.jpg""]",,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+51ed86d0-9091-48ca-a594-858c840a2ca9,6ae02caf-5781-4709-9221-6d44a7359484,HP LP Issue AC Not working,AC Not Working,HVAC,High,work_completed,SEZ - A2 Block,Floor 4,,,2026-03-27,Anytime,false,true,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Error code issue need to rectify.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-27 11:12:22.367486+00,2026-05-04 09:26:58.649+00,,"
+[3/28/2026, 1:59:37 PM] MANAGER APPROVED
+[5/4/2026, 2:56:53 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 2:56:58 PM] WORK COMPLETED - Duration: 0.00 hours",,e8217e4b-0713-408c-9fbd-7e4fe9eb3e1c,1.00,2026-05-04 09:26:53.119+00,2026-05-04 09:26:58.649+00,0.00,,,,,,RTP-26030035,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-27,[],,,f208e8e6-c3b6-4374-9038-e7387b2998b3,,,,
+52f3b08d-e065-4604-9269-b90e9e7dcd18,,Urinal Block,In our gents toilet 4th urinal gets block. its not working,Plumbing,High,pending_approval,"Block C4 ",Floor 2,Gents toilet,Gents toilet,,,false,false,,,,babu (Plumber),"Technicians: babu (Plumber)
+
+=== RCA ===
+Root Cause: urinal salt issue
+Findings: salt clean 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-05-05 09:58:17.281815+00,2026-05-06 11:00:25.039+00,,"[5/6/2026, 2:49:45 PM] ASSIGNED
+[5/6/2026, 4:30:25 PM] PENDING APPROVAL",,,,,,,,,,,,RTP-26050005,,false,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],,[],,,70c06818-08e7-4333-973a-211c113940df,,,,
+53a694ec-b08c-4ba7-bf34-ca9b1b731551,8a658e42-7c75-4f63-814a-10861e47139b,Second floor A zone side path way light fligering,Second floor A zone side path way light fligering need to change the light,Electrical,High,assigned,A1 Extension Block,Floor 2,pathway,,2026-04-25,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-04-24 08:01:40.135549+00,2026-04-27 10:23:52.563+00,,"[4/27/2026, 3:53:52 PM] ASSIGNED",,,,,,,,,,,,RTP-26040035,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-25,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+56773c93-1283-4f98-8e8b-8c5b9f76256c,d1edc7d1-105d-477e-8c05-45ad2d1e4815,We need one person to check the internet cable.,We need one person to check the internet cable.,IT/Networking,High,pending_tenant_approval,SEZ - A1 Block,Floor G,11,1,2026-03-12,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: duplicate
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-12 05:03:38.624879+00,2026-03-12 05:31:37.374+00,,"
+[3/12/2026, 11:01:37 AM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030011,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-31,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+56a20f20-e071-4100-8019-ec5e3cba7eeb,8a658e42-7c75-4f63-814a-10861e47139b,"canopy pillar concrete not finished work  ","The canopy pillar concrete work is completed but tiles pasting work  not finishing ",Civil,High,assigned,A1 Extension Block,Floor 2,12 pillar,"canopy ",2026-04-13,Morning (8AM-12PM),false,false,"The canopy pillar concrete work is completed but tile finishing is pending  ",,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-04-13 16:01:10.926055+00,2026-04-20 13:00:18.649+00,,,,,,,,,,,,,,RTP-26040023,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-14,"[""/uploads/tenant-ticketing/avantor/1776096070567-119889123-IMG20260413205914.jpg""]",,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+57b9aa77-af77-45fb-9830-fe45c8a43c3c,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Ground floor gent's restroom urinal basin leakage ","Ground floor gent's restroom urinal basin leakage ",Plumbing,Critical,pending_tenant_approval,SEZ - A2 Block,Floor G,"Gent's restroom ","Gent's restroom ",2026-03-12,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: water leakage arrested.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-12 10:02:07.004749+00,2026-03-13 05:13:47.03+00,,"
+[3/13/2026, 10:43:47 AM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030018,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+5a58f6ed-5e9a-434e-b27e-b98e7cc3ec01,,AC Flow issue,In our floor AC flow is not as standard. In one particular place its too Cool and in another place its too hot.,HVAC,Critical,assigned,"Block C4 ",Floor 2,Entire Floor,,,,false,false,,,,siva (HVAC Technician),Technicians: siva (HVAC Technician),0,2026-05-05 10:00:10.697171+00,2026-05-06 09:16:55.599+00,,"[5/6/2026, 2:46:55 PM] ASSIGNED",,,,,,,,,,,,RTP-26050006,,false,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],,[],,,70c06818-08e7-4333-973a-211c113940df,,,,
+5f6efdaa-1014-41b4-b5fe-0ccb258a8f9e,8a658e42-7c75-4f63-814a-10861e47139b,"2nd floor LRR washbasion 2 nos not working ",2nd floor LRR washbasion 2 nos not working kindly check and rectify sir,Plumbing,Critical,work_completed,A1 Extension Block,Floor 2,2 nos,"Ladies restroom ",2026-04-13,Morning (8AM-12PM),false,false,2nd floor LRR washbasion 2 nos not working kindly check and rectify sir,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: service vendor checked.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-04-13 08:50:07.285751+00,2026-04-21 04:39:50.145+00,,"
+[4/17/2026, 4:21:48 PM] MANAGER APPROVED",,,3.00,2026-04-21 04:39:47.814+00,2026-04-21 04:39:50.145+00,0.00,,,,,,RTP-26040018,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-14,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+61b4f5d3-e932-40d7-ab37-3bb382c27956,ed50cb46-49cf-4791-bc38-714caee083cb,"Strip light flickering ","Strip light is flickering in the working area the employees are not able to work need immediate attention ",Electrical,Critical,work_completed,SEZ - A2 Block,Floor 1,1,"Near yellow conference room ",2026-04-08,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: need to check the strip light connection.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-08 05:41:49.41272+00,2026-04-21 04:40:30.004+00,,"
+[4/17/2026, 4:22:27 PM] MANAGER APPROVED",,,1.00,2026-04-21 04:40:28.434+00,2026-04-21 04:40:30.004+00,0.00,,,,,,RTP-26040010,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-08,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+71788dec-fc18-4b07-af1d-fa5ec4fe8928,ed50cb46-49cf-4791-bc38-714caee083cb,"Exhaust pipe not working in washroom  ","Exhaust pipe not working in washroom  ",HVAC,Medium,pending_approval,SEZ - A2 Block,Floor 1,2,Rently Washroom,,Anytime,false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: no exhaust fan in washroom
+Findings: fix new inline exhaust fan fix
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+T fource fan EX fan 380 mm 1400 rev/min 1ph | 1 Nos | ₹15250.00 | 0% | ₹0.00 | ₹15250.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹15250.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹15250.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹15250.00
+Notes: inline fan with materiel and installing (span control)",15250,2026-03-03 09:03:16.984697+00,2026-04-22 08:27:48.119+00,,,,,,,,,,,,,,RTP-26030002,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-14,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+75bde85f-3cda-4004-8874-dcb4b47e2b99,8a658e42-7c75-4f63-814a-10861e47139b,"1st floor handicap restroom bad smell issue ",1st floor handicap restroom bad smell kindly check and rectify sir,Plumbing,Critical,assigned,A1 Extension Block,Floor 1,1,"restroom ",2026-04-15,Morning (8AM-12PM),false,false,1st floor handicap restroom bad smell kindly check and rectify sir,,,babu (Plumber),Technicians: babu (Plumber),0,2026-04-15 12:22:18.762119+00,2026-04-17 10:48:42.3+00,,,,,,,,,,,,,,RTP-26040025,,false,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-16,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+78e9c03a-a83f-49b7-9259-d07d1ec39229,ac5b417f-698d-4c0c-b4b7-bee90349440a,Painting issue,"•	The painting work in the pantry is incomplete, and there is a visible difference in paint color. Kindly arrange to complete and rectify the finish.",Painting,Medium,assigned,ADMIN Block,Floor 3,,,,,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Plan to change the new door spring.
+Findings: ",0,2026-03-09 12:11:54.24228+00,2026-03-10 06:12:12.461+00,,,,,,,,,,,,,,RTP-26030010,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,800427ac-399b-4a26-8744-c08c3354bb2b,,,,
+7d2ea308-4e92-4990-a82b-96671379d185,,AC general service,NXXT AC general service,HVAC,High,work_completed,A1 Extension Block,Floor G,,,,,false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: AC drain line pipe connection.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-04-10 06:05:13.863759+00,2026-04-21 04:40:13.4+00,,"
+[4/15/2026, 1:35:09 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/17/2026, 4:21:21 PM] MANAGER APPROVED","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: AC drain line pipe connection.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 4\nLabor Cost: ₹800.00\nTotal: ₹800.00\nNotes: "",""cost"":800,""opex_code"":null,""change_requested_at"":""2026-04-15T08:05:09.749Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,3.00,2026-04-21 04:40:11.196+00,2026-04-21 04:40:13.4+00,0.00,,,,,,RTP-26040014,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,047cb283-9017-40dd-810a-f7ff18e3b8bb,,,,
+7d816224-3e41-4fb3-829b-781125adea6e,ed50cb46-49cf-4791-bc38-714caee083cb,Window glass cleaning,"During the recent construction work carried out near our building, cement and other construction stains have accumulated on our windows in that area.
+
+We request you to kindly arrange for cleaning of the affected windows at the earliest, as the stains are impacting the appearance . ",Others,Medium,assigned,SEZ - A2 Block,Floor 1,5,"Near accounts and pantry window ",,Anytime,false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-02-28 09:43:37.867585+00,2026-03-16 06:40:57.023+00,,,,,,,,,,,,,,RTP-26020005,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,"[""/uploads/tenant-ticketing/rently_software_development_private_limited/1772271817344-241369498-1000524465.jpeg"",""/uploads/tenant-ticketing/rently_software_development_private_limited/1772271817500-644622586-1000524464.jpeg""]",,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+7e7b0d1c-3d5a-41f0-99a4-e2424acc7367,8a658e42-7c75-4f63-814a-10861e47139b,"2nd floor GRR urinal not working ",2nd floor GRR urinal not working 1 nos,Plumbing,Critical,work_completed,A1 Extension Block,Floor 2,1,"Gents restroom right side middle ",2026-04-13,Morning (8AM-12PM),false,false,2nd floor GRR urinal not working kindly check and rectify sir,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: warranty service team will check the issue.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-13 08:57:13.041791+00,2026-04-20 13:07:16.354+00,,"
+[4/15/2026, 1:37:43 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/17/2026, 4:19:38 PM] MANAGER APPROVED","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: warranty service team will check the issue.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""cost"":0,""opex_code"":null,""change_requested_at"":""2026-04-15T08:07:43.026Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,1.00,2026-04-20 13:07:14.446+00,2026-04-20 13:07:16.354+00,0.00,,,,,,RTP-26040020,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-14,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+82815469-dc19-4df8-aade-501dd691db1f,d1edc7d1-105d-477e-8c05-45ad2d1e4815,3rd floor and replace the light if required.,Kindly arrange one person to check the light issue on the 3rd floor and replace the light if required.,Electrical,High,work_completed,SEZ - A1 Block,Floor 3,,,2026-03-12,Anytime,false,false,Kindly arrange one person to check the light issue on the 3rd floor and replace the light if required.,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: light issue
+Findings: change new light 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-03-12 05:27:09.6554+00,2026-05-04 08:14:41.158+00,,"[4/27/2026, 5:42:28 PM] APPROVED
+[5/4/2026, 1:44:38 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:44:41 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-04 08:14:38.189+00,2026-05-04 08:14:41.158+00,0.00,,,,,,RTP-26030015,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-12,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+89816eac-aea2-4970-87bb-aad6488aba54,ed50cb46-49cf-4791-bc38-714caee083cb,"Strip light ","Strip light not working and also one place the cover have fallen off ",Electrical,High,resolved,SEZ - A2 Block,Floor 1,2,"near the entrance ",2026-03-16,Evening (4PM-8PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: Connection soldering work.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-16 11:55:19.299063+00,2026-03-26 06:22:23.855+00,2026-03-26 06:22:23.855+00,"
+[3/16/2026, 5:37:02 PM] MANAGER APPROVED
+[16/03/2026, 17:41:34] TENANT APPROVED
+[3/18/2026, 12:47:52 PM] MANAGER APPROVED
+[18/03/2026, 13:11:37] TENANT APPROVED","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""rca"":true,""estimation"":0,""opex_code"":null,""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: 180w drive changed .\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""reopened_at"":""2026-03-18T07:16:02.959Z"",""reopened_by"":""Tenant""}]",,1.00,2026-03-25 10:43:29.185+00,2026-03-25 10:43:42.804+00,0.00,9/10,,,,,RTP-26030023,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,"[{""type"": ""reopened"", ""timestamp"": ""2026-03-18T07:16:02.959Z"", ""reopened_by"": ""Tenant""}]",2026-03-16,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+8aebb44b-8b30-4fae-b25c-c4b92aad57b9,b5fc530c-c386-48e1-9f4a-e55939ffbe24,Biometric Device need to fix,Need fix Biometric Device in the 4 entrance doors,Carpentry,High,work_completed,SEZ - A2 Block,Floor 3,4,,,,false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: Wire Routing work.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹5200.00
+Total: ₹5200.00
+Notes: New Axis unit fix. 4 nos",5200,2026-04-09 05:15:45.718036+00,2026-05-06 10:10:47.917+00,,"
+[4/17/2026, 5:01:30 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/17/2026, 5:04:59 PM] MANAGER APPROVED
+[30/04/2026, 10:39:53] APPROVED
+[5/6/2026, 3:40:46 PM] WORK STARTED - SLA: 5 hours
+[5/6/2026, 3:40:47 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""Technicians: Muni (General Maintenance)\n\n=== RCA ===\nRoot Cause: Wire Routing work.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 32\nLabor Cost: ₹9600.00\nTotal: ₹9600.00\nNotes: Two Days work."",""cost"":9600,""opex_code"":null,""change_requested_at"":""2026-04-17T11:31:30.603Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,5.00,2026-05-06 10:10:46.372+00,2026-05-06 10:10:47.917+00,0.00,,,,,,RTP-26040011,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,df398e1b-c102-4363-a97e-1daf6b9fc6cc,,,,
+8c8905bf-595e-417f-a157-f615e3e5d630,700698e2-3dc6-4835-8728-c3ad93ae1c18,"Light Replacement ",Please replace us four Lights asap( 3 big & 1small lights),Electrical,Critical,pending_approval,SEZ - A1 Block,Floor 2,,,2026-03-30,Evening (4PM-8PM),false,true,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: light issue
+Findings: 18Wslim light 4 no change 
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+18 w surface light | 4 NOS | ₹1120.00 | 0% | ₹0.00 | ₹4480.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹4480.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹4480.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹4880.00
+Notes: ",4880,2026-03-30 09:15:13.652316+00,2026-04-21 07:51:51.208+00,,,,2cbd2fe4-91c9-4fe4-8876-ccb8f210d6ff,,,,,,,,,,RTP-26030036,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-30,[],,,ed6166fd-9b36-4bf2-a14a-1dd516656b49,,,,
+8d316f85-9922-49c4-81ef-40c10e137851,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"AC cooling issue ",SEZ Ground floor workstation area Ac cooling issue,Others,High,work_completed,SEZ - A2 Block,Floor G,Pantry area,,2026-03-03,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: air filter cleaned.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-03 05:40:13.063328+00,2026-05-04 10:16:59.224+00,,"
+[3/10/2026, 11:41:01 AM] MANAGER APPROVED
+[5/4/2026, 3:46:53 PM] WORK STARTED - SLA: 3 hours
+[5/4/2026, 3:46:59 PM] WORK COMPLETED - Duration: 0.00 hours",,,3.00,2026-05-04 10:16:53.05+00,2026-05-04 10:16:59.224+00,0.00,,,,,,RTP-26030001,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-03,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+8ed8dc98-5ea3-4c48-91da-1d1314372585,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Glass door noice issue ","Sez 2nd floor glass door noice issue ",Carpentry,Critical,assigned,SEZ - A2 Block,Floor 2,,,2026-03-07,Anytime,false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-03-06 10:10:37.563852+00,2026-03-11 08:06:49.941+00,,,,,,,,,,,,,,RTP-26030006,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-07,"[""/uploads/tenant-ticketing/lti_mindtree_limited/1772791837086-982228648-68221.jpg""]",,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+8f03c102-1fd2-48cf-afed-a3228160bed5,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Ground floor ladies restroom health facult hose broken ","Ground floor ladies restroom health facult hose broken ",Plumbing,Critical,work_completed,SEZ - A2 Block,Floor G,"Ladies restroom ",,2026-04-16,,true,false,,,,babu (Plumber),"Technicians: babu
+
+=== RCA ===
+Root Cause: health facult hose broken
+Findings: new one fix
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+Health Faucet CP Fitting 1.5 Mtr Make parryware | 1 NOS | ₹750.00 | 0% | ₹0.00 | ₹750.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹750.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹750.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹1150.00
+Notes: ",1150,2026-04-16 11:51:23.63174+00,2026-05-04 08:03:50.291+00,,"
+[4/24/2026, 3:03:23 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/24/2026, 3:05:22 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/27/2026, 5:43:36 PM] APPROVED
+[5/4/2026, 1:33:47 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:33:50 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"",""name"":""babu"",""contact"":""9486978832"",""specialization"":""Plumber""}],""resolution_notes"":""Technicians: babu (Plumber)\n\n=== RCA ===\nRoot Cause: health facult hose broken\nFindings: new one fix\n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 2\nLabor Cost: ₹400.00\nTotal: ₹400.00\nNotes: span control"",""cost"":400,""opex_code"":null,""change_requested_at"":""2026-04-24T09:33:23.628Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""},{""technicians"":[{""id"":""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"",""name"":""babu"",""contact"":""9486978832"",""specialization"":""Plumber""}],""resolution_notes"":""Technicians: babu\n\n=== RCA ===\nRoot Cause: health facult hose broken\nFindings: new one fix\n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 2\nLabor Cost: ₹400.00\nTotal: ₹400.00\nNotes: "",""cost"":400,""opex_code"":null,""change_requested_at"":""2026-04-24T09:35:22.190Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,1.00,2026-05-04 08:03:47.718+00,2026-05-04 08:03:50.29+00,0.00,,,,,,RTP-26040026,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+9328b80d-41ad-4d3d-9778-357bdc0e7cf3,8a658e42-7c75-4f63-814a-10861e47139b,2nd floor LRR 2 washbasin Not working.,2nd floor LRR wash basin 2nos not working so pls check.,Plumbing,Critical,work_completed,A1 Extension Block,Floor 2,2nos,Ladies Restroom,2026-04-06,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: check the sensor condition.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-04-06 08:01:35.060125+00,2026-05-04 08:08:32.869+00,,"
+[4/17/2026, 4:22:41 PM] MANAGER APPROVED
+[5/4/2026, 1:35:45 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 1:36:03 PM] ASSIGNED
+[5/4/2026, 1:36:37 PM] PENDING APPROVAL
+[5/4/2026, 1:36:43 PM] APPROVED
+[5/4/2026, 1:38:30 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:38:32 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: check the sensor condition.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""cost"":0,""opex_code"":null,""requested_changes_at"":""2026-05-04T08:06:03.304Z"",""requested_by"":""Manager"",""manager_approved_at"":""4/17/2026, 4:22:41 PM"",""previous_status"":""work_started""}]",,1.00,2026-05-04 08:08:30.608+00,2026-05-04 08:08:32.869+00,0.00,,,,,,RTP-26040007,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+9480a919-3144-4377-a30c-9e755d730a8b,ed50cb46-49cf-4791-bc38-714caee083cb,"Having issues with all the Hitachi AC ","We have Ac leakage in the hitachi ac and every ac in office has to do maintenance.   ",HVAC,Critical,pending_approval,SEZ - A2 Block,Floor 1,,"all over office ",2026-04-25,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Pump need to service.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: AMC no Labour cost",0,2026-04-25 08:46:49.895279+00,2026-04-27 10:21:21.223+00,,"[4/27/2026, 3:50:29 PM] ASSIGNED
+[4/27/2026, 3:51:21 PM] PENDING APPROVAL",,,,,,,,,,,,RTP-26040038,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-05-02,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+96be773b-b31d-4722-8425-ee801b1dd359,,4th Urinal is not working. Its blocked.,In our gents toilet 4th urinal got blocked and its not working.,Plumbing,High,assigned,"Block C4 ",Floor 2,,Gents toilet,,,false,false,,,,babu (Plumber),Technicians: babu (Plumber),0,2026-05-05 09:55:17.229338+00,2026-05-06 09:20:52.355+00,,"[5/6/2026, 2:50:52 PM] ASSIGNED",,,,,,,,,,,,RTP-26050004,,false,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],,[],,,70c06818-08e7-4333-973a-211c113940df,,,,
+978b6a21-5bf0-4075-b247-86c1f1be5a81,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Wc water leakage ","1st gents restroom toilet water leakage ",Plumbing,Medium,pending_tenant_approval,SEZ - A2 Block,Floor 2,,,,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: water lekage arrested.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-18 07:26:40.818149+00,2026-03-23 04:51:58.408+00,,"
+[3/23/2026, 10:21:58 AM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030027,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+9958c7a9-4335-4819-aab3-1067dea8ab7d,700698e2-3dc6-4835-8728-c3ad93ae1c18,Tap is broken,In Our Pantry the tap is broken so please rectify asap.....,Plumbing,Critical,assigned,SEZ - A1 Block,Floor 1,,,2026-05-05,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: old one is damage
+Findings: fix new one ",0,2026-05-05 09:40:36.304053+00,2026-05-06 11:05:40.146+00,,"[5/6/2026, 2:51:41 PM] ASSIGNED",,,,,,,,,,,,RTP-26050003,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-05-05,[],,,ed6166fd-9b36-4bf2-a14a-1dd516656b49,,,,
+9c088a94-22c0-4ea4-8cab-cd2b57d60d99,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Cupboard fitting issue ",Pantry cupboard fitting issue..,Carpentry,High,work_completed,SEZ - A2 Block,Floor G,,,2026-03-31,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: drive need to change
+Findings: 
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+drive 18w | 1 NOS | ₹580.00 | 0% | ₹0.00 | ₹580.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹580.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹580.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹580.00
+Notes: ",580,2026-03-31 10:22:01.16788+00,2026-04-21 04:42:38.883+00,,"
+[4/7/2026, 3:07:17 PM] MANAGER APPROVED",,,3.00,2026-04-21 04:42:37.417+00,2026-04-21 04:42:38.882+00,0.00,,,,,,RTP-26030040,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-31,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+9d07ced1-be62-4f27-964d-700e7b05556d,8a658e42-7c75-4f63-814a-10861e47139b,Second floor gents rest room second urinal complaint,"Second floor gents rest room second urinal complaint - It has been informed before 2 months, Kindly rectify ASAP",Plumbing,Critical,pending,A1 Extension Block,Floor 2,,,2026-04-30,Evening (4PM-8PM),false,false,,,,,,0,2026-04-30 09:22:56.983639+00,2026-04-30 09:22:56.983639+00,,,,,,,,,,,,,,RTP-26040047,,false,[],{},,,[],2026-04-30,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+9e0458a6-a933-4044-be6f-9140ea09e3f8,f42d907e-08a0-4ef6-b6d7-e7382d3a9b3b,AC cooling effect,AC cooling effect is very low.,Electrical,Medium,assigned,Rathinam  Circleview,Floor G,,,2026-05-02,Anytime,false,false,,,,siva (HVAC Technician),Technicians: siva (HVAC Technician),0,2026-04-27 07:23:52.453904+00,2026-04-27 10:05:10.009+00,,"[4/27/2026, 3:35:10 PM] ASSIGNED",,,,,,,,,,,,RTP-26040039,,false,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],2026-05-02,[],,,34b4c2f3-d180-45e0-8e10-59d5433d08c0,,,,
+a442fe0d-5d65-4f19-a736-f52e03d5bcad,700698e2-3dc6-4835-8728-c3ad93ae1c18,AC is not Working,AC is not Working,HVAC,Critical,work_completed,SEZ - A1 Block,Floor 1,,,2026-04-24,Afternoon (12PM-4PM),false,false,Kindly rectify us as soon as possible,,,siva (HVAC Technician),"
+
+=== RCA ===
+Root Cause: outdoor service.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-04-24 05:29:44.877622+00,2026-05-04 08:02:03.399+00,,"[4/27/2026, 3:59:56 PM] ASSIGNED
+[4/27/2026, 4:00:37 PM] PENDING APPROVAL
+[4/27/2026, 4:20:36 PM] APPROVED
+[5/4/2026, 1:32:01 PM] WORK STARTED - SLA: 3 hours
+[5/4/2026, 1:32:03 PM] WORK COMPLETED - Duration: 0.00 hours",,,3.00,2026-05-04 08:02:01.06+00,2026-05-04 08:02:03.399+00,0.00,,,,,,RTP-26040034,,true,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],2026-04-24,[],,,ed6166fd-9b36-4bf2-a14a-1dd516656b49,,,,
+a64f4e77-3489-44d0-805f-73ca104ab95e,87ca3b19-061a-4557-935e-bbbedbd773a2,Need relocation of AC in server room (high priority),Need relocation of AC in server room (high priority),HVAC,High,assigned,ADMIN Block,Floor 3,visualsculptors,server room,,,true,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-03-15 08:07:58.070405+00,2026-03-16 04:31:08.95+00,,,,,,,,,,,,,,RTP-26030022,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,4d389e69-d1c7-44dd-9875-64b413ed41d5,,,,
+adb7b097-a13c-42ce-b40d-05a256608715,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Glass door noice issue ","2nd floor gent's restroom 1 glass door noice issue ",Carpentry,Critical,assigned,SEZ - A2 Block,Floor 2,"Gent's restroom ",1,2026-04-27,Anytime,true,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-04-27 10:34:07.031237+00,2026-04-27 12:16:11.773+00,,"[4/27/2026, 5:45:13 PM] ASSIGNED",,,,,,,,,,,,RTP-26040040,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-27,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+aff95e39-fd3d-4065-88ec-92fe635231da,8a658e42-7c75-4f63-814a-10861e47139b,"Ductable ac unit ","2nd floor B zone Ductable  ac LP,HP alarm issue.",HVAC,Critical,assigned,A1 Extension Block,Floor 2,2nd floor B zone.,2nd floor B zone.,2026-04-19,Morning (8AM-12PM),false,false,"2nd floor ac LP,HP ac alarm issue ",,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: line wire issue rectified.
+Findings: ",0,2026-04-19 04:06:55.263153+00,2026-04-20 13:04:23.062+00,,,,,,,,,,,,,,RTP-26040031,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-20,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+b105e626-4b23-443a-a412-c2586d8a2f54,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Ground floor reception led light dimming issue ","Ground floor reception led light dimming issue ",Electrical,Critical,pending_tenant_approval,SEZ - A2 Block,Floor G,"Reception ",,,,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: checking the electrical drive
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-05 05:26:20.42848+00,2026-03-18 08:04:10.921+00,,"
+[3/18/2026, 1:34:10 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030005,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,"[""/uploads/tenant-ticketing/lti_mindtree_limited/1772688380032-977696270-66887.jpg""]",,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+b1f74f6a-5248-4b19-826b-6095cb514ed4,8a658e42-7c75-4f63-814a-10861e47139b,Aluminium door issue in first floor,"Aluminum door in first floor was shaking more, kindly do the needful ASAP. Video send in RnM what sup group",Carpentry,Critical,assigned,A1 Extension Block,Floor 1,,,2026-05-05,Evening (4PM-8PM),false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-05-05 08:18:40.186704+00,2026-05-06 09:22:52.696+00,,"[5/6/2026, 2:52:52 PM] ASSIGNED",,,,,,,,,,,,RTP-26050002,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-05-05,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+b203e986-573f-4ce1-a626-ca09766346d8,8a658e42-7c75-4f63-814a-10861e47139b,"Ground floor pantry water leakage issue ","Ground floor pantry water leakage issue kindly check and rectify sir ",Plumbing,Critical,work_completed,A1 Extension Block,Floor G,,West side,2026-04-13,Morning (8AM-12PM),false,false,Ground floor pantry water leakage issue kindly check and rectify sir,,,babu (Plumber),"Technicians: babu (Plumber)
+
+=== RCA ===
+Root Cause: leakages arrested.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-04-13 09:00:44.892887+00,2026-05-04 08:04:21.13+00,,"[4/27/2026, 5:43:55 PM] APPROVED
+[5/4/2026, 1:34:19 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:34:21 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-04 08:04:19.022+00,2026-05-04 08:04:21.13+00,0.00,,,,,,RTP-26040021,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-14,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+b8937a15-10c6-4ff5-86bd-550727d52879,b5fc530c-c386-48e1-9f4a-e55939ffbe24,Entrance Glass doors not closing properly,"Entrance Glass doors not closing properly ",Carpentry,High,pending,SEZ - A2 Block,Floor 3,,,,,false,false,,,,,,0,2026-04-30 05:11:07.092948+00,2026-04-30 05:11:07.092948+00,,,,,,,,,,,,,,RTP-26040042,,false,[],{},,,[],,[],,,df398e1b-c102-4363-a97e-1daf6b9fc6cc,,,,
+bc3711b8-b8ee-4607-b397-add4993e0f61,ed50cb46-49cf-4791-bc38-714caee083cb,"Wooden Beading  broken  ","Wooden beading broken ",Carpentry,High,assigned,SEZ - A2 Block,Floor 1,1,"Path way to washroom ",2026-05-06,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-05-06 03:49:39.455908+00,2026-05-06 09:19:31.26+00,,"[5/6/2026, 2:49:31 PM] ASSIGNED",,,,,,,,,,,,RTP-26050007,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-05-06,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+bdd528f0-fbfe-4e3b-bdcd-9c5b67177cd9,ed50cb46-49cf-4791-bc38-714caee083cb,"Pipe leakage ","Pipe water leakage in pantry area ",Plumbing,High,pending_tenant_approval,SEZ - A2 Block,Floor 1,1,"Pantry ",2026-03-09,Anytime,false,false,,,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: waste coupling issue
+Findings: change new waste coupling
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 1
+Labor Cost: ₹200.00
+Total: ₹200.00
+Notes: ",200,2026-03-09 11:23:33.754068+00,2026-04-27 12:12:50.245+00,,"
+[4/21/2026, 5:24:36 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/21/2026, 5:25:31 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/27/2026, 5:42:50 PM] PENDING TENANT APPROVAL","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""Technicians: Muni (General Maintenance)\n\n=== RCA ===\nRoot Cause: waste coupling issue\nFindings: change new waste coupling\n\n=== ESTIMATION ===\nMaterials:\nItem | Qty | Rate | GST% | GST Amt | Total\n------------------------------------------------------------\n1' Cpvc Coupler Sup | 1 NOS | ₹180.00 | 0% | ₹0.00 | ₹180.00\n------------------------------------------------------------\n\nMaterial Cost (without GST): ₹180.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹180.00\nLabor Hours: 2\nLabor Cost: ₹400.00\nTotal: ₹580.00\nNotes: "",""cost"":580,""opex_code"":null,""change_requested_at"":""2026-04-21T11:54:36.260Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""},{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""Technicians: Muni\n\n=== RCA ===\nRoot Cause: waste coupling issue\nFindings: change new waste coupling\n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0.5\nLabor Cost: ₹100.00\nTotal: ₹100.00\nNotes: "",""cost"":100,""opex_code"":null,""change_requested_at"":""2026-04-21T11:55:31.064Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,,,,,,,,,,RTP-26030008,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-09,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+c66fdb5f-b40d-4547-86ef-229cb24534dc,ed50cb46-49cf-4791-bc38-714caee083cb,"AC problem ","AC trouble in blue room leakage of water from AC ",HVAC,Critical,work_completed,SEZ - A2 Block,Floor 1,1,"Blue room ",2026-04-06,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Need to check the drain line.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-06 03:38:15.076895+00,2026-04-21 04:41:06.422+00,,"
+[4/17/2026, 4:23:29 PM] MANAGER APPROVED",,,1.00,2026-04-21 04:41:04.823+00,2026-04-21 04:41:06.422+00,0.00,,,,,,RTP-26040006,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-06,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+ca7cd4db-f833-4b8c-afd6-6042f7ffa15d,ed50cb46-49cf-4791-bc38-714caee083cb,"Water blockage ","Water blockage in pantry washbasin ",Plumbing,High,work_completed,SEZ - A2 Block,Floor 1,1,"Pantry ",2026-04-07,Morning (8AM-12PM),false,false,,,,babu (Plumber),"
+
+=== RCA ===
+Root Cause: Issue rectified.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-07 04:01:49.417083+00,2026-04-21 04:40:40.804+00,,"
+[4/7/2026, 3:05:20 PM] MANAGER APPROVED",,,1.00,2026-04-21 04:40:39.172+00,2026-04-21 04:40:40.804+00,0.00,,,,,,RTP-26040009,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-07,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+cd4293f3-fca8-4baf-84cc-6a5c08c519ed,8a658e42-7c75-4f63-814a-10861e47139b,"2nd floor B zone AC power supply issue ",2nd floor B zone AC power supply issue kindly rectify sir,Electrical,Critical,pending_tenant_approval,A1 Extension Block,Floor 2,,"B zone ",2026-04-13,Morning (8AM-12PM),false,false,This AC incoming power line MCB is not receiving power kindly rectify sir,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Line issue checked.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-04-13 08:40:28.095403+00,2026-04-21 06:39:13.795+00,,"
+[4/21/2026, 12:09:13 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26040017,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-14,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+cda74587-a7c2-4426-923d-bcb1389280d1,d1edc7d1-105d-477e-8c05-45ad2d1e4815,We need one person to check the internet cable.,We need one person to check the internet cable.,IT/Networking,High,work_completed,SEZ - A1 Block,Floor G,,,2026-03-12,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: wire routing checked.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-12 05:05:22.576827+00,2026-05-04 08:07:15.397+00,,"
+[3/16/2026, 10:25:40 AM] MANAGER APPROVED
+[4/21/2026, 10:30:52 AM] TENANT APPROVED
+[5/4/2026, 1:37:12 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 1:37:15 PM] WORK COMPLETED - Duration: 0.00 hours",,,0.50,2026-05-04 08:07:12.925+00,2026-05-04 08:07:15.397+00,0.00,,,,,,RTP-26030012,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-12,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+cfc2a13b-dd99-4a1d-96ae-439d6fada748,8a658e42-7c75-4f63-814a-10861e47139b,service Lift Issue,"Service lift door sound comes in each floor while opening and closing. ",Electrical,High,work_completed,A1 Extension Block,Floor 2,,,2026-04-25,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: at present no issue , Running normal.
+Findings: at present no issue , Running normal.
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-04-24 08:06:19.487714+00,2026-05-04 08:01:02.54+00,,"[4/27/2026, 3:39:58 PM] ASSIGNED
+[4/27/2026, 3:47:44 PM] PENDING APPROVAL
+[4/27/2026, 4:28:20 PM] APPROVED
+[5/4/2026, 1:31:00 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:31:02 PM] WORK COMPLETED - Duration: 0.00 hours",,,1.00,2026-05-04 08:01:00.755+00,2026-05-04 08:01:02.54+00,0.00,,,,,,RTP-26040036,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-25,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+d6973c61-1302-4693-9785-4e733b13c941,8a658e42-7c75-4f63-814a-10861e47139b,Ground floor gents rest room 2 urinals complaint,"Ground floor gents rest room 2 urinals complaint ",Plumbing,Critical,assigned,A1 Extension Block,Floor 1,,,,,false,false,,,,babu (Plumber),Technicians: babu (Plumber),0,2026-04-30 09:25:36.924783+00,2026-04-30 11:13:45.748+00,,"[4/30/2026, 4:43:45 PM] ASSIGNED",,,,,,,,,,,,RTP-26040049,,false,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+da7d726b-c8f5-46cc-ab89-5bc84ebfb5ea,ed50cb46-49cf-4791-bc38-714caee083cb,"Strip light flickering ","Strip light flickering near manager cabins need immediate attention ",Electrical,Critical,pending_approval,SEZ - A2 Block,Floor 1,1,"Near manager cabins ",2026-04-10,Morning (8AM-12PM),false,false,,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: Drive issue
+Findings: drive change
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+Drive 30w | 1 NOS | ₹600.00 | 0% | ₹0.00 | ₹600.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹600.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹600.00
+Labor Hours: 0.5
+Labor Cost: ₹100.00
+Total: ₹700.00
+Notes: span control ",700,2026-04-10 05:49:04.41753+00,2026-04-21 08:15:01.953+00,,,,,,,,,,,,,,RTP-26040013,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-10,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+db3649fc-b8a9-485b-afe6-dd36613a8f2f,8a658e42-7c75-4f63-814a-10861e47139b,Lights not glowing,In ground floor above reception table two lights not glowing photo has been updated in VWR RNM whats app group,Electrical,High,assigned,A1 Extension Block,Floor 1,,,2026-05-05,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-05-04 12:57:23.438989+00,2026-05-05 04:25:41.057+00,,"[5/5/2026, 9:55:41 AM] ASSIGNED",,,,,,,,,,,,RTP-26050001,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-05-05,[],,,5a6f24a7-19ac-407b-9584-ace9dddd1cd1,,,,
+dd3d058b-6bfc-4314-9ce1-f4b19c70e566,dd5a33e2-b942-4fc3-8a3c-6d2e9756b6e2,U7 Error,"Hello There, There is one VRF unit is giving U7 error. Please fix it. Thank you.",HVAC,Medium,work_completed,"AIC ",Floor 2,,,2026-04-20,Afternoon (12PM-4PM),false,false,,,,siva (HVAC Technician),"Technicians: siva
+
+=== RCA ===
+Root Cause: Filter blockage cleared.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-04-18 12:09:01.831015+00,2026-04-20 13:06:27.207+00,,"
+[4/20/2026, 6:25:14 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED
+[4/20/2026, 6:33:38 PM] MANAGER APPROVED","[{""technicians"":[{""id"":""229a573f-2169-41f7-ba5d-488f404cf327"",""name"":""siva"",""contact"":""+91 63832 73835"",""specialization"":""HVAC Technician""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: Filter blockage cleared.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 4\nLabor Cost: ₹800.00\nTotal: ₹800.00\nNotes: "",""cost"":800,""opex_code"":null,""change_requested_at"":""2026-04-20T12:55:14.418Z"",""change_requested_by"":""Helpdesk"",""previous_status"":""pending_approval""}]",,1.00,2026-04-20 13:06:24.18+00,2026-04-20 13:06:27.207+00,0.00,,,,,,RTP-26040029,,true,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],2026-04-20,"[""/uploads/tenant-ticketing/froq_far_east_brand_services_pvt_ltd/1776514141510-581976630-IMG_1866.JPG""]",,,7f651536-4d83-4278-ac4f-5aff5cfaa90a,,,,
+e0a33c7c-cc7f-4983-8b2b-74f761cd03a4,ed50cb46-49cf-4791-bc38-714caee083cb,"Door broken ","Door is been broke in guest room ",Others,High,approved,SEZ - A2 Block,Floor 1,1,"Guest room ",2026-02-25,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: New Side beading new Fixed .
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-02-25 05:11:37.621362+00,2026-03-25 03:42:48.699+00,,"
+[3/18/2026, 1:34:39 PM] MANAGER APPROVED
+[25/03/2026, 09:12:48] TENANT APPROVED",,,,,,,,,,,,RTP-26020002,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-02-28,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+e284e432-a6ec-4f2e-9b1c-764d4278eefe,75f3adcf-f53e-4ae1-b028-b51fe74001e2,Sez 2nd floor door not closing issue,Sez 2 nd floor glass door not closing issue. And spring side some sound occurring.,Carpentry,High,assigned,SEZ - A2 Block,Floor 2,,Sez 2 nd floor entrance door,2026-04-30,Anytime,false,false,"Please resolve the issue quickly ",,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-04-30 13:05:39.150013+00,2026-05-06 09:23:46.398+00,,"[5/6/2026, 2:53:46 PM] ASSIGNED",,,,,,,,,,,,RTP-26040051,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-04-30,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+e33cb21f-7b57-4d87-bc95-22d34eab6813,6ae02caf-5781-4709-9221-6d44a7359484,HP LP issue - no airflow its too hot,"HP LP Issue in display and there is no airflow, due to which the rooms are too hot.",HVAC,High,work_completed,SEZ - A2 Block,Floor 4,,,2026-04-21,Anytime,false,true,This issue is still continuing request you to fix this permanently,,,siva (HVAC Technician),"
+
+=== RCA ===
+Root Cause: outdoor service
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 1
+Labor Cost: ₹200.00
+Total: ₹200.00
+Notes: ",200,2026-04-21 09:57:33.513824+00,2026-05-04 08:03:09.061+00,,"[4/27/2026, 4:00:58 PM] ASSIGNED
+[4/27/2026, 4:01:17 PM] PENDING APPROVAL
+[4/27/2026, 4:20:47 PM] APPROVED
+[5/4/2026, 1:33:05 PM] WORK STARTED - SLA: 1 hours
+[5/4/2026, 1:33:09 PM] WORK COMPLETED - Duration: 0.00 hours",,51ed86d0-9091-48ca-a594-858c840a2ca9,1.00,2026-05-04 08:03:05.126+00,2026-05-04 08:03:09.061+00,0.00,,,,,,RTP-26040033,,true,"[{""id"": ""229a573f-2169-41f7-ba5d-488f404cf327"", ""name"": ""siva"", ""contact"": ""+91 63832 73835"", ""specialization"": ""HVAC Technician""}]",{},,,[],2026-04-22,[],,,f208e8e6-c3b6-4374-9038-e7387b2998b3,,,,
+e8217e4b-0713-408c-9fbd-7e4fe9eb3e1c,6ae02caf-5781-4709-9221-6d44a7359484,HP LP issue in control / Flow is less in Sales Cabin,HP LP issue in control / Flow is less in Sales Cabin,HVAC,High,assigned,SEZ - A2 Block,Floor 4,,,2026-03-12,Anytime,false,false,,,,Muni (General Maintenance),Technicians: Muni (General Maintenance),0,2026-03-12 07:07:54.351841+00,2026-03-12 07:20:09.54+00,,,,,,,,,,,,,,RTP-26030017,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-12,"[""/uploads/tenant-ticketing/cadt_solutions_india_private_limited/1773299274032-95251374-WhatsApp_Image_2026-03-12_at_12.35.26_PM.jpeg"",""/uploads/tenant-ticketing/cadt_solutions_india_private_limited/1773299274091-8357539-WhatsApp_Image_2026-03-12_at_12.35.25_PM_(1).jpeg"",""/uploads/tenant-ticketing/cadt_solutions_india_private_limited/1773299274146-264778775-WhatsApp_Image_2026-03-12_at_12.35.25_PM.jpeg""]",,,f208e8e6-c3b6-4374-9038-e7387b2998b3,,,,
+e8fa133e-a9de-4aa7-92bf-8ddd51e3ebc1,ed50cb46-49cf-4791-bc38-714caee083cb,"Spot light not working ","Spot light not working in TT table room ",Electrical,Medium,resolved,SEZ - A2 Block,Floor 1,1,"TT table room ",2026-02-25,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: change the drive
+Findings: change the drive
+
+=== ESTIMATION ===
+Materials:
+Item | Qty | Rate | GST% | GST Amt | Total
+------------------------------------------------------------
+Drive 30w | 1 NOS | ₹540.00 | 0% | ₹0.00 | ₹540.00
+------------------------------------------------------------
+
+Material Cost (without GST): ₹540.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹540.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹540.00
+Notes: New drive changed",540,2026-02-25 05:09:16.99651+00,2026-03-13 09:06:58.251+00,2026-03-13 09:06:58.251+00,"
+[2/28/2026, 4:04:02 PM] MANAGER APPROVED
+[28/02/2026, 16:05:57] TENANT APPROVED",,,1.00,2026-03-06 06:19:55.514+00,2026-03-06 06:20:07.21+00,0.00,9/10,,,,,RTP-26020001,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-02-28,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+e9fce19b-8745-4913-a513-5ba9ad9268a1,ed50cb46-49cf-4791-bc38-714caee083cb,"Strip light ","Strip light not work in few areas ",Electrical,Medium,work_completed,SEZ - A2 Block,Floor 1,2,"Near TT table room and near accounts room ",2026-02-25,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: line issue rectified.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-02-25 11:24:24.116994+00,2026-05-04 10:09:53.824+00,,"
+[3/28/2026, 2:35:06 PM] MANAGER APPROVED
+[5/4/2026, 3:39:50 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 3:39:53 PM] WORK COMPLETED - Duration: 0.00 hours","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""rca"":true,""estimation"":0,""opex_code"":null,""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: general service\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""rejection_reason"":""no estimate"",""rejected_at"":""2026-03-09T09:18:47.417Z"",""rejected_by"":""Manager""}]",,0.50,2026-05-04 10:09:50.05+00,2026-05-04 10:09:53.824+00,0.00,,,,,,RTP-26020004,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,no estimate,[],2026-02-28,"[""/uploads/tenant-ticketing/rently_software_development_private_limited/1772018663627-51744612-1000523400.jpeg""]",,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+ef49aae7-eff2-445c-b99d-8d9858642dc7,87ca3b19-061a-4557-935e-bbbedbd773a2,Need lock for Centralized AC remote,Need an enclosed box and lock for Centralized AC remote.,HVAC,Medium,pending_tenant_approval,ADMIN Block,Floor 3,Visualsculptors,,,,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Need to fix the Lock box.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-18 11:13:21.397829+00,2026-03-28 08:22:50.922+00,,"
+[3/28/2026, 1:52:50 PM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030030,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],,[],,,4d389e69-d1c7-44dd-9875-64b413ed41d5,,,,
+f2878d43-85b8-46c1-8b9c-b55fa1b15da7,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Water leakage ",Ground floor UPS room AC Water leakage issue..,HVAC,High,pending_tenant_approval,SEZ - A2 Block,Floor G,Electrical room,Near UPS battery standing area,2026-03-19,Morning (8AM-12PM),true,false,Immediately check the issue .,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Ac coil need to be water wash.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-18 16:25:49.646335+00,2026-03-23 04:51:35.188+00,,"
+[3/23/2026, 10:21:35 AM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030031,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-19,"[""/uploads/tenant-ticketing/lti_mindtree_limited/1773851132854-754592519-20581.jpg"",""/uploads/tenant-ticketing/lti_mindtree_limited/1773851148582-634970142-20578.jpg""]",,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,
+f454bacb-ccda-4621-a8c5-c41fb9252e3d,dd5a33e2-b942-4fc3-8a3c-6d2e9756b6e2,Water leckage from the pantry,"Hello There, there is a water leckage from the pantry sink. Please do the neededful asap. Thank you.d",Plumbing,Critical,work_completed,"AIC ",Floor 2,,,2026-04-18,Anytime,false,false,"If it is not fixing today, we can't able to use the pantry. Thank you.",,,babu (Plumber),"
+
+=== RCA ===
+Root Cause: Pipe blockage cleaned.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 4
+Labor Cost: ₹800.00
+Total: ₹800.00
+Notes: ",800,2026-04-18 10:22:21.272079+00,2026-04-20 13:06:52.426+00,,"
+[4/20/2026, 6:33:47 PM] MANAGER APPROVED",,,3.00,2026-04-20 13:06:50.316+00,2026-04-20 13:06:52.425+00,0.00,,,,,,RTP-26040028,,true,"[{""id"": ""d94e45fb-08ba-4109-a40b-90bb6c51ee4c"", ""name"": ""babu"", ""contact"": ""9486978832"", ""specialization"": ""Plumber""}]",{},,,[],2026-04-18,[],,,7f651536-4d83-4278-ac4f-5aff5cfaa90a,,,,
+f5e16f34-383b-4635-a3a8-502832ac10eb,ed50cb46-49cf-4791-bc38-714caee083cb,"Power socket ","Power socket not working in meeting room ",Electrical,Medium,resolved,SEZ - A2 Block,Floor 1,1,"Decision cave ",2026-03-18,Afternoon (12PM-4PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: Issue Rectified.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-18 07:41:18.695735+00,2026-03-26 06:22:36.857+00,2026-03-26 06:22:36.857+00,"
+[3/23/2026, 10:21:45 AM] MANAGER APPROVED
+[25/03/2026, 09:12:32] TENANT APPROVED",,,0.50,2026-03-25 10:41:57.459+00,2026-03-25 10:42:34.081+00,0.01,10/10,,,,,RTP-26030029,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-18,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+f5fa33b2-5088-4910-aecb-13604c1ba96a,e9d20a73-a532-4396-9de7-da088c294dbf,Clear unused Damaged Storage Rack Occupying Space,"The storage rack provided by is in a damaged condition and is not usable. It is occupying just the space.
+We request clear the rack to free up the space for better use",Others,High,pending_approval,"Block C4 ",Floor 3,Pathway,Next to Storage room,2026-03-17,Anytime,false,false,"This rack is here for more than 2 months now, though we have requested only by words but it was missed by both side",,,Muni (General Maintenance),"Technicians: Muni
+
+=== RCA ===
+Root Cause: clear the work space area.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 2
+Labor Cost: ₹400.00
+Total: ₹400.00
+Notes: ",400,2026-03-17 06:20:44.847133+00,2026-04-24 10:11:11.56+00,,"
+[3/18/2026, 12:47:32 PM] MANAGER APPROVED
+[4/24/2026, 3:40:28 PM] CHANGES REQUESTED BY HELPDESK - RESUBMISSION REQUIRED","[{""technicians"":[{""id"":""8adea6a8-15f4-4fdf-9f02-2787d78462ed"",""name"":""Muni"",""contact"":""7598191737"",""specialization"":""General Maintenance""}],""resolution_notes"":""\n\n=== RCA ===\nRoot Cause: clear the work space area.\nFindings: \n\n=== ESTIMATION ===\nMaterials: None\n\nMaterial Cost (without GST): ₹0.00\nTotal GST: ₹0.00\nMaterial Cost (with GST): ₹0.00\nLabor Hours: 0\nLabor Cost: ₹0.00\nTotal: ₹0.00\nNotes: "",""cost"":0,""opex_code"":null,""change_requested_at"":""2026-04-24T10:10:28.745Z"",""change_requested_by"":""Helpdesk"",""manager_approved_at"":""3/18/2026, 12:47:32 PM"",""previous_status"":""pending_tenant_approval""}]",,,,,,,,,,,RTP-26030026,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-19,"[""/uploads/tenant-ticketing/mahat_labs_private_limited/1773728443690-995117063-WhatsApp_Image_2026-03-17_at_11.48.02_AM.jpeg""]",,,ff7ceae6-6608-4d75-b113-ab1fcdbf9593,,,,
+f6fbb3e7-8abb-4340-b944-a7e47e94a134,ed50cb46-49cf-4791-bc38-714caee083cb,"Adapter got short circuit ","An adapter got short circuit at IOT lab ",Electrical,Critical,work_completed,SEZ - A2 Block,Floor 1,1,IOT Lab,,Evening (4PM-8PM),false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: New driver need to change.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 1
+Labor Cost: ₹200.00
+Total: ₹200.00
+Notes: ",200,2026-03-13 08:55:11.303413+00,2026-05-04 08:13:50.35+00,,"[4/27/2026, 4:25:34 PM] PENDING TENANT APPROVAL
+[30/04/2026, 17:34:34] APPROVED
+[5/4/2026, 1:43:48 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 1:43:50 PM] WORK COMPLETED - Duration: 0.00 hours",,,0.50,2026-05-04 08:13:48.654+00,2026-05-04 08:13:50.35+00,0.00,,,,,,RTP-26030020,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-13,[],,,a47294f9-cdb2-4bc6-a3f8-6ddfd005dbbb,,,,
+fbbd6652-9503-4960-bb80-e8c4a4a00de9,d1edc7d1-105d-477e-8c05-45ad2d1e4815,tile replacement work in the CEO cabin.,Kindly arrange one person to carry out the tile replacement work in the CEO cabin.,Others,High,work_completed,SEZ - A1 Block,Floor G,,,2026-03-12,Anytime,false,false,Kindly arrange one person to carry out the tile replacement work in the CEO cabin.,,,Muni (General Maintenance),"Technicians: Muni (General Maintenance)
+
+=== RCA ===
+Root Cause: dust issue
+Findings: tiles replace old but good contusion 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0.5
+Labor Cost: ₹100.00
+Total: ₹100.00
+Notes: span control",100,2026-03-12 05:30:24.736326+00,2026-05-04 07:44:33.692+00,,"
+[4/27/2026, 5:42:12 PM] MANAGER APPROVED
+[5/4/2026, 1:14:26 PM] WORK STARTED - SLA: 0.5 hours
+[5/4/2026, 1:14:33 PM] WORK COMPLETED - Duration: 0.00 hours",,,0.50,2026-05-04 07:44:26.655+00,2026-05-04 07:44:33.692+00,0.00,,,,,,RTP-26030016,,true,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-14,[],,,bb9ee02a-c016-4214-bd4d-3a0a1d1cc1a4,,,,
+fbd98dcb-14a6-48bc-883c-782c57423be3,75f3adcf-f53e-4ae1-b028-b51fe74001e2,"Urinal ",Ground floor Gents restroom urinal water leakage issue,Plumbing,Medium,pending_tenant_approval,SEZ - A2 Block,Floor G,,,,Anytime,false,false,,,,Muni (General Maintenance),"
+
+=== RCA ===
+Root Cause: blockage cleared.
+Findings: 
+
+=== ESTIMATION ===
+Materials: None
+
+Material Cost (without GST): ₹0.00
+Total GST: ₹0.00
+Material Cost (with GST): ₹0.00
+Labor Hours: 0
+Labor Cost: ₹0.00
+Total: ₹0.00
+Notes: ",0,2026-03-18 07:33:00.639353+00,2026-03-23 04:51:50.878+00,,"
+[3/23/2026, 10:21:50 AM] MANAGER APPROVED",,,,,,,,,,,,RTP-26030028,,false,"[{""id"": ""8adea6a8-15f4-4fdf-9f02-2787d78462ed"", ""name"": ""Muni"", ""contact"": ""7598191737"", ""specialization"": ""General Maintenance""}]",{},,,[],2026-03-18,[],,,688e09cf-4555-457d-9b25-d3db1aff8392,,,,

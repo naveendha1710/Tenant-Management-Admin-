@@ -78,13 +78,16 @@ import MasterSettings from "./pages/admin/MasterSettings";
 import ApprovalsPage from "./pages/admin/ApprovalsPage";
 import EmailSettingsPage from "./pages/admin/EmailSettingsPage";
 import UnifiedHelpdeskPage from "./pages/admin/UnifiedHelpdeskPage";
+import VendorManagement from "./pages/admin/VendorManagement";
 import AdminCreateTicketPage from "./pages/admin/AdminCreateTicketPage";
 import AssetMaster from "./pages/assets/AssetMaster";
 import AssetMovement from "./pages/assets/AssetMovement";
 import AssetManagement from "./pages/assets/AssetManagement";
 import Configuration from "./pages/assets/Configuration";
+import ServicesPage from "./pages/assets/ServicesPage";
 import PreventiveMaintenanceList from "./pages/preventive-maintenance/PreventiveMaintenanceList";
 import PhysicalAuditModule from "./pages/physical-audit/PhysicalAuditModule";
+import Reports from "./pages/reports/Reports";
 import { WorkflowManagementPage } from "./pages/admin/WorkflowManagementPage";
 import { WorkflowBuilder } from "./components/workflow/WorkflowBuilder";
 import { PendingApprovalsDashboard } from "./components/workflow/PendingApprovalsDashboard";
@@ -160,9 +163,11 @@ const MODULE_ROUTES: Record<string, string> = {
   'Asset Master': '/assets/master',
   'Asset Movement': '/assets/movement',
   'Inventory': '/assets/inventory',
+  'Services': '/assets/services',
   'Configuration': '/assets/configuration',
   'Preventive Maintenance': '/assets/preventive-maintenance',
-  'Physical Audit': '/assets/physical-audit'
+  'Physical Audit': '/assets/physical-audit',
+  'Reports': '/reports'
 };
 
 function getRoleDashboardPath(role: string | null, user: any = null): string {
@@ -369,6 +374,13 @@ function AppContent() {
                     <CompanyGroup />
                   </ProtectedRoute>
                 } />
+                <Route path="/admin/vendors" element={
+                  <ProtectedRoute>
+                    <PermissionGuard path="/admin/vendors">
+                      <VendorManagement />
+                    </PermissionGuard>
+                  </ProtectedRoute>
+                } />
                 <Route path="/admin/accounts" element={
                   <ProtectedRoute>
                     <PermissionGuard path="/admin/accounts">
@@ -437,6 +449,11 @@ function AppContent() {
                     <AssetManagement />
                   </ProtectedRoute>
                 } />
+                <Route path="/assets/services" element={
+                  <ProtectedRoute>
+                    <ServicesPage />
+                  </ProtectedRoute>
+                } />
                 <Route path="/assets/configuration" element={
                   <ProtectedRoute>
                     <Configuration />
@@ -450,6 +467,11 @@ function AppContent() {
                 <Route path="/assets/physical-audit" element={
                   <ProtectedRoute>
                     <PhysicalAuditModule />
+                  </ProtectedRoute>
+                } />
+                <Route path="/reports" element={
+                  <ProtectedRoute>
+                    <Reports />
                   </ProtectedRoute>
                 } />
 

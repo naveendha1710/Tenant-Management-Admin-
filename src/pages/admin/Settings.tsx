@@ -26,21 +26,48 @@ import {
   Download,
   Eye,
   Lock,
-  Bell
+  Bell,
+  Cloud,
+  HardDrive,
+  Check
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissionUtils';
+import { TicketUploadService } from '@/services/ticketUploadService';
+import { DocumentUploadService } from '@/services/documentUploadService';
+import AssetImageUploadService from '@/services/assetImageUploadService';
 
 const Settings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [activeTab, setActiveTab] = useState('organization');
+  const [useSupabase, setUseSupabase] = useState(true);
+  const [useSupabaseDocuments, setUseSupabaseDocuments] = useState(true);
+  const [useSupabaseAssets, setUseSupabaseAssets] = useState(true);
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
     loadSettings();
+    loadUploadSettings();
+    loadDocumentUploadSettings();
+    loadAssetUploadSettings();
   }, []);
+
+  const loadUploadSettings = async () => {
+    const uploadSettings = await TicketUploadService.getSettings();
+    setUseSupabase(uploadSettings.useSupabase);
+  };
+
+  const loadDocumentUploadSettings = async () => {
+    const docSettings = await DocumentUploadService.getSettings();
+    setUseSupabaseDocuments(docSettings.useSupabase);
+  };
+
+  const loadAssetUploadSettings = async () => {
+    const assetSettings = await AssetImageUploadService.getSettings();
+    setUseSupabaseAssets(assetSettings.useSupabase);
+  };
 
   const loadSettings = async () => {
     const data = await settingsService.getSettings();
@@ -101,7 +128,7 @@ const Settings: React.FC = () => {
     <DashboardLayout title="Settings" subtitle="System Configuration & Management">
       <div className="space-y-4 sm:space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="organization" className="flex items-center gap-2">
               <Building className="h-4 w-4" />
               Organization
@@ -121,6 +148,10 @@ const Settings: React.FC = () => {
             <TabsTrigger value="tax" className="flex items-center gap-2">
               <Calculator className="h-4 w-4" />
               Tax/GST
+            </TabsTrigger>
+            <TabsTrigger value="uploads" className="flex items-center gap-2">
+              <Cloud className="h-4 w-4" />
+              File Uploads
             </TabsTrigger>
             <TabsTrigger value="backup" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
@@ -649,6 +680,175 @@ const Settings: React.FC = () => {
                   {canEdit && <Save className="h-4 w-4 mr-2" />}
                   Save Changes
                 </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* File Uploads Tab */}
+          <TabsContent value="uploads">
+            <Card>
+              <CardHeader>
+                <CardTitle>File Upload Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Ticket Attachments</h3>
+                  <p className="text-sm text-muted-foreground mb-4">Choose where ticket attachments should be stored</p>
+                </div>
+                
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${useSupabase ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <Cloud className={`h-5 w-5 ${useSupabase ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Supabase Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload files to cloud storage bucket</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {useSupabase && <Check className="h-4 w-4 text-green-600" />}
+                    <Switch 
+                      checked={useSupabase} 
+                      onCheckedChange={async (checked) => {
+                        setUseSupabase(checked);
+                        await TicketUploadService.saveSettings({ useSupabase: checked });
+                        toast({
+                          title: 'Settings Updated',
+                          description: `Ticket uploads will now use ${checked ? 'Supabase Storage' : 'Local Storage'}`,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${!useSupabase ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <HardDrive className={`h-5 w-5 ${!useSupabase ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Local Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload files to local server storage</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!useSupabase && <Check className="h-4 w-4 text-green-600" />}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-900">
+                    <strong>Current Setting:</strong> Ticket files will be uploaded to{' '}
+                    <span className="font-semibold">{useSupabase ? 'Supabase Storage' : 'Local Storage'}</span>
+                  </p>
+                </div>
+
+                <div className="border-t pt-6 mt-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Tenant Documents</h3>
+                  <p className="text-sm text-muted-foreground mb-4">Choose where tenant documents should be stored</p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${useSupabaseDocuments ? 'bg-purple-100' : 'bg-gray-100'}`}>
+                      <Cloud className={`h-5 w-5 ${useSupabaseDocuments ? 'text-purple-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Supabase Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload documents to cloud storage bucket</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {useSupabaseDocuments && <Check className="h-4 w-4 text-green-600" />}
+                    <Switch 
+                      checked={useSupabaseDocuments} 
+                      onCheckedChange={async (checked) => {
+                        setUseSupabaseDocuments(checked);
+                        await DocumentUploadService.saveSettings({ useSupabase: checked });
+                        toast({
+                          title: 'Settings Updated',
+                          description: `Document uploads will now use ${checked ? 'Supabase Storage' : 'Local Storage'}`,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${!useSupabaseDocuments ? 'bg-purple-100' : 'bg-gray-100'}`}>
+                      <HardDrive className={`h-5 w-5 ${!useSupabaseDocuments ? 'text-purple-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Local Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload documents to local server storage</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!useSupabaseDocuments && <Check className="h-4 w-4 text-green-600" />}
+                  </div>
+                </div>
+
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-purple-900">
+                    <strong>Current Setting:</strong> Tenant documents will be uploaded to{' '}
+                    <span className="font-semibold">{useSupabaseDocuments ? 'Supabase Storage' : 'Local Storage'}</span>
+                  </p>
+                </div>
+
+                <div className="border-t pt-6 mt-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Asset Images</h3>
+                  <p className="text-sm text-muted-foreground mb-4">Choose where asset images should be stored</p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${useSupabaseAssets ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      <Cloud className={`h-5 w-5 ${useSupabaseAssets ? 'text-green-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Supabase Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload asset images to cloud storage bucket</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {useSupabaseAssets && <Check className="h-4 w-4 text-green-600" />}
+                    <Switch 
+                      checked={useSupabaseAssets} 
+                      onCheckedChange={async (checked) => {
+                        setUseSupabaseAssets(checked);
+                        await AssetImageUploadService.saveSettings({ useSupabase: checked });
+                        toast({
+                          title: 'Settings Updated',
+                          description: `Asset image uploads will now use ${checked ? 'Supabase Storage' : 'Local Storage'}`,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${!useSupabaseAssets ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      <HardDrive className={`h-5 w-5 ${!useSupabaseAssets ? 'text-green-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Local Storage</Label>
+                      <p className="text-xs text-muted-foreground">Upload asset images to local server storage</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!useSupabaseAssets && <Check className="h-4 w-4 text-green-600" />}
+                  </div>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-900">
+                    <strong>Current Setting:</strong> Asset images will be uploaded to{' '}
+                    <span className="font-semibold">{useSupabaseAssets ? 'Supabase Storage' : 'Local Storage'}</span>
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

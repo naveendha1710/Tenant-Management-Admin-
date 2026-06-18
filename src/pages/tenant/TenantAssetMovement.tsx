@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,15 +44,24 @@ export default function AssetMovement() {
   const [openHandoverCombobox, setOpenHandoverCombobox] = useState(false);
   const [openOtherHandoverCombobox, setOpenOtherHandoverCombobox] = useState(false);
   const [otherHandovers, setOtherHandovers] = useState<Array<{name: string, email: string, contact: string}>>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [openVendorCombobox, setOpenVendorCombobox] = useState(false);
   const [viewMovement, setViewMovement] = useState<Movement | null>(null);
   const [viewMovementAssets, setViewMovementAssets] = useState<any[]>([]);
   const [canApproveCurrentMovement, setCanApproveCurrentMovement] = useState(false);
   const [isMovementCreator, setIsMovementCreator] = useState(false);
   const [viewTab, setViewTab] = useState<'details' | 'approvals'>('details');
   const [activeTab, setActiveTab] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [assetListPage, setAssetListPage] = useState(1);
+  const [totalAssets, setTotalAssets] = useState(0);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [searchDebounceTimer, setSearchDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const itemsPerPage = 16;
+  const assetsPerPage = 100;
   const { toast } = useToast();
+  const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     tenant_id: '',
     asset_ids: [] as string[],
@@ -74,8 +83,8 @@ export default function AssetMovement() {
     movement_reason: '',
     other_reason: '',
     remarks: '',
+    vendor_id: '',
     vendor_name: '',
-    vendor_contact: '',
     outward_date: '',
     expected_inward_date: '',
     gate_pass_number: '',
@@ -90,10 +99,11 @@ export default function AssetMovement() {
 
   useEffect(() => {
     loadStats();
-    loadData();
+    loadMovements();
     loadTenants();
     loadAllBuildings();
     loadOtherHandovers();
+    loadVendors();
   }, []);
 
   // Auto-fill tenant_id for tenant users
@@ -121,8 +131,26 @@ export default function AssetMovement() {
     }
   };
 
+  const loadVendors = async () => {
+    const { data, error } = await supabase
+      .from('vendors')
+      .select('id, vendor_name, email, phone')
+      .eq('status', 'active');
+    
+    if (!error && data) setVendors(data);
+  };
+
   useEffect(() => {
     // Load assets and buildings based on From Location selections for cascading filter
+    // For Maintenance or Disposal: Load all assets with pagination
+    if (formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal') {
+      if (activeTab === 1) {
+        loadAssetsPaginated(assetListPage, searchTerm);
+      }
+      return;
+    }
+    
+    // For Location: Load based on tenant selection
     if (formData.from_tenant_type === 'Tenant' && formData.tenant_id) {
       loadAssetsByTenant(formData.tenant_id);
       loadBuildingsByTenant(formData.tenant_id);
@@ -133,7 +161,7 @@ export default function AssetMovement() {
       setAssets([]);
       setBuildings([]);
     }
-  }, [formData.tenant_id, formData.from_tenant_type]);
+  }, [formData.tenant_id, formData.from_tenant_type, formData.movement_type, activeTab, assetListPage, searchTerm]);
 
   const loadAllAssets = async () => {
     try {
@@ -141,6 +169,41 @@ export default function AssetMovement() {
       setAssets(data);
     } catch (error) {
       console.error('Failed to load all assets:', error);
+    }
+  };
+
+  const loadAssetsPaginated = async (page: number, search: string = '') => {
+    try {
+      setLoadingAssets(true);
+      const offset = (page - 1) * assetsPerPage;
+      
+      // Build query with search
+      let countQuery = supabase.from('assets').select('*', { count: 'exact', head: true });
+      let dataQuery = supabase.from('assets').select('*');
+      
+      // Apply search filter if provided
+      if (search.trim()) {
+        const searchLower = search.toLowerCase();
+        countQuery = countQuery.or(`asset_id.ilike.%${searchLower}%,asset_name.ilike.%${searchLower}%,asset_category.ilike.%${searchLower}%`);
+        dataQuery = dataQuery.or(`asset_id.ilike.%${searchLower}%,asset_name.ilike.%${searchLower}%,asset_category.ilike.%${searchLower}%`);
+      }
+      
+      // Get total count
+      const { count } = await countQuery;
+      setTotalAssets(count || 0);
+      
+      // Get paginated data
+      const { data, error } = await dataQuery
+        .range(offset, offset + assetsPerPage - 1)
+        .order('asset_id');
+      
+      if (!error && data) {
+        setAssets(data as any);
+      }
+    } catch (error) {
+      console.error('Failed to load paginated assets:', error);
+    } finally {
+      setLoadingAssets(false);
     }
   };
 
@@ -210,6 +273,12 @@ export default function AssetMovement() {
     
     if (!matchesSearch) return false;
     
+    // For Maintenance/Disposal: No location filters
+    if (formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal') {
+      return true;
+    }
+    
+    // For Location: Apply location filters
     if (formData.from_tenant_type === 'Tenant' && formData.tenant_id) {
       if (asset.handover_to !== formData.tenant_id) return false;
     }
@@ -230,6 +299,18 @@ export default function AssetMovement() {
     return true;
   });
 
+  // Pagination - for Maintenance/Disposal use totalAssets, for Location use filtered count
+  const totalAssetPages = (formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal')
+    ? Math.ceil(totalAssets / assetsPerPage)
+    : Math.ceil(filteredAssets.length / assetsPerPage);
+  
+  const paginatedAssets = (formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal')
+    ? filteredAssets // Already paginated from database
+    : filteredAssets.slice(
+        (assetListPage - 1) * assetsPerPage,
+        assetListPage * assetsPerPage
+      );
+
   const loadStats = async () => {
     try {
       const data = await AssetService.getDashboardStats();
@@ -241,14 +322,10 @@ export default function AssetMovement() {
     }
   };
 
-  const loadData = async () => {
+  const loadMovements = async () => {
     try {
-      const [movementsData, assetsData] = await Promise.all([
-        AssetService.getMovements(),
-        AssetService.getAssets()
-      ]);
+      const movementsData = await AssetService.getMovements();
       setMovements(movementsData);
-      setAssets(assetsData);
 
       // Filter movements based on user's workflow assignments
       let filteredMovements = movementsData;
@@ -277,7 +354,7 @@ export default function AssetMovement() {
       }));
       setMovementsWithDetails(enriched);
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('Failed to load movements:', error);
     }
   };
 
@@ -371,8 +448,8 @@ export default function AssetMovement() {
       movement_reason: '',
       other_reason: '',
       remarks: '',
+      vendor_id: '',
       vendor_name: '',
-      vendor_contact: '',
       outward_date: '',
       expected_inward_date: '',
       gate_pass_number: '',
@@ -418,6 +495,9 @@ export default function AssetMovement() {
   };
 
   const handleSubmit = async () => {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     try {
       // Generate unique request number with random component to avoid conflicts
       const requestNumber = `MV-${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
@@ -447,8 +527,8 @@ export default function AssetMovement() {
         to_building: toBuildingName || undefined,
         to_floor: toFloorName || undefined,
         to_room: toRoomName || undefined,
+        vendor_id: formData.vendor_id || undefined,
         vendor_name: formData.vendor_name || undefined,
-        vendor_contact: formData.vendor_contact || undefined,
         outward_date: formData.outward_date || undefined,
         expected_inward_date: formData.expected_inward_date || undefined,
         gate_pass_number: formData.gate_pass_number || undefined,
@@ -492,9 +572,12 @@ export default function AssetMovement() {
       }
       
       setShowForm(false);
-      loadData();
+      loadMovements();
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to create movements', variant: 'destructive' });
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -531,7 +614,7 @@ export default function AssetMovement() {
       // Call workflow engine to approve
       await workflowEngine.approveStep(step.id, user?.appUser?.id || '');
       toast({ title: 'Success', description: 'Approval submitted' });
-      loadData();
+      loadMovements();
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to approve', variant: 'destructive' });
     }
@@ -570,19 +653,32 @@ export default function AssetMovement() {
       // Call workflow engine to reject
       await workflowEngine.rejectStep(step.id, user?.appUser?.id || '');
       toast({ title: 'Success', description: 'Movement rejected' });
-      loadData();
+      loadMovements();
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to reject', variant: 'destructive' });
     }
   };
 
   const loadMovementAssets = async (requestNumber: string) => {
-    const { data: movement } = await supabase.from('asset_movements').select('assets, id, requested_by').eq('request_number', requestNumber).single();
+    const { data: movement } = await supabase.from('asset_movements').select('assets, id, requested_by, vendor_id').eq('request_number', requestNumber).single();
     if (movement) {
       const assetIds = movement.assets || [];
       if (assetIds.length > 0) {
         const { data: assetData } = await supabase.from('assets').select('id, asset_id, asset_name, asset_category, asset_status').in('id', assetIds);
         if (assetData) setViewMovementAssets(assetData);
+      }
+      
+      // Load vendor details if vendor_id exists
+      if (movement.vendor_id) {
+        const { data: vendorData } = await supabase
+          .from('vendors')
+          .select('id, vendor_name, email, phone')
+          .eq('id', movement.vendor_id)
+          .single();
+        
+        if (vendorData && !vendors.find(v => v.id === vendorData.id)) {
+          setVendors(prev => [...prev, vendorData]);
+        }
       }
       
       await checkUserCanApprove(movement.id);
@@ -604,7 +700,7 @@ export default function AssetMovement() {
       
       toast({ title: 'Success', description: 'Movement marked as completed' });
       setViewMovement(null);
-      loadData();
+      loadMovements();
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to mark as completed', variant: 'destructive' });
     }
@@ -956,13 +1052,48 @@ export default function AssetMovement() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                       <div>
                         <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                          Vendor Name <span className="text-red-500">*</span>
+                          Vendor <span className="text-red-500">*</span>
                         </label>
-                        <Input value={formData.vendor_name} onChange={(e) => updateField('vendor_name', e.target.value)} placeholder="Enter vendor name" />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 mb-1.5 block">Vendor Contact</label>
-                        <Input value={formData.vendor_contact} onChange={(e) => updateField('vendor_contact', e.target.value)} placeholder="Enter contact" />
+                        <Popover open={openVendorCombobox} onOpenChange={setOpenVendorCombobox}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" role="combobox" className="w-full justify-between">
+                              {formData.vendor_id ? vendors.find(v => v.id === formData.vendor_id)?.vendor_name : "Select vendor"}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search vendor..." />
+                              <CommandList>
+                                <CommandEmpty>No vendor found.</CommandEmpty>
+                                <CommandGroup>
+                                  {vendors.map(v => (
+                                    <CommandItem key={v.id} value={v.vendor_name} onSelect={() => { 
+                                      updateField('vendor_id', v.id);
+                                      updateField('vendor_name', v.vendor_name);
+                                      setOpenVendorCombobox(false); 
+                                    }}>
+                                      <Check className={cn("mr-2 h-4 w-4", formData.vendor_id === v.id ? "opacity-100" : "opacity-0")} />
+                                      <div>
+                                        <div className="font-medium">{v.vendor_name}</div>
+                                        <div className="text-xs text-gray-500">{v.email || v.phone || 'No contact'}</div>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {formData.vendor_id && (() => {
+                          const selectedVendor = vendors.find(v => v.id === formData.vendor_id);
+                          return selectedVendor ? (
+                            <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                              <p className="text-xs text-gray-600"><span className="font-medium">Email:</span> {selectedVendor.email || 'N/A'}</p>
+                              <p className="text-xs text-gray-600"><span className="font-medium">Phone:</span> {selectedVendor.phone || 'N/A'}</p>
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                       <div>
                         <label className="text-sm font-medium text-gray-700 mb-1.5 block">
@@ -1040,18 +1171,77 @@ export default function AssetMovement() {
                 <QRScannerModal isOpen={showQrScanner} onClose={() => setShowQrScanner(false)} onScan={handleQRScan} title="SCAN ASSET" subtitle="Scan QR code or enter Asset ID manually" />
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input placeholder="Search assets by ID, name, or category..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+                  <Input 
+                    placeholder="Search assets by ID, name, or category..." 
+                    value={searchTerm} 
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSearchTerm(value);
+                      
+                      // Clear existing timer
+                      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+                      
+                      // For Maintenance/Disposal: debounce search to avoid too many API calls
+                      if (formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal') {
+                        const timer = setTimeout(() => {
+                          setAssetListPage(1);
+                        }, 500);
+                        setSearchDebounceTimer(timer);
+                      } else {
+                        // For Location: instant filter (client-side)
+                        setAssetListPage(1);
+                      }
+                    }} 
+                    className="pl-10" 
+                  />
+                </div>
+                <div className="flex items-center justify-between text-sm text-gray-600 px-1">
+                  <span>
+                    {(formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal') 
+                      ? `Showing ${((assetListPage - 1) * assetsPerPage) + 1}-${Math.min(assetListPage * assetsPerPage, totalAssets)} of ${totalAssets} assets`
+                      : `Showing ${((assetListPage - 1) * assetsPerPage) + 1}-${Math.min(assetListPage * assetsPerPage, filteredAssets.length)} of ${filteredAssets.length} assets`
+                    }
+                  </span>
+                  {totalAssetPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setAssetListPage(p => Math.max(1, p - 1))} 
+                        disabled={assetListPage === 1 || loadingAssets}
+                        className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                      >
+                        Previous
+                      </button>
+                      <span className="px-2">Page {assetListPage} of {totalAssetPages}</span>
+                      <button 
+                        onClick={() => setAssetListPage(p => Math.min(totalAssetPages, p + 1))} 
+                        disabled={assetListPage === totalAssetPages || loadingAssets}
+                        className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="h-[calc(100%-120px)] overflow-y-auto border rounded-md">
-                  {filteredAssets.map(asset => (
-                    <div key={asset.id} className="flex items-center space-x-3 p-3 hover:bg-gray-50 border-b last:border-b-0">
-                      <Checkbox checked={formData.asset_ids.includes(asset.id)} onCheckedChange={() => toggleAssetSelection(asset.id)} />
-                      <div className="flex-1">
-                        <div className="font-medium">{asset.asset_id} - {asset.asset_name}</div>
-                        <div className="text-sm text-gray-500">{asset.asset_category} | {asset.asset_status}</div>
-                      </div>
+                  {loadingAssets ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                  ))}
+                  ) : paginatedAssets.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                      No assets found
+                    </div>
+                  ) : (
+                    paginatedAssets.map(asset => (
+                      <div key={asset.id} className="flex items-center space-x-3 p-3 hover:bg-gray-50 border-b last:border-b-0">
+                        <Checkbox checked={formData.asset_ids.includes(asset.id)} onCheckedChange={() => toggleAssetSelection(asset.id)} />
+                        <div className="flex-1">
+                          <div className="font-medium">{asset.asset_id} - {asset.asset_name}</div>
+                          <div className="text-sm text-gray-500">{asset.asset_category} | {asset.asset_status}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
               <div className="w-[40%]">
@@ -1137,15 +1327,19 @@ export default function AssetMovement() {
                       </div>
                     </div>
                   )}
-                  {formData.movement_type === 'Maintenance' && (
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Vendor Details</h4>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <div>Vendor: {formData.vendor_name}</div>
-                        {formData.vendor_contact && <div>Contact: {formData.vendor_contact}</div>}
+                  {formData.movement_type === 'Maintenance' && formData.vendor_id && (() => {
+                    const vendor = vendors.find(v => v.id === formData.vendor_id);
+                    return vendor ? (
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-2">Vendor Details</h4>
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <div>Vendor: {vendor.vendor_name}</div>
+                          {vendor.email && <div>Email: {vendor.email}</div>}
+                          {vendor.phone && <div>Phone: {vendor.phone}</div>}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    ) : null;
+                  })()}
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Reason</h4>
                     <div className="text-sm text-gray-600">{formData.movement_reason === 'Other' ? formData.other_reason : formData.movement_reason}</div>
@@ -1156,9 +1350,9 @@ export default function AssetMovement() {
                 <Button variant="outline" onClick={() => setActiveTab(1)}>Back</Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-                  <Button onClick={handleSubmit}>
+                  <Button onClick={handleSubmit} disabled={isSubmitting}>
                     <Save className="h-4 w-4 mr-2" />
-                    Submit Request
+                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
                   </Button>
                 </div>
               </div>
@@ -1374,6 +1568,45 @@ export default function AssetMovement() {
                               <p className="text-gray-800"><span className="font-medium">Building:</span> {(viewMovement as any).to_building_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Floor:</span> {(viewMovement as any).to_floor_name || 'N/A'}</p>
                               <p className="text-gray-800"><span className="font-medium">Room:</span> {viewMovement.to_room || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {(viewMovement as any).movement_type === 'Maintenance' && (
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex-1 bg-orange-50 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Settings className="h-4 w-4 text-orange-600" />
+                              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Maintenance Details</label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                              <p className="text-gray-800"><span className="font-medium">Vendor:</span> {(viewMovement as any).vendor_name || 'N/A'}{!((viewMovement as any).vendor_id) && (viewMovement as any).vendor_name && <span className="text-red-600 text-xs ml-1">(Deleted)</span>}</p>
+                              <p className="text-gray-800"><span className="font-medium">Email:</span> {(() => {
+                                const vendor = vendors.find(v => v.id === (viewMovement as any).vendor_id);
+                                return vendor?.email || 'N/A';
+                              })()}</p>
+                              <p className="text-gray-800"><span className="font-medium">Phone:</span> {(() => {
+                                const vendor = vendors.find(v => v.id === (viewMovement as any).vendor_id);
+                                return vendor?.phone || 'N/A';
+                              })()}</p>
+                              <p className="text-gray-800"><span className="font-medium">Outward Date:</span> {(viewMovement as any).outward_date || 'N/A'}</p>
+                              <p className="text-gray-800"><span className="font-medium">Expected Inward:</span> {(viewMovement as any).expected_inward_date || 'N/A'}</p>
+                              <p className="text-gray-800"><span className="font-medium">Gate Pass:</span> {(viewMovement as any).gate_pass_number || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {(viewMovement as any).movement_type === 'Disposal' && (
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex-1 bg-red-50 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertCircle className="h-4 w-4 text-red-600" />
+                              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Disposal Details</label>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <p className="text-gray-800"><span className="font-medium">Movement Date:</span> {viewMovement.movement_date}</p>
+                              {viewMovement.movement_reason && <p className="text-gray-800"><span className="font-medium">Reason:</span> {viewMovement.movement_reason}</p>}
+                              {viewMovement.remarks && <p className="text-gray-800"><span className="font-medium">Remarks:</span> {viewMovement.remarks}</p>}
                             </div>
                           </div>
                         </div>

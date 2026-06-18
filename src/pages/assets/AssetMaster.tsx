@@ -9,7 +9,7 @@ import { AssetService, DashboardStats, Asset } from '@/services/assetService';
 import { buildingService, Building, Floor } from '@/services/buildingService';
 import { AppSettingsService } from '@/services/appSettingsService';
 import { supabase } from '@/lib/supabaseClient';
-import { Package, Wrench, X, Save, Ticket, Check, ChevronsUpDown, Filter, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Camera, Upload, Plus } from 'lucide-react';
+import { Package, Wrench, X, Save, Ticket, Check, ChevronsUpDown, Filter, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Camera, Upload, Plus, Trash2, FileText, Image } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AssetList from './AssetList';
 import { QRCodeSVG } from 'qrcode.react';
@@ -17,6 +17,8 @@ import { Combobox } from '@/components/ui/combobox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { generateAssetLabelsPDF } from '@/utils/thermalPdfGenerator';
+import AssetImageUploadService from '@/services/assetImageUploadService';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Component to display room with category
 function RoomDisplay({ roomId, floorId }: { roomId: string; floorId?: string }) {
@@ -153,6 +155,23 @@ export default function AssetMaster() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [assetMovements, setAssetMovements] = useState<any[]>([]);
   const [loadingMovements, setLoadingMovements] = useState(false);
+  const [assetServices, setAssetServices] = useState<any[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+  const [serviceFormData, setServiceFormData] = useState<any>({
+    service_date: new Date().toISOString().split('T')[0],
+    service_type: '',
+    service_provider: '',
+    service_description: '',
+    service_cost: '',
+    next_service_date: '',
+    performed_by: '',
+    invoice_number: '',
+    warranty_extended: false,
+    remarks: ''
+  });
+  const [assetDocuments, setAssetDocuments] = useState<any[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
   const [bulkGeneration, setBulkGeneration] = useState(false);
   const [bulkQuantity, setBulkQuantity] = useState('');
@@ -187,10 +206,12 @@ export default function AssetMaster() {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [showLabelOptions, setShowLabelOptions] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
   const [showAddRoomForm, setShowAddRoomForm] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState('');
   const [newRoomCategory, setNewRoomCategory] = useState('');
   const [roomCategories, setRoomCategories] = useState<any[]>([]);
+  const [showUpdateHistory, setShowUpdateHistory] = useState(false);
   const [formData, setFormData] = useState<Partial<Asset>>({
     asset_name: '',
     asset_category: '',
@@ -207,6 +228,7 @@ export default function AssetMaster() {
     loadAssetInchargeUsers();
     loadAssets();
     loadRoomCategories();
+    loadVendors();
   }, []);
 
   useEffect(() => {
@@ -376,17 +398,45 @@ export default function AssetMaster() {
 
   const generateBulkAssetIds = async () => {
     try {
-      const { data: config } = await supabase
+      const { data: configs, error: configError } = await supabase
         .from('id_configs')
         .select('*')
         .eq('entity_type', 'asset')
-        .eq('is_active', true)
-        .single();
+        .eq('is_active', true);
 
-      if (!config) return;
+      if (configError) {
+        toast({ 
+          title: 'Configuration Error', 
+          description: 'Failed to load asset ID configuration', 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
+      if (!configs || configs.length === 0) {
+        toast({ 
+          title: 'Configuration Error', 
+          description: 'No active asset ID configuration found', 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
+      if (configs.length > 1) {
+        toast({ 
+          title: 'Configuration Error', 
+          description: `Multiple active asset ID configurations found (${configs.length}). Please deactivate all but one.`, 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
+      const config = configs[0];
 
       const configData = (window as any).assetDropdownConfig || [];
+      
       const category = configData.find((c: any) => c.name === formData.asset_category);
+      
       const subCategory = category?.subTypes?.find((st: any) => st.name === formData.asset_sub_category);
 
       const { data: existingAssets } = await supabase
@@ -449,7 +499,7 @@ export default function AssetMaster() {
           duplicates.push(assetId);
         }
       }
-
+      
       setBulkAssetIds(newIds);
       setDuplicateIds(duplicates);
     } catch (error) {
@@ -461,8 +511,49 @@ export default function AssetMaster() {
 
   const loadStats = async () => {
     try {
-      const data = await AssetService.getDashboardStats();
-      setStats(data);
+      // Load stats with optimized query - only counts, not full data
+      const { count: totalCount } = await supabase
+        .from('assets')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: activeCount } = await supabase
+        .from('assets')
+        .select('*', { count: 'exact', head: true })
+        .eq('asset_status', 'Active');
+      
+      const { count: idleCount } = await supabase
+        .from('assets')
+        .select('*', { count: 'exact', head: true })
+        .eq('asset_status', 'Idle');
+      
+      const { count: repairCount } = await supabase
+        .from('assets')
+        .select('*', { count: 'exact', head: true })
+        .eq('asset_status', 'Repair');
+      
+      const { count: scrapCount } = await supabase
+        .from('assets')
+        .select('*', { count: 'exact', head: true })
+        .or('asset_status.eq.Scrap,asset_status.eq.Disposed');
+      
+      // Set stats with actual counts
+      setStats({
+        totalAssets: totalCount || 0,
+        bondedAssets: 0,
+        assetValueGross: 0,
+        assetValueNet: 0,
+        dutyForegoneAmount: 0,
+        pendingApprovals: 0,
+        underMaintenance: repairCount || 0,
+        movementToday: 0,
+        auditDue: 0,
+        warrantyExpiring: 0,
+        complianceStatus: 'OK',
+        activeCount: activeCount || 0,
+        idleCount: idleCount || 0,
+        repairCount: repairCount || 0,
+        scrapCount: scrapCount || 0
+      } as any);
     } catch (error) {
       console.error('Failed to load stats:', error);
     } finally {
@@ -663,16 +754,14 @@ export default function AssetMaster() {
   const loadVendors = async () => {
     try {
       const { data, error } = await supabase
-        .from('users')
-        .select('id, name, email, role, selected_roles');
+        .from('vendors')
+        .select('id, vendor_name, email, status')
+        .eq('status', 'active');
       
       if (error) return;
       
       if (data) {
-        const vendorUsers = data.filter(u => 
-          u.role === 'Vendor' || (u.selected_roles && Array.isArray(u.selected_roles) && u.selected_roles.includes('Vendor'))
-        );
-        setVendors(vendorUsers);
+        setVendors(data);
       }
     } catch (error) {
       console.error('Failed to load vendors:', error);
@@ -784,20 +873,17 @@ export default function AssetMaster() {
   };
 
   const loadAssets = async () => {
-    try {
-      const data = await AssetService.getAssets();
-      setAssets(data);
-    } catch (error) {
-      console.error('Failed to load assets:', error);
-    }
+    // Don't load all assets upfront - only load when needed for filtering
+    // This prevents loading 20,000+ assets on initial page load
+    setAssets([]);
   };
 
-  const generateAssetId = async () => {
+  const generateAssetId = async (): Promise<string> => {
     try {
       const configData = (window as any).assetDropdownConfig || [];
       if (configData.length === 0) {
         setGeneratedAssetId('AUTO-GENERATED');
-        return;
+        return 'AUTO-GENERATED';
       }
 
       const { data: config, error } = await supabase
@@ -807,11 +893,11 @@ export default function AssetMaster() {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error || !config) {
         setGeneratedAssetId('AUTO-GENERATED');
-        return;
+        return 'AUTO-GENERATED';
       }
 
       const category = configData.find((c: any) => c.name === formData.asset_category);
@@ -870,9 +956,11 @@ export default function AssetMaster() {
 
       setGeneratedAssetId(assetId);
       updateField('asset_id', assetId);
+      return assetId;
     } catch (error) {
       console.error('Failed to generate asset ID:', error);
       setGeneratedAssetId('AUTO-GENERATED');
+      return 'AUTO-GENERATED';
     }
   };
 
@@ -940,6 +1028,20 @@ export default function AssetMaster() {
     setEditingAsset(asset);
     setViewMode(true);
     setAssetImages(asset.asset_pictures ? JSON.parse(asset.asset_pictures) : []);
+    
+    // Load documents from asset_documents column if available
+    if (asset.asset_documents) {
+      try {
+        const docs = JSON.parse(asset.asset_documents);
+        setAssetDocuments(docs);
+      } catch (e) {
+        console.error('Failed to parse asset_documents:', e);
+        setAssetDocuments([]);
+      }
+    } else {
+      setAssetDocuments([]);
+    }
+    
     setCurrentImageIndex(0);
     
     // Show form after everything is loaded
@@ -949,6 +1051,379 @@ export default function AssetMaster() {
     loadAssetAudits(asset.asset_id);
     loadAssetHistory(asset.id);
     loadAssetMovements(asset.asset_id);
+    loadAssetServices(asset.asset_id);
+    loadAssetDocuments(asset.id);
+  };
+
+  const loadAssetServices = async (assetId: string) => {
+    setLoadingServices(true);
+    try {
+      const { data, error } = await supabase
+        .from('asset_service_records')
+        .select('*')
+        .eq('asset_id', assetId)
+        .order('service_date', { ascending: false });
+      
+      if (!error && data) {
+        setAssetServices(data);
+      }
+    } catch (error) {
+      console.error('Failed to load asset services:', error);
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  const handleAddService = async () => {
+    if (!editingAsset?.asset_id) return;
+    
+    try {
+      const savedUser = localStorage.getItem('demo_user');
+      const userName = savedUser ? JSON.parse(savedUser)?.name : 'Unknown';
+      
+      const { error } = await supabase
+        .from('asset_service_records')
+        .insert({
+          asset_id: editingAsset.asset_id,
+          service_date: serviceFormData.service_date,
+          service_type: serviceFormData.service_type || null,
+          service_provider: serviceFormData.service_provider || null,
+          service_description: serviceFormData.service_description || null,
+          service_cost: serviceFormData.service_cost ? parseFloat(serviceFormData.service_cost) : null,
+          next_service_date: serviceFormData.next_service_date || null,
+          performed_by: serviceFormData.performed_by || null,
+          invoice_number: serviceFormData.invoice_number || null,
+          warranty_extended: serviceFormData.warranty_extended,
+          remarks: serviceFormData.remarks || null,
+          created_by: userName,
+          updated_by: userName
+        });
+      
+      if (error) throw error;
+      
+      toast({ title: 'Success', description: 'Service record added successfully' });
+      setShowAddServiceForm(false);
+      setServiceFormData({
+        service_date: new Date().toISOString().split('T')[0],
+        service_type: '',
+        service_provider: '',
+        service_description: '',
+        service_cost: '',
+        next_service_date: '',
+        performed_by: '',
+        invoice_number: '',
+        warranty_extended: false,
+        remarks: ''
+      });
+      loadAssetServices(editingAsset.asset_id);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to add service record', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm('Delete this service record?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('asset_service_records')
+        .delete()
+        .eq('id', serviceId);
+      
+      if (error) throw error;
+      
+      toast({ title: 'Success', description: 'Service record deleted successfully' });
+      if (editingAsset?.asset_id) {
+        loadAssetServices(editingAsset.asset_id);
+      }
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to delete service record', variant: 'destructive' });
+    }
+  };
+
+  // Document handling functions
+  const loadAssetDocuments = async (assetId: string) => {
+    setLoadingDocuments(true);
+    try {
+      // Load documents from the asset's asset_documents column
+      if (editingAsset?.asset_documents) {
+        try {
+          const docs = JSON.parse(editingAsset.asset_documents);
+          setAssetDocuments(docs);
+        } catch (e) {
+          console.error('Failed to parse asset_documents:', e);
+          setAssetDocuments([]);
+        }
+      } else {
+        setAssetDocuments([]);
+      }
+    } catch (error) {
+      console.error('Failed to load asset documents:', error);
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!editingAsset?.asset_id || !e.target.files || e.target.files.length === 0) return;
+    
+    try {
+      const files = Array.from(e.target.files);
+      
+      // Validate file size (50MB limit)
+      for (const file of files) {
+        if (file.size > 50 * 1024 * 1024) {
+          toast({ 
+            title: 'File Too Large', 
+            description: `${file.name} exceeds the 50MB limit`, 
+            variant: 'destructive' 
+          });
+          return;
+        }
+      }
+      
+      // Get existing documents from asset
+      let existingDocs = [];
+      if (formData.asset_documents) {
+        try {
+          existingDocs = JSON.parse(formData.asset_documents);
+        } catch (e) {
+          console.error('Failed to parse existing documents:', e);
+          existingDocs = [];
+        }
+      }
+      
+      const category = formData.asset_category?.replace(/\s+/g, '_') || 'Uncategorized';
+      const subCategory = formData.asset_sub_category?.replace(/\s+/g, '_').replace(/\//g, '_') || 'Uncategorized';
+      const assetId = editingAsset.asset_id.replace(/\//g, '_');
+      
+      // Upload each file to Supabase Storage
+      const newDocuments = [];
+      
+      for (const file of files) {
+        // Generate unique filename with timestamp
+        const timestamp = Date.now();
+        const safeFileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const folderPath = `${category}/${subCategory}/${assetId}/`;
+        const storagePath = `${folderPath}${safeFileName}`;
+        
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('asset_documents')
+          .upload(storagePath, file);
+        
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          toast({ 
+            title: 'Upload Failed', 
+            description: `Failed to upload ${file.name}: ${uploadError.message}`, 
+            variant: 'destructive' 
+          });
+          return;
+        }
+        
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('asset_documents')
+          .getPublicUrl(storagePath);
+        
+        newDocuments.push({
+          id: timestamp.toString(),
+          file_name: file.name,
+          file_path: storagePath,
+          file_url: urlData.publicUrl,
+          file_size: file.size,
+          file_type: file.type,
+          uploaded_by: user?.appUser?.name || 'Unknown'
+        });
+      }
+      
+      // Combine existing and new documents
+      const updatedDocs = [...existingDocs, ...newDocuments];
+      
+      // Update form data with combined documents as JSON string
+      updateField('asset_documents', JSON.stringify(updatedDocs));
+      
+      // Also update local assetDocuments state so it shows immediately
+      setAssetDocuments(updatedDocs);
+      
+      toast({ title: 'Success', description: `${files.length} document(s) uploaded successfully` });
+    } catch (error: any) {
+      console.error('Document upload error:', error);
+      toast({ 
+        title: 'Error', 
+        description: error.message || 'Failed to upload documents', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+    
+    try {
+      // Find the document to get file path
+      const docToDelete = assetDocuments.find(d => d.id === documentId);
+      
+      if (docToDelete?.file_path) {
+        // Delete from Supabase Storage
+        const { error: storageError } = await supabase.storage
+          .from('asset_documents')
+          .remove([docToDelete.file_path]);
+        
+        if (storageError) {
+          console.error('Storage deletion error:', storageError);
+          toast({ 
+            title: 'Deletion Warning', 
+            description: 'Document record deleted but file may still exist in storage', 
+            variant: 'destructive' 
+          });
+        }
+      }
+      
+      // Remove from asset_documents array and update form
+      const updatedDocs = assetDocuments.filter(d => d.id !== documentId);
+      
+      console.log('Before delete:', assetDocuments);
+      console.log('After delete (filtered):', updatedDocs);
+      console.log('Updated docs JSON:', JSON.stringify(updatedDocs));
+      
+      // Update local state immediately for UI feedback
+      setAssetDocuments(updatedDocs);
+      
+      if (editingAsset?.id) {
+        console.log('Updating database with documents:', JSON.stringify(updatedDocs));
+        
+        // If no more documents, set to null instead of empty array
+        const docsToUpdate = updatedDocs.length > 0 ? JSON.stringify(updatedDocs) : null;
+        console.log('Docs to update in DB:', docsToUpdate);
+        
+        try {
+          // Use direct Supabase update to ensure it works
+          const { data: userData } = await supabase
+            .from('assets')
+            .select('updated_by')
+            .eq('id', editingAsset.id)
+            .single();
+          
+          const savedUser = localStorage.getItem('demo_user');
+          const userName = savedUser ? JSON.parse(savedUser).appUser?.name : 'Unknown';
+          
+          const { error: updateError } = await supabase
+            .from('assets')
+            .update({ 
+              asset_documents: docsToUpdate,
+              updated_by: userName
+            })
+            .eq('id', editingAsset.id);
+          
+          if (updateError) {
+            console.error('Update error:', updateError);
+            toast({ 
+              title: 'Warning', 
+              description: `Document deleted but failed to update database: ${updateError.message}`, 
+              variant: 'destructive' 
+            });
+          } else {
+            console.log('Database updated successfully');
+            
+            // Reload asset data from DB to ensure we have the latest state
+            const { data: refreshedAsset } = await supabase
+              .from('assets')
+              .select('*')
+              .eq('id', editingAsset.id)
+              .single();
+            
+            if (refreshedAsset) {
+              setFormData(refreshedAsset);
+              console.log('Form data reloaded from database');
+            }
+          }
+        } catch (error) {
+          console.error('Failed to update database:', error);
+          toast({ 
+            title: 'Warning', 
+            description: 'Document deleted but failed to update database', 
+            variant: 'destructive' 
+          });
+        }
+      } else {
+        updateField('asset_documents', JSON.stringify(updatedDocs));
+      }
+      
+      toast({ title: 'Success', description: 'Document deleted successfully' });
+    } catch (error: any) {
+      console.error('Delete document error:', error);
+      toast({ 
+        title: 'Error', 
+        description: error.message || 'Failed to delete document', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const handleDownloadDocument = async (fileUrl: string, fileName: string) => {
+    try {
+      // Fetch the file from Supabase Storage
+      const response = await fetch(fileUrl);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download document');
+      }
+      
+      // Create blob and trigger download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Download error:', error);
+      toast({ 
+        title: 'Error', 
+        description: error.message || 'Failed to download document', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const getDocumentIcon = (fileName: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    
+    switch (extension) {
+      case 'pdf':
+        return <FileText className="h-8 w-8 text-red-500" />;
+      case 'doc':
+      case 'docx':
+        return <FileText className="h-8 w-8 text-blue-500" />;
+      case 'xls':
+      case 'xlsx':
+        return <FileText className="h-8 w-8 text-green-500" />;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return <Image className="h-8 w-8 text-purple-500" />;
+      case 'txt':
+        return <FileText className="h-8 w-8 text-gray-500" />;
+      default:
+        return <FileText className="h-8 w-8 text-orange-500" />;
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const loadAssetAudits = async (assetId: string) => {
@@ -1122,9 +1597,7 @@ export default function AssetMaster() {
       }
       
       const cleanData = { ...formData };
-      if (cleanData.contract === 'No' || !cleanData.vendor_id) {
-        delete cleanData.vendor_id;
-      }
+      
       if (!cleanData.customs_category) {
         delete cleanData.customs_category;
       }
@@ -1140,6 +1613,26 @@ export default function AssetMaster() {
         cleanData.asset_pictures = null;
       }
       
+      // Save documents as JSON array of paths
+      if (assetDocuments.length > 0) {
+        const docPaths = assetDocuments.map(d => ({
+          id: d.id,
+          file_name: d.file_name,
+          file_path: d.file_path,
+          file_url: d.file_url,
+          file_size: d.file_size,
+          file_type: d.file_type,
+          uploaded_by: d.uploaded_by,
+          created_at: d.created_at
+        }));
+        cleanData.asset_documents = JSON.stringify(docPaths);
+      } else if (formData.asset_documents) {
+        // If assetDocuments is empty but formData has documents, preserve them
+        cleanData.asset_documents = formData.asset_documents;
+      } else {
+        cleanData.asset_documents = null;
+      }
+      
       // Handle handover_to field - set to null if handoverType is 'other'
       if (handoverType === 'other') {
         cleanData.handover_to = null;
@@ -1153,16 +1646,43 @@ export default function AssetMaster() {
       } else {
         if (bulkGeneration && bulkQuantity && parseInt(bulkQuantity) > 1) {
           // Bulk creation with pre-generated IDs
+          if (bulkAssetIds.length === 0) {
+            toast({ title: 'Error', description: 'No asset IDs generated. Please try again.', variant: 'destructive' });
+            return;
+          }
+          
           const promises = bulkAssetIds.map((assetId) => {
             const assetData = { ...cleanData, asset_id: assetId };
             return AssetService.createAsset(assetData);
           });
           
-          await Promise.all(promises);
-          toast({ title: 'Success', description: `${parseInt(bulkQuantity)} assets created successfully` });
+          const results = await Promise.allSettled(promises);
+          const successful = results.filter(r => r.status === 'fulfilled').length;
+          const failed = results.filter(r => r.status === 'rejected').length;
+          
+          if (failed > 0) {
+            toast({ 
+              title: 'Partial Success', 
+              description: `${successful} assets created, ${failed} failed.`, 
+              variant: 'destructive' 
+            });
+          } else {
+            toast({ title: 'Success', description: `${successful} assets created successfully` });
+          }
         } else {
           // Single creation
-          cleanData.asset_id = generatedAssetId;
+          // Prefer explicit asset_id in formData, else try to generate one now
+          let finalAssetId = formData.asset_id && String(formData.asset_id).trim() ? String(formData.asset_id).trim() : '';
+          if (!finalAssetId) {
+            finalAssetId = await generateAssetId();
+          }
+
+          if (!finalAssetId || finalAssetId === 'AUTO-GENERATED') {
+            toast({ title: 'Error', description: 'Failed to generate asset ID. Please enter Asset ID manually or check configuration.', variant: 'destructive' });
+            return;
+          }
+
+          cleanData.asset_id = finalAssetId;
           // Fix temp image paths if images were uploaded before asset ID was generated
           if (assetImages.some(url => url.includes('/asset_pictures/temp/'))) {
             const fixedImages = await Promise.all(assetImages.map(async (url) => {
@@ -1172,7 +1692,7 @@ export default function AssetMaster() {
               const res = await fetch(url);
               const blob = await res.blob();
               fd.append('file', new File([blob], filename!, { type: blob.type }));
-              const uploadRes = await fetch(`/api/upload?category=asset_pictures&assetId=${encodeURIComponent(generatedAssetId)}`, { method: 'POST', body: fd });
+              const uploadRes = await fetch(`/api/upload?category=asset_pictures&assetId=${encodeURIComponent(finalAssetId)}`, { method: 'POST', body: fd });
               const result = await uploadRes.json();
               return result.success ? result.file.url : url;
             }));
@@ -1289,7 +1809,6 @@ export default function AssetMaster() {
     // Combination filters
     let matchesCombination = true;
     if (a.asset_combination && (filterColor || filterMaterial || filterSize)) {
-      // Need to load combination data for filtering
       const combination = filterCombinations.find(c => c.id === a.asset_combination);
       if (combination) {
         const matchesColor = !filterColor || filterColor === 'all' || combination.color === filterColor;
@@ -1304,10 +1823,11 @@ export default function AssetMaster() {
     return matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesRoom && matchesTenant && matchesCombination;
   });
 
-  const activeCount    = filteredAssets.filter(a => a.asset_status === 'Active').length;
-  const idleCount      = filteredAssets.filter(a => a.asset_status === 'Idle').length;
-  const repairCount    = filteredAssets.filter(a => a.asset_status === 'Repair').length;
-  const scrapCount     = filteredAssets.filter(a => a.asset_status === 'Scrap' || a.asset_status === 'Disposed').length;
+  // Use stats from database for KPI cards
+  const activeCount    = (stats as any)?.activeCount || 0;
+  const idleCount      = (stats as any)?.idleCount || 0;
+  const repairCount    = (stats as any)?.repairCount || 0;
+  const scrapCount     = (stats as any)?.scrapCount || 0;
 
   return (
     <DashboardLayout title="Asset Master" subtitle="Manage assets and inventory">
@@ -1324,9 +1844,9 @@ export default function AssetMaster() {
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{filteredAssets.length}</div>
+                <div className="text-2xl font-bold">{stats?.totalAssets || 0}</div>
                 {(filterCategory || filterSubCategory || filterType || filterStatus || filterBuilding || filterFloor || filterTenant || filterColor || filterMaterial || filterSize) && (
-                  <p className="text-xs text-muted-foreground mt-1">of {stats?.totalAssets || 0} total</p>
+                  <p className="text-xs text-muted-foreground mt-1">total (unfiltered)</p>
                 )}
               </CardContent>
             </Card>
@@ -1406,7 +1926,7 @@ export default function AssetMaster() {
                       <div className="space-y-4">
                         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Basic Information</h2>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Asset Name</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_name || 'N/A'}</p>
@@ -1418,6 +1938,18 @@ export default function AssetMaster() {
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Category</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.asset_sub_category || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Combination</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">
+                                {(() => {
+                                  const comboId = formData.asset_combination || (editingAsset ? (editingAsset as any).asset_combination : undefined);
+                                  if (!comboId) return 'N/A';
+                                  const combo = assetCombinations.find((c: any) => String(c.value) === String(comboId) || String(c.id) === String(comboId));
+                                  if (combo) return [combo.color, combo.material, combo.size].filter(Boolean).join(' | ');
+                                  return 'N/A';
+                                })()}
+                              </p>
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sub Category</label>
@@ -1498,6 +2030,8 @@ export default function AssetMaster() {
                             <TabsTrigger value="tickets" className="text-xs sm:text-sm whitespace-nowrap">Tickets</TabsTrigger>
                             <TabsTrigger value="history" className="text-xs sm:text-sm whitespace-nowrap">History</TabsTrigger>
                             <TabsTrigger value="audits" className="text-xs sm:text-sm whitespace-nowrap">Audits</TabsTrigger>
+                            <TabsTrigger value="services" className="text-xs sm:text-sm whitespace-nowrap">Services</TabsTrigger>
+                            <TabsTrigger value="documents" className="text-xs sm:text-sm whitespace-nowrap">Documents</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="status" className="mt-4">
@@ -1522,6 +2056,18 @@ export default function AssetMaster() {
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Warranty Expiry</label>
                               <p className="text-sm font-medium text-gray-900 mt-2">{formData.warranty_date ? new Date(formData.warranty_date).toLocaleDateString() : 'N/A'}</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{vendors.find(v => v.id === formData.vendor_id)?.vendor_name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Invoice Number</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.invoice_number || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Invoice Date</label>
+                              <p className="text-sm font-medium text-gray-900 mt-2">{formData.invoice_date ? new Date(formData.invoice_date).toLocaleDateString() : 'N/A'}</p>
                             </div>
                             <div>
                               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Next Preventive Maintenance Date</label>
@@ -1892,6 +2438,147 @@ export default function AssetMaster() {
                                       ))}
                                     </tbody>
                                   </table>
+                                </div>
+                              )}
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="services" className="mt-4">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Service Records</h3>
+                              </div>
+                              
+                              {loadingServices ? (
+                                <div className="flex justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
+                              ) : assetServices.length === 0 ? (
+                                <p className="text-sm text-gray-500">No service records found</p>
+                              ) : (
+                                <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+                                  <table className="w-full">
+                                    <thead>
+                                      <tr className="border-b border-gray-200">
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Service Date</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Service Type</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Provider</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Description</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Next Service</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Performed By</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Invoice #</th>
+                                        <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Remarks</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {assetServices.map((service) => (
+                                        <tr key={service.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                          <td className="py-3 px-4 text-sm text-gray-900">{new Date(service.service_date).toLocaleDateString()}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.service_type || 'N/A'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.service_provider || 'N/A'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.service_description || '-'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-900">₹{service.service_cost ? service.service_cost.toLocaleString() : '0'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.next_service_date ? new Date(service.next_service_date).toLocaleDateString() : '-'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.performed_by || 'N/A'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.invoice_number || '-'}</td>
+                                          <td className="py-3 px-4 text-sm text-gray-600">{service.remarks || '-'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="documents" className="mt-4">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                              <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Asset Documents</h3>
+                                {editingAsset && !viewMode && (
+                                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                                    <Upload className="h-4 w-4" />
+                                    <span>Upload Document</span>
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      accept="*/*"
+                                      multiple
+                                      onChange={handleDocumentUpload}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                              
+                              {loadingDocuments ? (
+                                <div className="flex justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
+                              ) : assetDocuments.length === 0 ? (
+                                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-lg">
+                                  {viewMode || !editingAsset ? (
+                                    <>
+                                      <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                                      <p className="text-sm text-gray-500">No documents uploaded for this asset</p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="h-16 w-16 text-blue-300 mx-auto mb-4" />
+                                      <p className="text-sm text-gray-500 mb-4">Click "Upload Document" to add files</p>
+                                      <p className="text-xs text-gray-400 max-w-md mx-auto">
+                                        Supported: PDF, Images, Word, Excel, and all file types
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {assetDocuments.map((doc) => (
+                                    <div key={doc.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white">
+                                      <div className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-3">
+                                            {getDocumentIcon(doc.file_name)}
+                                            <div>
+                                              <p className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{doc.file_name}</p>
+                                              <p className="text-xs text-gray-500 mt-1">{formatFileSize(doc.file_size)}</p>
+                                            </div>
+                                          </div>
+                                          {!viewMode && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleDeleteDocument(doc.id)}
+                                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-3">
+                                          <a
+                                            href={doc.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium rounded-lg transition-colors text-center"
+                                          >
+                                            View/Download
+                                          </a>
+                                          {!viewMode && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleDownloadDocument(doc.file_url, doc.file_name)}
+                                              className="h-8 px-3 text-xs"
+                                            >
+                                              Save
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -2321,9 +3008,10 @@ export default function AssetMaster() {
                         </div>
 
                         <Tabs value={activeTab} onValueChange={setActiveTab}>
-                          <TabsList className="grid grid-cols-2 w-full">
+                          <TabsList className="grid grid-cols-3 w-full">
                             <TabsTrigger value="status" className="text-xs sm:text-sm">Status & Maintenance</TabsTrigger>
                             <TabsTrigger value="sez" className="text-xs sm:text-sm">SEZ & Customs</TabsTrigger>
+                            <TabsTrigger value="documents" className="text-xs sm:text-sm">Documents</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="status" className="mt-4">
@@ -2374,7 +3062,25 @@ export default function AssetMaster() {
                         <label className="text-sm font-medium text-gray-700">Warranty Expiry</label>
                         <Input type="date" value={formData.warranty_date || ''} onChange={(e) => updateField('warranty_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
                       </div>
-
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Vendor</label>
+                        <Combobox
+                          value={formData.vendor_id || ''}
+                          onValueChange={(v) => updateField('vendor_id', v)}
+                          options={vendors.map(vendor => ({ value: vendor.id, label: `${vendor.vendor_name} (${vendor.email || 'No email'})` }))}
+                          placeholder="Select vendor"
+                          searchPlaceholder="Search vendors..."
+                          disabled={viewMode}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Invoice Number</label>
+                        <Input value={formData.invoice_number || ''} onChange={(e) => updateField('invoice_number', e.target.value)} placeholder="Enter invoice number" className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Invoice Date</label>
+                        <Input type="date" value={formData.invoice_date || ''} onChange={(e) => updateField('invoice_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
+                      </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Depreciation Date</label>
                         <Input type="date" value={formData.depreciation_date || ''} onChange={(e) => updateField('depreciation_date', e.target.value)} className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20" disabled={viewMode} />
@@ -2498,6 +3204,67 @@ export default function AssetMaster() {
                               </div>
                             </div>
                           </TabsContent>
+                          
+                          <TabsContent value="documents" className="mt-4">
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                              <div className="space-y-4">
+                                {/* Document list */}
+                                {assetDocuments.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {assetDocuments.map((doc) => (
+                                      <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                          {getDocumentIcon(doc.file_name)}
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium text-gray-900 truncate">{doc.file_name}</p>
+                                            <p className="text-xs text-gray-500">{formatFileSize(doc.file_size)}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <a
+                                            href={doc.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                                          >
+                                            View/Download
+                                          </a>
+                                          {!viewMode && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleDeleteDocument(doc.id)}
+                                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">No documents uploaded</p>
+                                )}
+
+                                {/* Upload button */}
+                                {!viewMode && (
+                                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-blue-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer">
+                                    <Upload className="w-8 h-8 text-blue-400" />
+                                    <span className="text-sm font-medium text-blue-600 mt-2">Click to upload documents</span>
+                                    <span className="text-xs text-gray-500 mt-1">PDF, Images, Word, Excel & all file types supported (Max 50MB)</span>
+                                    <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept="*/*"
+                                      multiple
+                                      onChange={handleDocumentUpload}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          </TabsContent>
                         </Tabs>
                       </div>
                     )}
@@ -2529,10 +3296,31 @@ export default function AssetMaster() {
                             {!viewMode && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const newImages = assetImages.filter((_, i) => i !== idx);
-                                  setAssetImages(newImages);
-                                  if (currentImageIndex >= newImages.length) setCurrentImageIndex(Math.max(0, newImages.length - 1));
+                                onClick={async () => {
+                                  try {
+                                    const imgToDelete = assetImages[idx];
+                                    
+                                    // Check if it's a Supabase proxy URL or direct path
+                                    let supabasePath = imgToDelete;
+                                    if (imgToDelete.startsWith('/api/asset-images/')) {
+                                      const urlWithoutQuery = imgToDelete.split('?')[0];
+                                      const pathPart = urlWithoutQuery.replace('/api/asset-images/', '');
+                                      supabasePath = `/supabase/${pathPart}`;
+                                    }
+                                    
+                                    if (supabasePath.startsWith('/supabase/')) {
+                                      const settings = await AssetImageUploadService.getSettings();
+                                      await AssetImageUploadService.deleteFile(supabasePath, settings.useSupabase);
+                                    }
+                                    
+                                    const newImages = assetImages.filter((_, i) => i !== idx);
+                                    setAssetImages(newImages);
+                                    if (currentImageIndex >= newImages.length) setCurrentImageIndex(Math.max(0, newImages.length - 1));
+                                    
+                                    toast({ title: 'Success', description: 'Image deleted' });
+                                  } catch (error) {
+                                    toast({ title: 'Error', description: 'Failed to delete image', variant: 'destructive' });
+                                  }
                                 }}
                                 className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition hover:bg-red-600"
                               >
@@ -2554,23 +3342,40 @@ export default function AssetMaster() {
                         const files = Array.from(fileList || []).slice(0, 2 - assetImages.length);
                         if (files.length === 0) return;
                         try {
+                          const settings = await AssetImageUploadService.getSettings();
+                          
+                          if (!formData.asset_category || !formData.asset_sub_category) {
+                            toast({ title: 'Error', description: 'Please select Asset Type and Category first', variant: 'destructive' });
+                            return;
+                          }
+                          
                           const assetId = editingAsset?.asset_id || generatedAssetId || 'temp';
-                          const urls = await Promise.all(files.map(async (rawFile) => {
-                            const file = await compressImage(rawFile);
-                            const fd = new FormData();
-                            fd.append('file', file);
-                            const res = await fetch(`/api/upload?category=asset_pictures&assetId=${encodeURIComponent(assetId)}`, { method: 'POST', body: fd });
-                            const result = await res.json();
-                            return result.success ? result.file.url : null;
-                          }));
-                          const valid = urls.filter(Boolean) as string[];
-                          if (valid.length > 0) {
-                            setAssetImages(prev => [...prev, ...valid].slice(0, 2));
-                            toast({ title: 'Success', description: `${valid.length} image(s) uploaded` });
+                          
+                          const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+                          
+                          const results = await AssetImageUploadService.uploadFiles(
+                            compressedFiles,
+                            formData.asset_category,
+                            formData.asset_sub_category,
+                            assetId,
+                            settings.useSupabase
+                          );
+                          
+                          // Resolve URLs for viewing
+                          const urls = results.map(r => {
+                            if (r.url.startsWith('/supabase/') && user?.appUser) {
+                              const resolved = AssetImageUploadService.resolveUrl(r.url, user.appUser.id, user.appUser.email);
+                              return resolved;
+                            }
+                            return r.url;
+                          });
+                          if (urls.length > 0) {
+                            setAssetImages(prev => [...prev, ...urls].slice(0, 2));
+                            toast({ title: 'Success', description: `${urls.length} image(s) uploaded to ${settings.useSupabase ? 'Supabase' : 'Local Storage'}` });
                           } else {
                             toast({ title: 'Error', description: 'Upload failed', variant: 'destructive' });
                           }
-                        } catch {
+                        } catch (error) {
                           toast({ title: 'Error', description: 'Upload failed', variant: 'destructive' });
                         }
                       };
@@ -2680,8 +3485,47 @@ export default function AssetMaster() {
                           <p className="text-sm text-gray-900 mt-1">{editingAsset.updated_at ? new Date(editingAsset.updated_at).toLocaleString() : 'N/A'}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500">Last Updated By</p>
-                          <p className="text-sm text-gray-900 mt-1">{editingAsset.updated_by || 'N/A'}</p>
+                          <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowUpdateHistory(!showUpdateHistory)}>
+                            <p className="text-xs text-gray-500">Last Updated By</p>
+                            {showUpdateHistory ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+                          </div>
+                          {(() => {
+                            try {
+                              let history = [];
+                              
+                              // Handle different data types
+                              if (typeof editingAsset.update_history === 'string') {
+                                history = JSON.parse(editingAsset.update_history);
+                              } else if (Array.isArray(editingAsset.update_history)) {
+                                history = editingAsset.update_history;
+                              } else if (editingAsset.update_history && typeof editingAsset.update_history === 'object') {
+                                history = [editingAsset.update_history];
+                              }
+                              
+                              if (Array.isArray(history) && history.length > 0) {
+                                const lastUpdate = history[history.length - 1];
+                                return (
+                                  <>
+                                    <p className="text-sm text-gray-900 mt-1">{lastUpdate.updated_by || 'Unknown'}</p>
+                                    {showUpdateHistory && (
+                                      <div className="mt-3 space-y-2 max-h-48 overflow-y-auto border-t pt-2">
+                                        <p className="text-xs font-medium text-gray-600 mb-2">Update History ({history.length} entries)</p>
+                                        {history.slice().reverse().map((entry: any, idx: number) => (
+                                          <div key={idx} className="p-2 bg-gray-50 rounded border border-gray-200">
+                                            <p className="text-xs font-medium text-gray-900">{entry.updated_by || 'Unknown'}</p>
+                                            <p className="text-xs text-gray-500">{entry.updated_at ? new Date(entry.updated_at).toLocaleString() : 'N/A'}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              }
+                              return <p className="text-sm text-gray-500 mt-1">No updates</p>;
+                            } catch (e) {
+                              return <p className="text-sm text-red-500 mt-1">Error loading history</p>;
+                            }
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -2717,20 +3561,28 @@ export default function AssetMaster() {
                       </div>
                     </div>
                   )}
-                  </div>
 
-                  <div className="mt-6 pb-20 sm:pb-0 flex flex-col-reverse sm:flex-row justify-end gap-3">
-                    {!viewMode && (
-                      <>
-                        <Button variant="outline" onClick={() => setShowForm(false)} className="w-full sm:w-auto px-6 py-2 border-gray-300">
-                          Cancel
-                        </Button>
-                        <Button onClick={handleSave} className="w-full sm:w-auto px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white" disabled={duplicateIds.length > 0 || !formData.asset_name?.trim() || !formData.asset_category?.trim() || !formData.asset_sub_category?.trim() || !formData.asset_type?.trim()}>
-                          <Save className="h-4 w-4 mr-2" />
-                          {editingAsset ? 'Save Changes' : bulkGeneration ? `Create ${parseInt(bulkQuantity) || 0} Assets` : 'Create Asset'}
-                        </Button>
-                      </>
-                    )}
+                  {!viewMode && (
+                    <div className="mt-6 pb-20 sm:pb-0 flex flex-col-reverse sm:flex-row justify-end gap-3">
+                      <Button variant="outline" onClick={() => setShowForm(false)} className="w-full sm:w-auto px-6 py-2 border-gray-300">
+                        Cancel
+                      </Button>
+                      <Button onClick={handleSave} className="w-full sm:w-auto px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white" disabled={duplicateIds.length > 0 || !formData.asset_name?.trim() || !formData.asset_category?.trim() || !formData.asset_sub_category?.trim() || !formData.asset_type?.trim()}>
+                        <Save className="h-4 w-4 mr-2" />
+                        {editingAsset ? 'Save Changes' : bulkGeneration ? `Create ${parseInt(bulkQuantity) || 0} Assets` : 'Create Asset'}
+                      </Button>
+                      {(duplicateIds.length > 0 || !formData.asset_name?.trim() || !formData.asset_category?.trim() || !formData.asset_sub_category?.trim() || !formData.asset_type?.trim()) && (
+                        <div className="text-xs text-red-600 mt-2">
+                          Save disabled: 
+                          {duplicateIds.length > 0 && ` Duplicate IDs (${duplicateIds.length})`}
+                          {!formData.asset_name?.trim() && ' Missing Asset Name'}
+                          {!formData.asset_category?.trim() && ' Missing Asset Type'}
+                          {!formData.asset_sub_category?.trim() && ' Missing Category'}
+                          {!formData.asset_type?.trim() && ' Missing Sub Category'}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   </div>
                 </div>
               </div>
@@ -2886,7 +3738,7 @@ export default function AssetMaster() {
                           const q = filterTenantSearch.toLowerCase();
                           return !q || (t.company || t.name || '').toLowerCase().includes(q);
                         })
-                        .map(tenant => (
+                        .map((tenant) => (
                           <SelectItem key={tenant.id} value={tenant.id}>{tenant.company || tenant.name}</SelectItem>
                         ))}
                     </SelectContent>
@@ -2953,7 +3805,12 @@ export default function AssetMaster() {
                 onSelectAllAssets={handleSelectAllAssets}
                 onSelectAllFiltered={handleSelectAllFiltered}
                 onClearSelection={() => setSelectedAssets(new Set())}
-                filteredCount={filteredAssets.length}
+                onTotalCountChange={(count) => {
+                  // Update stats with actual total from AssetList
+                  if (stats) {
+                    setStats({ ...stats, totalAssets: count });
+                  }
+                }}
               />
             </div>
           )}

@@ -12,7 +12,6 @@ export type TicketStatus =
   | 'work_started'
   | 'in_progress'
   | 'work_completed'
-  | 'completed'
   | 'resolved'
   | 'reopened'
   | 'closed';
@@ -112,14 +111,6 @@ export const TICKET_STATUSES: Record<TicketStatus, StatusConfig> = {
     color: 'bg-teal-50 text-teal-700 border-teal-200',
     bgColor: 'bg-teal-50',
     textColor: 'text-teal-700',
-    description: 'Work completed, awaiting verification',
-    visibleTo: ['tenant', 'admin', 'helpdesk']
-  },
-  completed: {
-    label: 'Completed',
-    color: 'bg-lime-50 text-lime-700 border-lime-200',
-    bgColor: 'bg-lime-50',
-    textColor: 'text-lime-700',
     description: 'Work completed, awaiting tenant feedback',
     visibleTo: ['tenant', 'admin', 'helpdesk']
   },

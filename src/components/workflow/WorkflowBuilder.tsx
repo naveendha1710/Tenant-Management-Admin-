@@ -118,11 +118,17 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
   // Load workflow if editing
   useEffect(() => {
-    // Get tenant ID from URL params if creating new
+    // Get tenant ID or system users from URL params
     const urlParams = new URLSearchParams(window.location.search);
     const urlTenantId = urlParams.get('tenantId');
+    const isSystem = urlParams.get('system') === 'true';
+    const userIds = urlParams.get('users');
     
-    if (urlTenantId) {
+    if (isSystem && userIds) {
+      // System workflow creation - no tenant
+      setSelectedTenantId('');
+      setTenantName('System Workflow');
+    } else if (urlTenantId) {
       setSelectedTenantId(urlTenantId);
       loadTenantName(urlTenantId);
     } else if (tenantId) {
@@ -138,6 +144,9 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   // Reload approvers when tenant changes
   useEffect(() => {
     if (selectedTenantId) {
+      loadEligibleApprovers();
+    } else {
+      // System workflow - load all admin approvers
       loadEligibleApprovers();
     }
   }, [selectedTenantId]);
@@ -165,7 +174,24 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setWorkflowName(data.workflow.name);
         setWorkflowDescription(data.workflow.description || '');
         setSelectedTenantId(data.workflow.tenant_id || '');
-        if (data.workflow.tenant_id) {
+        
+        // Check if this is a system workflow
+        if (!data.workflow.tenant_id) {
+          setTenantName('System Workflow');
+          
+          // Load workflow_users to get assigned users
+          const { data: workflowUsers } = await supabase
+            .from('workflow_users')
+            .select('user_id')
+            .eq('workflow_id', id);
+          
+          if (workflowUsers && workflowUsers.length > 0) {
+            const userIds = workflowUsers.map(wu => wu.user_id).join(',');
+            // Update URL to include system workflow params
+            const newUrl = `${window.location.pathname}?system=true&users=${userIds}`;
+            window.history.replaceState({}, '', newUrl);
+          }
+        } else if (data.workflow.tenant_id) {
           loadTenantName(data.workflow.tenant_id);
         }
         
@@ -208,7 +234,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
   const loadEligibleApprovers = async () => {
     try {
-      const approvers = await workflowService.getEligibleApprovers(selectedTenantId);
+      const approvers = await workflowService.getEligibleApprovers(selectedTenantId || undefined);
       setEligibleApprovers(approvers);
     } catch (error) {
       console.error('Failed to load approvers:', error);
@@ -289,7 +315,12 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       return;
     }
 
-    if (!selectedTenantId) {
+    // Check if system workflow
+    const urlParams = new URLSearchParams(window.location.search);
+    const isSystem = urlParams.get('system') === 'true';
+    const userIds = urlParams.get('users');
+
+    if (!isSystem && !selectedTenantId) {
       toast.error('Please select a tenant');
       return;
     }
@@ -312,6 +343,9 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         condition_value: node.data.config?.value,
         end_type: node.data.endType // Save END node type (approved/rejected)
       }));
+      
+      console.log('[WorkflowBuilder] Saving workflow with nodes:', dbNodes);
+      console.log('[WorkflowBuilder] APPROVAL node approvers:', dbNodes.find(n => n.node_type === 'APPROVAL')?.approver_user_ids);
 
       // Convert React Flow edges to database format
       const dbEdges = edges.map(edge => ({
@@ -322,24 +356,114 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       }));
 
       if (workflowId) {
+        // Check if this is a system workflow update
+        const urlParams = new URLSearchParams(window.location.search);
+        const isSystemUpdate = urlParams.get('system') === 'true';
+        const userIds = urlParams.get('users');
+        
         await workflowService.updateWorkflow(workflowId, {
           name: workflowName,
           description: workflowDescription,
-          tenant_id: selectedTenantId,
+          tenant_id: isSystemUpdate ? undefined : selectedTenantId,
           nodes: dbNodes,
           edges: dbEdges
         });
+        
+        // If system workflow, update workflow_users
+        if (isSystemUpdate && userIds) {
+          // Delete existing workflow_users
+          await supabase
+            .from('workflow_users')
+            .delete()
+            .eq('workflow_id', workflowId);
+          
+          // Insert new workflow_users
+          const userIdArray = userIds.split(',');
+          const workflowUsers = userIdArray.map(uid => ({
+            workflow_id: workflowId,
+            user_id: uid.trim()
+          }));
+          
+          const { error: insertError } = await supabase
+            .from('workflow_users')
+            .insert(workflowUsers);
+          
+          if (insertError) {
+            console.error('[WorkflowBuilder] Error updating workflow_users:', insertError);
+            toast.error('Failed to update user assignments: ' + insertError.message);
+          }
+        }
+        
         toast.success('Workflow updated successfully');
       } else {
         const workflow = await workflowService.createWorkflow({
           name: workflowName,
           description: workflowDescription,
-          tenant_id: selectedTenantId,
+          tenant_id: isSystem ? undefined : selectedTenantId,
           entity_type: 'asset_movement',
           nodes: dbNodes,
           edges: dbEdges
         });
-        toast.success('Workflow created successfully');
+        
+        // If system workflow, create workflow_users entries
+        if (isSystem && userIds) {
+          console.log('[WorkflowBuilder] Creating workflow_users for system workflow');
+          console.log('[WorkflowBuilder] isSystem:', isSystem);
+          console.log('[WorkflowBuilder] userIds:', userIds);
+          console.log('[WorkflowBuilder] workflow.id:', workflow.id);
+          
+          const userIdArray = userIds.split(',');
+          console.log('[WorkflowBuilder] userIdArray:', userIdArray);
+          
+          const workflowUsers = userIdArray.map(uid => ({
+            workflow_id: workflow.id,
+            user_id: uid.trim() // Trim whitespace
+          }));
+          
+          console.log('[WorkflowBuilder] workflowUsers to insert:', workflowUsers);
+          
+          const { data: insertedUsers, error: insertError } = await supabase
+            .from('workflow_users')
+            .insert(workflowUsers)
+            .select();
+          
+          if (insertError) {
+            console.error('[WorkflowBuilder] Error inserting workflow_users:', insertError);
+            
+            // Check if it's the unique constraint error
+            if (insertError.message.includes('already assigned to another active')) {
+              toast.error('One or more users are already assigned to another active workflow. Please deactivate the other workflow first.');
+            } else {
+              toast.error('Failed to assign users to workflow: ' + insertError.message);
+            }
+            
+            // Delete the workflow since user assignment failed
+            await supabase.from('workflows').delete().eq('id', workflow.id);
+            return;
+          } else {
+            console.log('[WorkflowBuilder] Successfully inserted workflow_users:', insertedUsers);
+          }
+          
+          // Auto-activate system workflows
+          try {
+            await workflowService.publishWorkflow(workflow.id);
+          } catch (activationError: any) {
+            console.error('[WorkflowBuilder] Error activating workflow:', activationError);
+            
+            if (activationError.message.includes('already assigned to another active')) {
+              toast.error('Cannot activate: One or more users are already in another active workflow.');
+            } else {
+              toast.error('Failed to activate workflow: ' + activationError.message);
+            }
+            
+            // Keep workflow as draft
+            toast.info('Workflow created as draft. Please deactivate conflicting workflows and activate manually.');
+            onSave?.(workflow.id);
+            return;
+          }
+        }
+        
+        toast.success('Workflow created successfully' + (isSystem ? ' and activated' : ''));
         onSave?.(workflow.id);
       }
     } catch (error: any) {

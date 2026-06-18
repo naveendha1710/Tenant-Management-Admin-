@@ -1,5 +1,4 @@
 import { useAuth } from '@/contexts/AuthContext';
-import HelpdeskDashboard from './HelpdeskDashboard';
 import ManageTicketsPage from './ManageTicketsPage';
 import { hasPermission } from '@/utils/permissionUtils';
 
@@ -10,5 +9,7 @@ export default function UnifiedHelpdeskPage() {
     return <ManageTicketsPage />;
   }
 
-  return <HelpdeskDashboard />;
+  return (
+    <div className="p-6">Helpdesk module has been removed.</div>
+  );
 }

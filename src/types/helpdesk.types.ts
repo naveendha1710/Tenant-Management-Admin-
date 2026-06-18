@@ -101,10 +101,19 @@ export interface DashboardStats {
   open: number;
   in_progress: number;
   completed: number;
+  resolved: number;
   on_hold: number;
   cancelled: number;
   pending_estimations: number;
   pending_approvals: number;
+  approved: number;
   critical_priority: number;
+  high_priority: number;
+  medium_priority: number;
+  low_priority: number;
   overdue: number;
+  assigned_awaiting: number;
+  rejected: number;
+  today_tickets: number;
+  safety_risk: number;
 }

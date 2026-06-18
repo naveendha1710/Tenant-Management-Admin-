@@ -1,0 +1,36 @@
+name: Ollama Remote Profile
+version: 1.0.0
+models:
+  - name: Qwen 3.6 (27B)
+    provider: ollama
+    model: qwen3.6:27b
+    apibase: http://192.168.0.181:11434
+  - name: Nemotron 3 (33B)
+    provider: ollama
+    model: nemotron3:33b
+    apibase: http://192.168.0.181:11434
+  - name: Qwen 2.5 Coder (14B)
+    provider: ollama
+    model: qwen2.5-coder:14b
+    apibase: http://192.168.0.181:11434
+  - name: RathinamGPT
+    provider: ollama
+    model: cyber99creatore/RathinamGPT:latest
+    apibase: http://192.168.0.181:11434
+  - name: Qwen 3.6 (35B-A3B)
+    provider: ollama
+    model: qwen3.6:35b-A3B
+    apibase: http://192.168.0.181:11434
+  - name: DeepSeek Coder V2 (16B)
+    provider: ollama
+    model: deepseek-coder-v2:16b
+    apibase: http://192.168.0.181:11434
+  - name: Qwen 3 Coder (30B)
+    provider: ollama
+    model: qwen3-coder:30b
+    apibase: http://192.168.0.181:11434
+tabAutocompleteModel:
+  name: Qwen 2.5 Coder (4.7B)
+  provider: ollama
+  model: qwen2.5-coder:latest
+  apibase: http://192.168.0.181:11434

@@ -63,7 +63,7 @@ export function AppSidebar() {
           const filteredSubItems = group.subItems.filter((item: any) => {
             if (item.title === 'Settings') return hasPermission(user?.appUser, 'Settings', 'view');
             if (item.title === 'User Management') return hasPermission(user?.appUser, 'Users', 'view');
-            if (item.title === 'Workflows') return hasPermission(user?.appUser, 'Workflows', 'view');
+            if (item.title === 'Vendors') return hasPermission(user?.appUser, 'Vendors', 'view');
             
             // Filter expandable form items (Asset Form, Tenant Form, Building Form)
             if (item.expandable) {
@@ -79,7 +79,7 @@ export function AppSidebar() {
         if (group.title === 'Asset Management') {
           // Show Asset Management if user has view permission for any asset module
           const hasAnyAssetPermission = [
-            'Assets', 'Asset Master', 'Asset Movement', 'Inventory', 
+            'Assets', 'Asset Master', 'Asset Movement', 'Inventory', 'Services',
             'Preventive Maintenance', 'Physical Audit', 'Configuration'
           ].some(module => hasPermission(user?.appUser, module, 'view'));
           return hasAnyAssetPermission ? group : null;
@@ -100,6 +100,7 @@ export function AppSidebar() {
           );
         }
         if (item.title === 'Helpdesk') return hasPermission(user?.appUser, 'Helpdesk', 'view') || hasPermission(user?.appUser, 'Manage Tickets', 'view');
+        if (item.title === 'Reports') return hasPermission(user?.appUser, 'Reports', 'view');
         return true;
       });
       
@@ -340,7 +341,21 @@ export function AppSidebar() {
                       <div className={`ml-6 mt-1 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
                         expandedGroups.has('Master Settings') ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
                       }`}>
-                        {group.subItems.map((item) => (
+                        {group.subItems.filter((item: any) => {
+                          if (item.title === 'Settings') return hasPermission(user?.appUser, 'Settings', 'view');
+                          if (item.title === 'User Management') return hasPermission(user?.appUser, 'Users', 'view');
+                          if (item.title === 'Vendors') return hasPermission(user?.appUser, 'Vendors', 'view');
+                          if (item.title === 'Workflows') return hasPermission(user?.appUser, 'Workflow Manager', 'view');
+                          
+                          // Filter expandable form items (Asset Form, Tenant Form, Building Form)
+                          if (item.expandable) {
+                            if (item.title === 'Asset Form') return hasPermission(user?.appUser, 'Asset Form', 'view');
+                            if (item.title === 'Tenant Form') return hasPermission(user?.appUser, 'Tenant Form', 'view');
+                            if (item.title === 'Building Form') return hasPermission(user?.appUser, 'Building Form', 'view');
+                          }
+                          
+                          return true;
+                        }).map((item) => (
                           <div key={item.title}>
                             {item.expandable ? (
                               <>
@@ -426,6 +441,7 @@ export function AppSidebar() {
                           if (item.title === 'Asset Master') return hasPermission(user?.appUser, 'Asset Master', 'view');
                           if (item.title === 'Asset Movement') return hasPermission(user?.appUser, 'Asset Movement', 'view');
                           if (item.title === 'Inventory') return hasPermission(user?.appUser, 'Inventory', 'view');
+                          if (item.title === 'Services') return hasPermission(user?.appUser, 'Services', 'view');
                           if (item.title === 'Preventive Maintenance') return hasPermission(user?.appUser, 'Preventive Maintenance', 'view');
                           if (item.title === 'Physical Audit') return hasPermission(user?.appUser, 'Physical Audit', 'view');
                           if (item.title === 'Configuration') return hasPermission(user?.appUser, 'Configuration', 'view');

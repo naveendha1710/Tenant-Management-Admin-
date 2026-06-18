@@ -14,6 +14,7 @@ import { companyGroupService } from '@/services/companyGroupService';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { numberToWords } from '@/utils/numberToWords';
+import { DocumentUploadService } from '@/services/documentUploadService';
 
 // Module-level storage to persist activeTab across component remounts
 const activeTabStorage = new Map<string, string>();
@@ -64,9 +65,10 @@ interface TenantFormProps {
   defaultCompanyGroup?: string;
   onAssignSpace?: (tenant: any) => void;
   isAddingNew?: boolean;
+  pendingAssignments?: { assignments: any[]; totalAmount: number } | null;
 }
 
-export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agreementIndex, mode = 'full', onSubmit, onCancel, defaultCompanyGroup, onAssignSpace, isAddingNew = false }) => {
+export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agreementIndex, mode = 'full', onSubmit, onCancel, defaultCompanyGroup, onAssignSpace, isAddingNew = false, pendingAssignments = null }) => {
   const { toast } = useToast();
   
   const formKey = isAddingNew ? 'tenant-form-new' : `tenant-form-${tenant?.id || 'new'}`;
@@ -88,7 +90,7 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
     if (activeTabRef.current !== activeTab && activeTabRef.current !== 'personal') {
       setActiveTabState(activeTabRef.current);
     }
-  }, [tenant?.id]);
+  }, [tenant]);
   const [isRentManuallyEdited, setIsRentManuallyEdited] = useState(false);
   const [companyGroups, setCompanyGroups] = useState<any[]>([]);
   const [maintenanceCategories, setMaintenanceCategories] = useState<any[]>([]);
@@ -284,7 +286,7 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
     setInitialServiceCharge(newServiceCharge);
     
     setIsRentManuallyEdited(false);
-  }, [tenant?.id, agreement?.id, agreementIndex]);
+  }, [tenant, agreement, agreementIndex]);
 
   useEffect(() => {
     if (tenant?.spaceAssignments && !isRentManuallyEdited) {
@@ -301,6 +303,16 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
       }
     }
   }, [tenant?.spaceAssignments, isRentManuallyEdited]);
+
+  // Apply pending assignments coming from parent (e.g. SpaceAssignment delete/add with skipClose)
+  useEffect(() => {
+    if (pendingAssignments && pendingAssignments.assignments) {
+      setSpaceAssignments(pendingAssignments.assignments);
+      const total = pendingAssignments.totalAmount || 0;
+      handleInputChange('rentAmount', total.toString());
+      setHasChanges(true);
+    }
+  }, [pendingAssignments]);
 
   useEffect(() => {
     if (!tenant) {
@@ -420,40 +432,22 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
 
     setUploading(true);
     try {
-      const uploadedFiles = [];
-      for (const file of Array.from(files)) {
-        const uploadFormData = new FormData();
-        uploadFormData.append('file', file);
-
-        const companyName = (formData.company || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '_');
-        const response = await fetch(`/api/upload?category=tenant-documents/${companyName}`, {
-          method: 'POST',
-          body: uploadFormData
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          console.error('Upload failed:', response.status, text.substring(0, 500));
-          alert(`Upload failed (${response.status}): Check if Node.js server is running`);
-          throw new Error(`Server error: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          uploadedFiles.push({
-            id: Date.now() + Math.random(),
-            name: result.file.name,
-            url: result.file.url,
-            path: result.file.path,
-            size: result.file.size,
-            uploadedAt: new Date().toISOString()
-          });
-        }
-      }
+      const companyName = (formData.company || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const uploadedPaths = await DocumentUploadService.uploadFiles(Array.from(files), companyName);
+      
+      const uploadedFiles = uploadedPaths.map((path, idx) => ({
+        id: Date.now() + Math.random() + idx,
+        name: files[idx].name,
+        url: path,
+        path: path,
+        size: files[idx].size,
+        uploadedAt: new Date().toISOString()
+      }));
+      
       setDocuments(prev => [...prev, ...uploadedFiles]);
     } catch (error) {
       console.error('Error uploading files:', error);
-      alert('Upload failed: ' + error);
+      toast({ title: 'Error', description: 'Failed to upload documents', variant: 'destructive' });
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -464,29 +458,48 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
     if (!confirm('Delete this document?')) return;
     
     try {
-      const response = await fetch(`/api/delete`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: doc.path })
-      });
-
-      if (response.ok) {
-        const updatedDocuments = documents.filter(d => d.id !== doc.id);
-        setDocuments(updatedDocuments);
+      // Delete from Supabase storage if it's a Supabase file
+      if (doc.path && doc.path.startsWith('/supabase/')) {
+        const filePath = doc.path.replace('/supabase/', '');
+        const { error: deleteError } = await supabase.storage
+          .from('Tenant_uploads')
+          .remove([filePath]);
         
-        // Update database immediately if editing existing tenant
-        if (tenant?.id) {
-          await supabase
-            .from('tenants')
-            .update({ documents: updatedDocuments })
-            .eq('id', tenant.id);
+        if (deleteError) {
+          console.error('Failed to delete from storage:', deleteError);
+          toast({ title: 'Warning', description: 'File deleted from database but may still exist in storage', variant: 'destructive' });
         }
-      } else {
-        alert('Delete failed');
+      } else if (doc.path && doc.path.startsWith('/uploads/')) {
+        // Delete from local storage
+        const response = await fetch('/api/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath: doc.path })
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to delete from local storage');
+        }
       }
+      
+      const updatedDocuments = documents.filter(d => d.id !== doc.id);
+      setDocuments(updatedDocuments);
+      
+      // Update database immediately if editing existing tenant
+      if (tenant?.id) {
+        const agreementId = agreement?.id || tenant.agreements?.[0]?.id;
+        if (agreementId) {
+          await supabase
+            .from('agreements')
+            .update({ documents: updatedDocuments })
+            .eq('id', agreementId);
+        }
+      }
+      
+      toast({ title: 'Success', description: 'Document deleted successfully' });
     } catch (error) {
       console.error('Error deleting document:', error);
-      alert('Delete failed: ' + error);
+      toast({ title: 'Error', description: 'Failed to delete document', variant: 'destructive' });
     }
   };
 
@@ -1839,9 +1852,9 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              const fileUrl = doc.url || doc.path;
-                              window.open(fileUrl.replace('/uploads/', '/api/files/'), '_blank');
+                            onClick={async () => {
+                              const resolvedUrl = await DocumentUploadService.resolveUrl(doc.url || doc.path);
+                              window.open(resolvedUrl, '_blank');
                             }}
                           >
                             <Eye className="h-4 w-4" />
@@ -2332,10 +2345,13 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
                     
                     // Update database immediately if editing existing tenant
                     if (tenant?.id) {
-                      await supabase
-                        .from('tenants')
-                        .update({ documents: updatedDocs })
-                        .eq('id', tenant.id);
+                      const agreementId = agreement?.id || tenant.agreements?.[0]?.id;
+                      if (agreementId) {
+                        await supabase
+                          .from('agreements')
+                          .update({ documents: updatedDocs })
+                          .eq('id', agreementId);
+                      }
                     }
                     
                     setSelectedDocs([]);

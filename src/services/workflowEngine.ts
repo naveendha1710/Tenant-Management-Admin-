@@ -38,18 +38,25 @@ export class WorkflowExecutionEngine {
     entityType: string,
     entityId: string,
     tenantId?: string,
-    contextData?: Record<string, any>
+    contextData?: Record<string, any>,
+    userId?: string
   ): Promise<WorkflowInstance> {
     try {
-      // 1. Find active workflow for tenant
-      const workflow = await this.getActiveWorkflow(tenantId, entityType);
+      console.log('[WorkflowEngine] Starting workflow for user:', userId);
+      
+      // 1. Find active workflow for tenant or system user
+      const workflow = await this.getActiveWorkflow(tenantId, entityType, userId);
       
       if (!workflow) {
         throw new Error(`No active workflow found for entity type: ${entityType}`);
       }
       
+      console.log('[WorkflowEngine] Found workflow:', workflow.id, workflow.name);
+      
       // 2. Load workflow graph
       const graph = await this.loadWorkflowGraph(workflow.id);
+      
+      console.log('[WorkflowEngine] Loaded graph with nodes:', Array.from(graph.nodes.values()).map(n => ({ type: n.node_type, approvers: n.approver_user_ids })));
       
       if (!graph.start_node) {
         throw new Error('Workflow has no movement request node');
@@ -80,6 +87,8 @@ export class WorkflowExecutionEngine {
       // 5. Store all approver IDs in the movement record for quick access
       if (entityType === 'asset_movement') {
         const allApproverIds = this.getAllApproverIds(graph);
+        console.log('[WorkflowEngine] All approver IDs from graph:', allApproverIds);
+        
         await supabase
           .from('asset_movements')
           .update({ workflow_approver_ids: allApproverIds })
@@ -307,9 +316,15 @@ export class WorkflowExecutionEngine {
           .single();
         
         if (instance) {
-          const graph = await this.loadWorkflowGraph(instance.workflow_id);
-          // Pass 'approved' to indicate approval path
-          await this.moveToNextNode(instance, graph, 'approved');
+          try {
+            const graph = await this.loadWorkflowGraph(instance.workflow_id);
+            // Pass 'approved' to indicate approval path
+            await this.moveToNextNode(instance, graph, 'approved');
+          } catch (moveError) {
+            console.error('Error moving to next node:', moveError);
+            // Don't throw - step is already approved, just log the error
+            // The workflow will still be marked as approved
+          }
         }
       }
       
@@ -457,15 +472,17 @@ export class WorkflowExecutionEngine {
   // =====================================================
   
   /**
-   * Gets active workflow for tenant
+   * Gets active workflow for tenant or system user
    */
   private async getActiveWorkflow(
     tenantId: string | undefined,
-    entityType: string
+    entityType: string,
+    userId?: string
   ): Promise<Workflow | null> {
     const { data, error } = await supabase.rpc('get_active_workflow', {
       p_tenant_id: tenantId || null,
-      p_entity_type: entityType
+      p_entity_type: entityType,
+      p_user_id: userId || null
     });
     
     if (error || !data || data.length === 0) return null;
@@ -568,6 +585,7 @@ export class WorkflowExecutionEngine {
     instanceId: string,
     status: WorkflowStatus
   ): Promise<void> {
+    // First update the workflow status
     await supabase
       .from('workflow_instances')
       .update({
@@ -576,8 +594,13 @@ export class WorkflowExecutionEngine {
       })
       .eq('id', instanceId);
     
-    // Update entity based on workflow result
-    await this.updateEntityOnCompletion(instanceId, status);
+    // Then try to update entity - if this fails, workflow is still marked complete
+    try {
+      await this.updateEntityOnCompletion(instanceId, status);
+    } catch (entityUpdateError) {
+      console.error('Error updating entity on completion (workflow still completed):', entityUpdateError);
+      // Don't throw - workflow is already marked as complete
+    }
   }
   
   /**
@@ -637,18 +660,106 @@ export class WorkflowExecutionEngine {
         if (status === WorkflowStatus.COMPLETED) {
           const { data: movement } = await supabase
             .from('asset_movements')
-            .select('assets, to_building, to_floor, to_room, handover_to, handover_name, handover_email, handover_mobile, to_tenant, from_tenant, from_building, from_floor, from_room')
+            .select('assets, movement_type, to_building, to_floor, to_room, handover_to, handover_name, handover_email, handover_mobile, to_tenant, from_tenant, from_building, from_floor, from_room')
             .eq('id', instance.entity_id)
             .single();
           
           if (movement && movement.assets && movement.assets.length > 0) {
-            console.log('Processing movement approval:', {
-              to_building: movement.to_building,
-              to_floor: movement.to_floor,
-              to_room: movement.to_room,
-              handover_to: movement.handover_to,
-              handover_name: movement.handover_name
-            });
+            
+            // Handle Disposal movement type
+            if (movement.movement_type === 'Disposal') {
+              // Update asset status to Disposed for all assets in the movement
+              for (const assetId of movement.assets) {
+                // Get current asset status for history
+                const { data: currentAsset } = await supabase
+                  .from('assets')
+                  .select('asset_status')
+                  .eq('id', assetId)
+                  .single();
+                
+                const oldStatus = currentAsset?.asset_status || 'Active';
+                
+                await supabase
+                  .from('assets')
+                  .update({ 
+                    asset_status: 'Disposed'
+                  })
+                  .eq('id', assetId);
+                
+                // Add history record
+                await supabase.from('asset_history').insert({
+                  asset_id: assetId,
+                  change_type: 'status',
+                  field_name: 'asset_status',
+                  old_value: oldStatus,
+                  new_value: 'Disposed',
+                  changed_by: 'System',
+                  movement_request_id: instance.entity_id
+                });
+              }
+              return; // Exit early for disposal movements
+            }
+            
+            // Handle Maintenance movement type
+            if (movement.movement_type === 'Maintenance') {
+              // Update asset status to Maintenance for all assets in the movement
+              for (const assetId of movement.assets) {
+                try {
+                  // Get current asset status for history
+                  const { data: currentAsset, error: fetchError } = await supabase
+                    .from('assets')
+                    .select('asset_status')
+                    .eq('id', assetId)
+                    .single();
+                  
+                  if (fetchError) {
+                    console.error(`Error fetching asset ${assetId}:`, fetchError);
+                    continue;
+                  }
+                  
+                  if (!currentAsset) {
+                    console.warn(`Asset ${assetId} not found, skipping status update`);
+                    continue;
+                  }
+                  
+                  const oldStatus = currentAsset.asset_status || 'Active';
+                  
+                  // Only update if status is different
+                  if (oldStatus !== 'Maintenance') {
+                    const { error: updateError } = await supabase
+                      .from('assets')
+                      .update({ 
+                        asset_status: 'Maintenance'
+                      })
+                      .eq('id', assetId);
+                    
+                    if (updateError) {
+                      console.error(`Error updating asset ${assetId}:`, updateError);
+                      continue;
+                    }
+                    
+                    // Add history record
+                    const { error: historyError } = await supabase.from('asset_history').insert({
+                      asset_id: assetId,
+                      change_type: 'status',
+                      field_name: 'asset_status',
+                      old_value: oldStatus,
+                      new_value: 'Maintenance',
+                      changed_by: 'System',
+                      movement_request_id: instance.entity_id
+                    });
+                    
+                    if (historyError) {
+                      console.error(`Error creating history for asset ${assetId}:`, historyError);
+                    }
+                  }
+                } catch (assetError) {
+                  console.error(`Error updating asset ${assetId} status:`, assetError);
+                  // Continue with other assets even if one fails
+                }
+              }
+              return; // Exit early for maintenance movements
+            }
             
             // Convert names to UUIDs
             let buildingId = null;
@@ -698,8 +809,6 @@ export class WorkflowExecutionEngine {
               floorId = floor?.id || null;
             }
             
-            console.log('Resolved UUIDs:', { buildingId, floorId, roomId });
-            
             // Get room UUID from room number
             if (movement.to_room && floorId) {
               const { data: room } = await supabase
@@ -718,18 +827,17 @@ export class WorkflowExecutionEngine {
             let handoverOtherContact = null;
             let toTenantName = movement.to_tenant || '';
             
-            if (movement.handover_to === 'Tenant' && movement.handover_name) {
-              // handover_name contains tenant ID (UUID)
-              handoverToId = movement.handover_name;
+            // Get tenant UUID from tenant NAME (same logic as building/floor)
+            if (movement.handover_to === 'Tenant' && movement.to_tenant) {
+              const { data: tenant } = await supabase
+                .from('tenants')
+                .select('id, company')
+                .eq('company', movement.to_tenant)
+                .maybeSingle();
               
-              // Get tenant name if not already set
-              if (!toTenantName) {
-                const { data: tenant } = await supabase
-                  .from('tenants')
-                  .select('company')
-                  .eq('id', movement.handover_name)
-                  .maybeSingle();
-                toTenantName = tenant?.company || movement.handover_name;
+              if (tenant) {
+                handoverToId = tenant.id;
+                toTenantName = tenant.company;
               }
             } else if (movement.handover_to === 'Other') {
               // Store "Other" handover details
@@ -738,8 +846,6 @@ export class WorkflowExecutionEngine {
               handoverOtherContact = movement.handover_mobile;
               toTenantName = movement.handover_name || 'Other';
             }
-            
-            console.log('Resolved handover:', { handoverToId, handoverOtherName, toTenantName });
             
             // Update each asset's location and handover with UUIDs
             for (const assetId of movement.assets) {

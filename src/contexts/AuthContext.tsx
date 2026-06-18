@@ -82,6 +82,7 @@ export function AuthProvider({ children }: any) {
             isActive: userData.is_active,
             isApprover: userData.is_approver || false,
             assetMovementApprover: userData.asset_movement_approver || false,
+            canApproveTickets: userData.can_approve_tickets !== undefined ? userData.can_approve_tickets : true,
             permissions: userData.permissions || [],
             notificationsEnabled: userData.notifications_enabled !== false,
             userManagementAccess: typeof userData.user_management_access === 'string' 
@@ -148,12 +149,14 @@ export function AuthProvider({ children }: any) {
         email: appUser.email,
         full_name: appUser.name,
         isApprover: appUser.isApprover,
+        canApproveTickets: appUser.canApproveTickets,
         appUser: {
           ...appUser,
           isApprover: appUser.isApprover,
           assetMovementApprover: appUser.assetMovementApprover,
-          tenantId: appUser.tenantId
-        }
+          canApproveTickets: appUser.canApproveTickets,
+            tenantId: appUser.tenantId
+          }
       };
 
       localStorage.setItem('demo_user', JSON.stringify(user));
@@ -199,12 +202,14 @@ export function AuthProvider({ children }: any) {
         const updatedUser = {
           ...user,
           isApprover: updatedAppUser.isApprover,
+          canApproveTickets: updatedAppUser.canApproveTickets,
           appUser: {
             ...updatedAppUser,
             isApprover: updatedAppUser.isApprover,
             assetMovementApprover: updatedAppUser.assetMovementApprover,
-            permissions: updatedAppUser.permissions,
-            branchAccess: updatedAppUser.branchAccess || [],
+            canApproveTickets: updatedAppUser.canApproveTickets,
+              permissions: updatedAppUser.permissions,
+              branchAccess: updatedAppUser.branchAccess || [],
             userManagementAccess: updatedAppUser.userManagementAccess,
             notificationsEnabled: updatedAppUser.notificationsEnabled,
             tenantId: updatedAppUser.tenantId

@@ -34,7 +34,9 @@ export interface AppUser {
   assetIncharge?: boolean;
   assetAuditor?: boolean;
   canManageWorkflows?: boolean;
+  canApproveTickets?: boolean;
   notificationsEnabled?: boolean;
+  receiveTicketNotifications?: boolean;
   userManagementAccess?: {
     users: boolean;
     tenantUsers: boolean;
@@ -157,10 +159,12 @@ const transformDbUserToAppUser = (dbUser: any): AppUser => ({
   assetIncharge: dbUser.asset_incharge || false,
   assetAuditor: dbUser.asset_auditor || false,
   canManageWorkflows: dbUser.can_manage_workflows || false,
+  canApproveTickets: dbUser.can_approve_tickets !== undefined ? dbUser.can_approve_tickets : true,
   selectedRoles: typeof dbUser.selected_roles === 'string' ? JSON.parse(dbUser.selected_roles) : (dbUser.selected_roles || []),
   technicianCategory: dbUser.technician_category || '',
   branchAccess: typeof dbUser.branch_access === 'string' ? JSON.parse(dbUser.branch_access) : (dbUser.branch_access || []),
   notificationsEnabled: dbUser.notifications_enabled !== undefined ? dbUser.notifications_enabled : true,
+  receiveTicketNotifications: dbUser.receive_ticket_notifications !== undefined ? dbUser.receive_ticket_notifications : true,
   userManagementAccess: typeof dbUser.user_management_access === 'string' 
     ? JSON.parse(dbUser.user_management_access) 
     : (dbUser.user_management_access || { users: true, tenantUsers: true, otherUsers: true }),
@@ -186,10 +190,12 @@ const transformAppUserToDb = (user: Partial<AppUser & { password?: string }>) =>
   if ((user as any).assetIncharge !== undefined) dbUser.asset_incharge = (user as any).assetIncharge;
   if ((user as any).assetAuditor !== undefined) dbUser.asset_auditor = (user as any).assetAuditor;
   if ((user as any).canManageWorkflows !== undefined) dbUser.can_manage_workflows = (user as any).canManageWorkflows;
+  if ((user as any).canApproveTickets !== undefined) dbUser.can_approve_tickets = (user as any).canApproveTickets;
   if (user.selectedRoles !== undefined) dbUser.selected_roles = user.selectedRoles;
   if (user.technicianCategory !== undefined) dbUser.technician_category = user.technicianCategory;
   if (user.branchAccess !== undefined) dbUser.branch_access = user.branchAccess;
   if ((user as any).notificationsEnabled !== undefined) dbUser.notifications_enabled = (user as any).notificationsEnabled;
+  if ((user as any).receiveTicketNotifications !== undefined) dbUser.receive_ticket_notifications = (user as any).receiveTicketNotifications;
   if ((user as any).userManagementAccess !== undefined) dbUser.user_management_access = (user as any).userManagementAccess;
   if (user.tenantId !== undefined) dbUser.tenant_id = user.tenantId;
   

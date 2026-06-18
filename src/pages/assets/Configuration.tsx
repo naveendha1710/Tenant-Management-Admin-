@@ -263,20 +263,61 @@ export default function Configuration() {
                           }
                         })();
                         return (
-                          <div key={config.id} className={`flex items-center justify-between p-3 rounded border ${
+                          <div key={config.id} className={`p-4 rounded-lg border ${
                             config.is_active ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
                           }`}>
-                            <div className="flex items-center gap-3">
-                              <div className="font-mono text-sm font-semibold text-gray-900">{preview}</div>
-                              {config.is_active && <Badge className="bg-green-600">Active</Badge>}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button size="sm" variant="outline" onClick={() => toggleConfigActive(config.id, config.is_active)}>
-                                {config.is_active ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => deleteIdConfig(config.id)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-3">
+                                  <div className="font-mono text-lg font-bold text-blue-600 bg-white px-3 py-1 rounded border border-blue-200">
+                                    {preview}
+                                  </div>
+                                  {config.is_active && <Badge className="bg-green-600">Active</Badge>}
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                                  <div>
+                                    <span className="text-gray-500">Structure:</span>
+                                    <span className="ml-2 font-medium text-gray-700">
+                                      {config.structure === 'cat-type-seq' && 'Category - Sub-Type - Number'}
+                                      {config.structure === 'cat-year-seq' && 'Category - Year - Number'}
+                                      {config.structure === 'type-seq' && 'Sub-Type - Number'}
+                                      {config.structure === 'cat-seq' && 'Category - Number'}
+                                      {config.structure === 'year-seq' && 'Year - Number'}
+                                      {config.structure === 'seq-only' && 'Number Only'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Separator:</span>
+                                    <span className="ml-2 font-medium text-gray-700">
+                                      {config.separator === '-' && 'Hyphen (-)'}
+                                      {config.separator === '/' && 'Slash (/)'}
+                                      {config.separator === '_' && 'Underscore (_)'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Start Value:</span>
+                                    <span className="ml-2 font-medium text-gray-700">{config.start_value}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Digits:</span>
+                                    <span className="ml-2 font-medium text-gray-700">{config.digits} digits</span>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <span className="text-gray-500">Created:</span>
+                                    <span className="ml-2 font-medium text-gray-700">
+                                      {new Date(config.created_at).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 ml-4">
+                                <Button size="sm" variant="outline" onClick={() => toggleConfigActive(config.id, config.is_active)}>
+                                  {config.is_active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => deleteIdConfig(config.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         );

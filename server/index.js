@@ -90,6 +90,13 @@ const storage = multer.diskStorage({
       }
       const sanitizedAssetId = sanitizePath(assetId);
       categoryPath = path.join(UPLOAD_PATH, sanitizedCategory, sanitizedAssetId);
+    } else if (category === 'asset_images') {
+      // New asset images with category/subcategory/assetId structure
+      const { category: assetCategory, subCategory, assetId } = req.body;
+      if (!assetCategory || !subCategory || !assetId) {
+        return cb(new Error('Category, subCategory, and assetId required for asset_images'));
+      }
+      categoryPath = path.join(UPLOAD_PATH, 'asset_images', sanitizePath(assetCategory), sanitizePath(subCategory), sanitizePath(assetId));
     } else {
       // Default behavior for other categories (ticket_pictures, tenant-documents, etc.)
       categoryPath = path.join(UPLOAD_PATH, sanitizedCategory);
@@ -196,6 +203,33 @@ app.delete('/api/delete', (req, res) => {
   }
 });
 
+// Asset image upload endpoint for local storage
+app.post('/api/upload-asset-image', uploadLimiter, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { category, subCategory, assetId } = req.body;
+    if (!category || !subCategory || !assetId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const file = req.file;
+    const fileUrl = `/uploads/asset_images/${category}/${subCategory}/${assetId}/${file.filename}`;
+    
+    res.json({ 
+      success: true,
+      url: fileUrl,
+      name: file.originalname,
+      size: file.size
+    });
+  } catch (error) {
+    console.error('Asset image upload error:', error);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
 // Multiple file upload endpoint
 app.post('/api/upload-multiple', uploadLimiter, upload.array('files', 10), (req, res) => {
   try {
@@ -272,6 +306,132 @@ app.get('/api/files/*', (req, res) => {
 // Asset Management Routes - Temporarily disabled
 // const assetRoutes = require('./routes/assetRoutes');
 // app.use('/api/assets', assetRoutes);
+
+// Secure file proxy for Supabase ticket uploads
+const { verifyAuth } = require('./middleware/auth');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseClient = createClient(
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+  process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+);
+
+app.get('/api/ticket-files/:tenantFolder/:filename(*)', verifyAuth, async (req, res) => {
+  try {
+    const { tenantFolder, filename } = req.params;
+    // filename can contain slashes (e.g., ticketing_files/file.png)
+    const filePath = `${tenantFolder}/${filename}`;
+
+    // Download file from Supabase
+    const { data, error } = await supabaseClient.storage
+      .from('Tenant_uploads')
+      .download(filePath);
+
+    if (error) {
+      console.error('Supabase download error:', error);
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Convert blob to buffer
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    // Determine content type from filename
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const contentTypes = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      pdf: 'application/pdf'
+    };
+
+    res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (error) {
+    console.error('File proxy error:', error);
+    res.status(500).json({ error: 'Failed to retrieve file' });
+  }
+});
+
+app.get('/api/document-files/:tenantFolder/:filename(*)', verifyAuth, async (req, res) => {
+  try {
+    const { tenantFolder, filename } = req.params;
+    // filename can contain slashes (e.g., document_upload/file.pdf)
+    const filePath = `${tenantFolder}/${filename}`;
+
+    // Download file from Supabase
+    const { data, error } = await supabaseClient.storage
+      .from('Tenant_uploads')
+      .download(filePath);
+
+    if (error) {
+      console.error('Supabase download error:', error);
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Convert blob to buffer
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    // Determine content type from filename
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const contentTypes = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      txt: 'text/plain'
+    };
+
+    res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Document proxy error:', error);
+    res.status(500).json({ error: 'Failed to retrieve document' });
+  }
+});
+
+app.get('/api/asset-images/:category/:subCategory/:assetId/:filename(*)', verifyAuth, async (req, res) => {
+  try {
+    const { category, subCategory, assetId, filename } = req.params;
+    const filePath = `${category}/${subCategory}/${assetId}/${filename}`;
+
+    const { data, error } = await supabaseClient.storage
+      .from('asset_images')
+      .download(filePath);
+
+    if (error) {
+      console.error('Supabase download error:', error);
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const contentTypes = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp'
+    };
+
+    res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Asset image proxy error:', error);
+    res.status(500).json({ error: 'Failed to retrieve asset image' });
+  }
+});
 
 // SMTP Configuration Routes
 const emailService = require('./services/emailService');
@@ -365,6 +525,55 @@ app.post('/api/admin/smtp/send', emailLimiter, async (req, res) => {
   } catch (error) {
     console.error('Error sending email:', error);
     res.status(500).json({ error: error.message || 'Failed to send email' });
+  }
+});
+
+// Send batch emails with rate limiting (3 seconds between each)
+app.post('/api/admin/smtp/send-batch', async (req, res) => {
+  try {
+    const { emails } = req.body;
+    
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ error: 'emails array is required' });
+    }
+    
+    // Check if SMTP is configured
+    const config = emailService.loadSMTPConfig();
+    if (!config || !config.host || !config.user) {
+      return res.status(400).json({ error: 'SMTP not configured' });
+    }
+    
+    const results = [];
+    
+    // Send emails one by one with 3-second delay
+    for (let i = 0; i < emails.length; i++) {
+      const { to, subject, text, html } = emails[i];
+      
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) {
+        results.push({ to, success: false, error: 'Invalid email address' });
+        continue;
+      }
+      
+      try {
+        const result = await emailService.sendEmail({ to, subject, text, html });
+        results.push({ to, success: true, messageId: result.messageId });
+      } catch (error) {
+        console.error(`Error sending email to ${to}:`, error.message);
+        results.push({ to, success: false, error: error.message });
+      }
+      
+      // Wait 3 seconds before sending next email (except for last one)
+      if (i < emails.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+    
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Error in batch email send:', error);
+    res.status(500).json({ error: error.message || 'Failed to send batch emails' });
   }
 });
 

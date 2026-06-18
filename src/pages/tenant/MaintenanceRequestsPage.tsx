@@ -34,8 +34,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { MaintenanceService, MaintenanceTicket } from '@/services/maintenanceService';
+import { TicketEstimationService } from '@/services/ticketEstimationService';
 import { supabase } from '@/lib/supabaseClient';
 import { sendTicketNotification } from '@/services/ticketNotifications';
+import { TicketUploadService } from '@/services/ticketUploadService';
 
 export default function MaintenanceRequestsPage() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
@@ -47,14 +49,37 @@ export default function MaintenanceRequestsPage() {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedTicket, setSelectedTicket] = useState<MaintenanceTicket | null>(null);
+  const [activeEstimation, setActiveEstimation] = useState<any>(null);
   const [isTicketFormOpen, setIsTicketFormOpen] = useState(false);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isSatisfactionDialogOpen, setIsSatisfactionDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComments, setFeedbackComments] = useState('');
+  const [resolvedPhotos, setResolvedPhotos] = useState<string[]>([]);
+  const [imagePopupOpen, setImagePopupOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string>('');
   const { toast } = useToast();
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (selectedTicket?.id) {
+      TicketEstimationService.getActiveEstimation(selectedTicket.id)
+        .then(estimation => setActiveEstimation(estimation))
+        .catch(() => setActiveEstimation(null));
+    } else {
+      setActiveEstimation(null);
+    }
+
+    // Resolve photo URLs
+    if (selectedTicket?.photos && selectedTicket.photos.length > 0) {
+      TicketUploadService.resolveUrls(selectedTicket.photos)
+        .then(urls => setResolvedPhotos(urls))
+        .catch(() => setResolvedPhotos(selectedTicket.photos));
+    } else {
+      setResolvedPhotos([]);
+    }
+  }, [selectedTicket?.id, selectedTicket?.photos]);
 
   const fetchTickets = async () => {
     if (!user?.email) return;
@@ -122,7 +147,7 @@ export default function MaintenanceRequestsPage() {
         status_history: `${selectedTicket.status_history || ''}\n${historyEntry}`
       });
       
-      sendTicketNotification('ticket.estimation_approved_by_tenant', { ...selectedTicket, status: 'approved' }).catch(console.error);
+      await sendTicketNotification('ticket.estimation_approved_by_tenant', { ...selectedTicket, status: 'approved' });
       
       toast({ title: "Success", description: "Estimation accepted. Work can now start." });
       setIsDetailDialogOpen(false);
@@ -141,6 +166,16 @@ export default function MaintenanceRequestsPage() {
       return;
     }
     try {
+      // Update ticket_estimations table with rejection details
+      if (activeEstimation?.id) {
+        await TicketEstimationService.updateEstimation(activeEstimation.id, {
+          status: 'tenant_rejected',
+          rejected_by: 'Tenant',
+          rejection_reason: rejectionReason,
+          rejected_at: new Date().toISOString()
+        });
+      }
+      
       // Load existing previous_submissions array
       let previousSubmissions = [];
       if (selectedTicket.previous_submissions) {
@@ -169,7 +204,7 @@ export default function MaintenanceRequestsPage() {
         previous_submissions: JSON.stringify(previousSubmissions)
       });
       
-      sendTicketNotification('ticket.estimation_rejected_by_tenant', { ...selectedTicket, status: 'tenant_rejected' }).catch(console.error);
+      await sendTicketNotification('ticket.estimation_rejected_by_tenant', { ...selectedTicket, status: 'tenant_rejected' });
       
       toast({ title: "Success", description: "Estimation rejected. Re-estimation requested." });
       setIsDetailDialogOpen(false);
@@ -202,6 +237,11 @@ export default function MaintenanceRequestsPage() {
         };
         successMessage = `Thank you for your ${feedbackRating}/10 star rating! Ticket has been closed.`;
       } else if (action === 'reopen') {
+        // Reopen estimation in ticket_estimations table
+        if (selectedTicket.id && user?.id) {
+          await TicketEstimationService.reopenEstimation(selectedTicket.id, user.id);
+        }
+        
         updates = { 
           status: 'reopened',
           tenant_satisfaction: `${feedbackRating}/10`,
@@ -221,7 +261,7 @@ export default function MaintenanceRequestsPage() {
       await MaintenanceService.updateTicket(selectedTicket.id, updates);
       
       const notifEvent = action === 'reopen' ? 'ticket.reopened' : 'ticket.resolved';
-      sendTicketNotification(notifEvent, { ...selectedTicket, ...updates }).catch(console.error);
+      await sendTicketNotification(notifEvent, { ...selectedTicket, ...updates });
       
       toast({ 
         title: "Success", 
@@ -782,125 +822,65 @@ export default function MaintenanceRequestsPage() {
                     )}
 
                     {/* Work Details */}
-                    {selectedTicket.resolution_notes && ['pending_tenant_approval', 'approved', 'in_progress', 'work_completed', 'completed', 'resolved'].includes(selectedTicket.status) && (
+                    {activeEstimation && ['pending_tenant_approval', 'approved', 'in_progress', 'work_completed', 'completed', 'resolved'].includes(selectedTicket.status) && (
                       <div className="bg-white rounded-xl border border-gray-200 p-5">
                         <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4 block">Work Details</Label>
                         <div className="space-y-4">
-                          {(() => {
-                            const notes = selectedTicket.resolution_notes;
-                            const techMatch = notes.match(/Technician: (.+?)\nContact: (.+?)\nSpecialization: (.+?)\n/);
-                            const rcaMatch = notes.match(/=== RCA ===\nRoot Cause: (.+?)\nFindings: (.+?)\n/);
-                            
-                            return (
-                              <>
-                                {techMatch && (
-                                  <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                                    <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                                      {techMatch[1].split(' ').map(n => n[0]).join('').toUpperCase()}
-                                    </div>
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-gray-900">{techMatch[1]}</p>
-                                      <p className="text-sm text-gray-600">{techMatch[2]}</p>
-                                      <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">{techMatch[3]}</span>
-                                    </div>
+                          {(activeEstimation.root_cause || activeEstimation.findings) && (
+                            <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                              <p className="text-xs font-semibold text-purple-900 mb-2">Root Cause Analysis</p>
+                              <div className="space-y-2">
+                                {activeEstimation.root_cause && (
+                                  <div>
+                                    <span className="text-xs text-gray-600">Root Cause:</span>
+                                    <p className="text-sm font-medium text-gray-900">{activeEstimation.root_cause}</p>
                                   </div>
                                 )}
-                                {rcaMatch && (
-                                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                                    <p className="text-xs font-semibold text-purple-900 mb-2">Root Cause Analysis</p>
-                                    <div className="space-y-2">
-                                      <div>
-                                        <span className="text-xs text-gray-600">Root Cause:</span>
-                                        <p className="text-sm font-medium text-gray-900">{rcaMatch[1]}</p>
-                                      </div>
-                                      <div>
-                                        <span className="text-xs text-gray-600">Findings:</span>
-                                        <p className="text-sm font-medium text-gray-900">{rcaMatch[2]}</p>
-                                      </div>
-                                    </div>
+                                {activeEstimation.findings && (
+                                  <div>
+                                    <span className="text-xs text-gray-600">Findings:</span>
+                                    <p className="text-sm font-medium text-gray-900">{activeEstimation.findings}</p>
                                   </div>
                                 )}
-                              </>
-                            );
-                          })()}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
 
-                    {/* Materials & Cost Breakdown */}
-                    {selectedTicket.resolution_notes && ['pending_tenant_approval', 'approved', 'in_progress', 'work_completed', 'completed', 'resolved'].includes(selectedTicket.status) && (() => {
-                      const notes = selectedTicket.resolution_notes;
-                      const materialsMatch = notes.match(/Materials:[\s\S]+?-{60}\n([\s\S]+?)\n-{60}/);
-                      const costMatch = notes.match(/Material Cost \(without GST\): ₹(.+?)\nTotal GST: ₹(.+?)\nMaterial Cost \(with GST\): ₹(.+?)\nLabor Hours: (.+?)\nLabor Cost: ₹(.+?)\nTotal: ₹(.+?)\nNotes: (.+)/);
-                      
-                      return (
-                        <>
-                          {materialsMatch && (
-                            <div className="bg-white rounded-xl border border-gray-200 p-5">
-                              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4 block">Materials Required</Label>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-200 bg-gray-50">
-                                      <th className="text-left p-3 font-semibold text-gray-700">Item</th>
-                                      <th className="text-right p-3 font-semibold text-gray-700">Qty</th>
-                                      <th className="text-right p-3 font-semibold text-gray-700">Rate</th>
-                                      <th className="text-right p-3 font-semibold text-gray-700">GST%</th>
-                                      <th className="text-right p-3 font-semibold text-gray-700">Total</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {materialsMatch[1].split('\n').map((line, i) => {
-                                      const parts = line.split(' | ');
-                                      return parts.length === 6 ? (
-                                        <tr key={i} className="border-b border-gray-100">
-                                          <td className="p-3 text-gray-900">{parts[0]}</td>
-                                          <td className="text-right p-3 text-gray-700">{parts[1]}</td>
-                                          <td className="text-right p-3 text-gray-700">{parts[2]}</td>
-                                          <td className="text-right p-3 text-gray-700">{parts[3]}</td>
-                                          <td className="text-right p-3 font-semibold text-gray-900">{parts[5]}</td>
-                                        </tr>
-                                      ) : null;
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                          {costMatch && (
-                            <div className="bg-white rounded-xl border border-gray-200 p-5">
-                              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4 block">Cost Breakdown</Label>
-                              <div className="space-y-3">
-                                <div className="flex justify-between py-2 border-b border-gray-100">
-                                  <span className="text-gray-600">Material Cost (without GST)</span>
-                                  <span className="font-semibold text-gray-900">₹{costMatch[1]}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-gray-100">
-                                  <span className="text-gray-600">Total GST</span>
-                                  <span className="font-semibold text-gray-900">₹{costMatch[2]}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-gray-100">
-                                  <span className="text-gray-600">Material Cost (with GST)</span>
-                                  <span className="font-semibold text-gray-900">₹{costMatch[3]}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-gray-100">
-                                  <span className="text-gray-600">Labor Hours</span>
-                                  <span className="font-semibold text-gray-900">{costMatch[4]}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-gray-100">
-                                  <span className="text-gray-600">Labor Cost</span>
-                                  <span className="font-semibold text-gray-900">₹{costMatch[5]}</span>
-                                </div>
-                                <div className="flex justify-between py-3 bg-blue-50 -mx-5 px-5 mt-3">
-                                  <span className="font-bold text-gray-900">Total Estimation</span>
-                                  <span className="font-bold text-blue-600 text-xl">₹{costMatch[6]}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
+                    {/* Cost Breakdown */}
+                    {activeEstimation && activeEstimation.status === 'submitted' && (
+                      <div className="bg-white rounded-xl border border-gray-200 p-5">
+                        <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4 block">Cost Breakdown</Label>
+                        <div className="space-y-3">
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-600">Material Cost (without GST)</span>
+                            <span className="font-semibold text-gray-900">₹{parseFloat(activeEstimation.material_cost_without_gst || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-600">Total GST</span>
+                            <span className="font-semibold text-gray-900">₹{parseFloat(activeEstimation.total_gst || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-600">Material Cost (with GST)</span>
+                            <span className="font-semibold text-gray-900">₹{parseFloat(activeEstimation.material_cost_with_gst || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-600">Labor Hours</span>
+                            <span className="font-semibold text-gray-900">{parseFloat(activeEstimation.labor_hours || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-600">Labor Cost</span>
+                            <span className="font-semibold text-gray-900">₹{parseFloat(activeEstimation.labor_cost || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between py-3 bg-blue-50 -mx-5 px-5 mt-3">
+                            <span className="font-bold text-gray-900">Total Estimation</span>
+                            <span className="font-bold text-blue-600 text-xl">₹{parseFloat(activeEstimation.total_cost || 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Approval Actions */}
                     {selectedTicket.status === 'pending_tenant_approval' && (
@@ -945,17 +925,7 @@ export default function MaintenanceRequestsPage() {
                       </div>
                     )}
 
-                    {(selectedTicket.status === 'completed' || selectedTicket.status === 'work_completed') && (
-                      <div className="bg-white rounded-xl border border-gray-200 p-5">
-                        <Button onClick={() => {
-                          setIsDetailDialogOpen(false);
-                          setIsSatisfactionDialogOpen(true);
-                        }} className="w-full">
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Provide Feedback
-                        </Button>
-                      </div>
-                    )}
+
 
                     {selectedTicket.tenant_rejected_submissions && ['tenant_rejected', 'pending_tenant_approval', 'approved', 'in_progress', 'completed', 'resolved'].includes(selectedTicket.status) && (
                       <div className="bg-orange-50 rounded-xl border border-orange-200 p-5">
@@ -1034,11 +1004,11 @@ export default function MaintenanceRequestsPage() {
                             <p className="text-2xl font-bold text-blue-600">₹{selectedTicket.cost.toLocaleString()}</p>
                           </div>
                         )}
-                        {selectedTicket.assigned_technicians && selectedTicket.assigned_technicians.length > 0 && (
+                        {activeEstimation?.assigned_technicians && activeEstimation.assigned_technicians.length > 0 && (
                           <div className="border-t border-gray-200 pt-4">
                             <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 block">Technician Details</Label>
                             <div className="space-y-2">
-                              {selectedTicket.assigned_technicians.map((tech: any) => (
+                              {activeEstimation.assigned_technicians.map((tech: any) => (
                                 <div key={tech.id} className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                                   <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
@@ -1086,6 +1056,17 @@ export default function MaintenanceRequestsPage() {
                             </div>
                           </div>
                         )}
+                        {(selectedTicket.status === 'completed' || selectedTicket.status === 'work_completed') && (
+                          <div className="border-t border-gray-200 pt-4">
+                            <Button onClick={() => {
+                              setIsDetailDialogOpen(false);
+                              setIsSatisfactionDialogOpen(true);
+                            }} className="w-full">
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Provide Feedback
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1099,30 +1080,37 @@ export default function MaintenanceRequestsPage() {
                 <CardContent className="p-6">
                   <div className="space-y-4">
                     <Label className="text-sm font-semibold text-gray-700">Uploaded Files</Label>
-                    {((selectedTicket.photos && selectedTicket.photos.length > 0) || selectedTicket.video) ? (
+                    {((resolvedPhotos && resolvedPhotos.length > 0) || selectedTicket.video) ? (
                       <div className="space-y-6">
-                        {/* Display Photos */}
-                        {selectedTicket.photos && selectedTicket.photos.length > 0 && (
+                        {resolvedPhotos && resolvedPhotos.length > 0 && (
                           <div>
                             <h3 className="text-sm font-medium text-gray-700 mb-3">Photos</h3>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                              {selectedTicket.photos.map((photoUrl: string, index: number) => (
-                                <div key={`photo-${index}`} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 transition-all cursor-pointer">
+                              {resolvedPhotos.map((photoUrl: string, index: number) => (
+                                <div 
+                                  key={`photo-${index}`} 
+                                  className="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 transition-all cursor-pointer shadow-sm hover:shadow-md"
+                                  onClick={() => {
+                                    setSelectedImage(photoUrl);
+                                    setImagePopupOpen(true);
+                                  }}
+                                >
                                   <img 
                                     src={photoUrl} 
                                     alt={`Photo ${index + 1}`}
                                     className="w-full h-full object-cover"
-                                    onClick={() => window.open(photoUrl, '_blank')}
                                   />
-                                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
                                     <Eye className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                                    <p className="text-white text-xs font-medium">Photo {index + 1}</p>
                                   </div>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
-                        {/* Display Video */}
                         {selectedTicket.video && (
                           <div>
                             <h3 className="text-sm font-medium text-gray-700 mb-3">Video</h3>
@@ -1139,9 +1127,9 @@ export default function MaintenanceRequestsPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
-                        <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-500">No files uploaded for this ticket</p>
+                      <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                        <ImageIcon className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">No files uploaded</p>
                       </div>
                     )}
                   </div>
@@ -1218,14 +1206,6 @@ export default function MaintenanceRequestsPage() {
             </div>
 
             <DialogFooter className="flex-col space-y-2">
-              <Button variant="outline" onClick={() => {
-                setIsSatisfactionDialogOpen(false);
-                setFeedbackRating(0);
-                setFeedbackComments('');
-              }} className="w-full">
-                Cancel
-              </Button>
-              
               {feedbackRating > 0 && feedbackRating <= 5 ? (
                 <div className="flex gap-2 w-full">
                   <Button 
@@ -1248,6 +1228,28 @@ export default function MaintenanceRequestsPage() {
                 </Button>
               ) : null}
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Image Popup Dialog */}
+        <Dialog open={imagePopupOpen} onOpenChange={setImagePopupOpen}>
+          <DialogContent className="max-w-4xl p-0">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Image Preview</DialogTitle>
+            </DialogHeader>
+            <div className="relative">
+              <button
+                onClick={() => setImagePopupOpen(false)}
+                className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+              <img 
+                src={selectedImage} 
+                alt="Full size" 
+                className="w-full h-auto max-h-[80vh] object-contain"
+              />
+            </div>
           </DialogContent>
         </Dialog>
       </div>

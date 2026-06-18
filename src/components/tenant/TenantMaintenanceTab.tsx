@@ -10,12 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Eye, ThumbsUp, ThumbsDown, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MaintenanceService, MaintenanceTicket } from '@/services/maintenanceService';
+import { TicketEstimationService } from '@/services/ticketEstimationService';
 
 export function TenantMaintenanceTab() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<MaintenanceTicket | null>(null);
+  const [activeEstimation, setActiveEstimation] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEstimationOpen, setIsEstimationOpen] = useState(false);
   const [isSatisfactionOpen, setIsSatisfactionOpen] = useState(false);
@@ -26,6 +28,16 @@ export function TenantMaintenanceTab() {
   useEffect(() => {
     loadTickets();
   }, []);
+
+  useEffect(() => {
+    if (selectedTicket?.id) {
+      TicketEstimationService.getActiveEstimation(selectedTicket.id)
+        .then(estimation => setActiveEstimation(estimation))
+        .catch(() => setActiveEstimation(null));
+    } else {
+      setActiveEstimation(null);
+    }
+  }, [selectedTicket?.id]);
 
   const loadTickets = async () => {
     try {
@@ -60,9 +72,10 @@ export function TenantMaintenanceTab() {
   };
 
   const handleApproveEstimation = async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || !activeEstimation) return;
     try {
-      await MaintenanceService.updateTicket(selectedTicket.id, { status: 'in_progress' });
+      await TicketEstimationService.updateEstimationStatus(activeEstimation.id, 'tenant_approved');
+      await MaintenanceService.updateTicket(selectedTicket.id, { status: 'approved' });
       toast({ title: "Success", description: "Estimation approved" });
       setIsEstimationOpen(false);
       loadTickets();
@@ -72,14 +85,15 @@ export function TenantMaintenanceTab() {
   };
 
   const handleRejectEstimation = async () => {
-    if (!selectedTicket || !rejectionReason.trim()) {
+    if (!selectedTicket || !activeEstimation || !rejectionReason.trim()) {
       toast({ title: "Error", description: "Please provide rejection reason", variant: "destructive" });
       return;
     }
     try {
+      await TicketEstimationService.updateEstimationStatus(activeEstimation.id, 'tenant_rejected');
       await MaintenanceService.updateTicket(selectedTicket.id, {
-        status: 'pending',
-        resolution_notes: `Estimation rejected: ${rejectionReason}`
+        status: 'tenant_rejected',
+        rejection_reason: rejectionReason
       });
       toast({ title: "Success", description: "Estimation rejected" });
       setIsEstimationOpen(false);
@@ -252,11 +266,29 @@ export function TenantMaintenanceTab() {
                 <div><Label>Category</Label><p className="text-sm mt-1">{selectedTicket.category}</p></div>
                 <div><Label>Priority</Label><p className="text-sm mt-1">{selectedTicket.priority}</p></div>
               </div>
-              {selectedTicket.cost > 0 && (
-                <div><Label>Estimated Cost</Label><p className="text-sm mt-1">₹{selectedTicket.cost.toLocaleString()}</p></div>
-              )}
-              {selectedTicket.resolution_notes && (
-                <div><Label>Notes</Label><p className="text-sm mt-1">{selectedTicket.resolution_notes}</p></div>
+              {activeEstimation && (
+                <>
+                  <div><Label>Estimated Cost</Label><p className="text-sm mt-1">₹{activeEstimation.total_cost?.toLocaleString()}</p></div>
+                  {activeEstimation.root_cause && (
+                    <div><Label>Root Cause</Label><p className="text-sm mt-1">{activeEstimation.root_cause}</p></div>
+                  )}
+                  {activeEstimation.materials && activeEstimation.materials.length > 0 && (
+                    <div>
+                      <Label>Materials</Label>
+                      <ul className="text-sm mt-1 list-disc list-inside">
+                        {activeEstimation.materials.map((mat: any, i: number) => {
+                          const item = mat.item || mat.name || 'N/A';
+                          const qty = mat.quantity || mat.qty || 0;
+                          const unit = mat.unit || mat.uom || '';
+                          const rate = mat.rate || 0;
+                          return (
+                            <li key={i}>{item} - {qty} {unit} @ ₹{rate}</li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -267,11 +299,34 @@ export function TenantMaintenanceTab() {
       <Dialog open={isEstimationOpen} onOpenChange={setIsEstimationOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Approve Estimation</DialogTitle></DialogHeader>
-          {selectedTicket && (
+          {selectedTicket && activeEstimation && (
             <div className="space-y-4">
               <div className="p-4 bg-muted rounded-lg">
-                <p className="font-semibold">Estimated Cost: ₹{selectedTicket.cost?.toLocaleString() || 0}</p>
-                <p className="text-sm mt-1">{selectedTicket.resolution_notes || 'No details provided'}</p>
+                <p className="font-semibold">Estimated Cost: ₹{activeEstimation.total_cost?.toLocaleString() || 0}</p>
+                {activeEstimation.root_cause && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Root Cause:</p>
+                    <p className="text-sm">{activeEstimation.root_cause}</p>
+                  </div>
+                )}
+                {activeEstimation.materials && activeEstimation.materials.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Materials:</p>
+                    <ul className="text-sm list-disc list-inside">
+                      {activeEstimation.materials.map((mat: any, i: number) => {
+                        const item = mat.item || mat.name || 'N/A';
+                        const qty = mat.quantity || mat.qty || 0;
+                        const unit = mat.unit || mat.uom || '';
+                        return (
+                          <li key={i}>{item} - {qty} {unit}</li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {activeEstimation.notes && (
+                  <p className="text-sm mt-2">{activeEstimation.notes}</p>
+                )}
               </div>
               <div>
                 <Label>Rejection Reason (if rejecting)</Label>
