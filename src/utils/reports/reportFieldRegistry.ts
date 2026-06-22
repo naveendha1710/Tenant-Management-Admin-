@@ -1,13 +1,7 @@
 export type ReportFieldDefinition = {
   key: string;
   label: string;
-  category:
-    | 'General'
-    | 'Classification'
-    | 'Location'
-    | 'Financial'
-    | 'Maintenance'
-    | 'Compliance';
+  category: string;
   type: 'text' | 'number' | 'date' | 'currency' | 'status';
 };
 

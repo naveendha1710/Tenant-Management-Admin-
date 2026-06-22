@@ -3,6 +3,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { getFieldsByCategory } from '@/utils/reports/reportFieldRegistry';
 import { HELPDESK_FIELD_CATEGORIES, getHelpdeskFieldsByCategory } from '@/utils/reports/helpdeskReportFields';
+import { getTenantFieldsByCategory } from '@/utils/reports/tenantReportFields';
 import { supabase } from '@/lib/supabaseClient';
 import { ReportType } from '@/types/report';
 
@@ -16,6 +17,9 @@ export function FieldSelector({ selectedFields, onChange, reportType }: FieldSel
   const groupedFields = useMemo(() => {
     if (reportType === 'helpdesk') {
       return getHelpdeskFieldsByCategory();
+    }
+    if (reportType === 'tenant') {
+      return getTenantFieldsByCategory();
     }
     return getFieldsByCategory();
   }, [reportType]);

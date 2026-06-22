@@ -10,6 +10,14 @@ export type GlobalReportFilters = {
   subCategory?: string;
   assetType?: string;
   status?: string;
+  companyGroup?: string;
+  tenantStatus?: string;
+  agreementStatus?: string;
+  isGstCompany?: string;
+  isMainBranch?: string;
+  dateField?: string;
+  dateFrom?: string;
+  dateTo?: string;
   sortOrder?: 'asc' | 'desc';
 };
 
@@ -28,6 +36,14 @@ const defaultFilters: GlobalReportFilters = {
   subCategory: 'all',
   assetType: 'all',
   status: 'all',
+  companyGroup: 'all',
+  tenantStatus: 'all',
+  agreementStatus: 'all',
+  isGstCompany: 'all',
+  isMainBranch: 'all',
+  dateField: 'all',
+  dateFrom: '',
+  dateTo: '',
   sortOrder: 'asc',
 };
 

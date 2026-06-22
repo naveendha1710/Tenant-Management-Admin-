@@ -7,6 +7,8 @@ import { useGlobalReportFilterStore } from '@/store/useGlobalReportFilterStore';
 import { useReportSheetStore } from '@/store/useReportSheetStore';
 import { useFilterStore } from '@/pages/reports/store/filterStore';
 import { ReportType } from '@/types/report';
+import { normalizeHelpdeskFieldKey } from '@/utils/reports/helpdeskReportFields';
+import { normalizeTenantFieldKey } from '@/utils/reports/tenantReportFields';
 
 interface SavedTemplatesTabProps {
   onTemplateLoaded?: () => void;
@@ -40,10 +42,15 @@ export function SavedTemplatesTab({ onTemplateLoaded, reloadKey, reportType }: S
 
   const loadTemplates = async () => {
     setLoading(true);
+    const reportTypes = reportType === 'asset'
+      ? ['asset', 'custom']
+      : reportType === 'helpdesk'
+        ? ['helpdesk']
+        : ['tenant'];
     const { data, error } = await supabase
       .from('report_templates')
       .select('*')
-      .eq('report_type', reportType)
+      .in('report_type', reportTypes)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -68,20 +75,41 @@ export function SavedTemplatesTab({ onTemplateLoaded, reloadKey, reportType }: S
     setGlobalFilters(template.global_filters || {});
     setSheets((template.sheet_configs || []).map((sheet: any) => ({
       ...sheet,
+      fields: template.report_type === 'helpdesk'
+        ? (sheet.fields || []).map((field: string) => normalizeHelpdeskFieldKey(field))
+        : template.report_type === 'tenant'
+          ? (sheet.fields || []).map((field: string) => normalizeTenantFieldKey(field))
+        : sheet.fields || [],
       additionalFilters: sheet.additionalFilters ?? sheet.filters ?? {},
-      sortOrder: sheet.sortOrder ?? sheet.sort ?? undefined,
+      sortOrder: sheet.sortOrder ? {
+        ...sheet.sortOrder,
+        field: template.report_type === 'helpdesk'
+          ? normalizeHelpdeskFieldKey(sheet.sortOrder.field)
+          : template.report_type === 'tenant'
+            ? normalizeTenantFieldKey(sheet.sortOrder.field)
+          : sheet.sortOrder.field,
+      } : (sheet.sort ? {
+        ...sheet.sort,
+        field: template.report_type === 'helpdesk'
+          ? normalizeHelpdeskFieldKey(sheet.sort.field)
+          : template.report_type === 'tenant'
+            ? normalizeTenantFieldKey(sheet.sort.field)
+          : sheet.sort.field,
+      } : undefined),
     })));
-    setAnalyticsFilters({
-      category: template.global_filters?.category || 'all',
-      subCategory: template.global_filters?.subCategory || 'all',
-      type: template.global_filters?.assetType || 'all',
-      status: template.global_filters?.status || 'all',
-      building: template.global_filters?.building || 'all',
-      floor: template.global_filters?.floor || 'all',
-      room: template.global_filters?.room || 'all',
-      tenant: template.global_filters?.tenant || 'all',
-      sortOrder: template.global_filters?.sortOrder || 'asc',
-    });
+    if (template.report_type !== 'tenant') {
+      setAnalyticsFilters({
+        category: template.global_filters?.category || 'all',
+        subCategory: template.global_filters?.subCategory || 'all',
+        type: template.global_filters?.assetType || 'all',
+        status: template.global_filters?.status || 'all',
+        building: template.global_filters?.building || 'all',
+        floor: template.global_filters?.floor || 'all',
+        room: template.global_filters?.room || 'all',
+        tenant: template.global_filters?.tenant || 'all',
+        sortOrder: template.global_filters?.sortOrder || 'asc',
+      });
+    }
     // store the loaded template id so export history can reference it
     try {
       setLoadedTemplateId(template.id);

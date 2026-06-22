@@ -52,7 +52,7 @@ export function ReportBuilderTab({
       .from('report_templates')
       .insert({
         template_name: templateName.trim(),
-        report_type: 'custom',
+        report_type: reportType,
         is_public: isPublic,
         global_filters: globalFilters,
         sheet_configs: sheets,
@@ -79,6 +79,7 @@ export function ReportBuilderTab({
         sheets={sheets}
         onUpdateSheet={updateSheet}
         onRemoveSheet={removeSheet}
+        reportType={reportType}
       />
 
       <div className="sticky bottom-0 border-t bg-background pt-4">

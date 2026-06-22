@@ -47,7 +47,7 @@ export function ReportTabs({
         <div>
           <div className="text-sm font-medium">Report Type</div>
           <div className="text-xs text-muted-foreground">
-            Switch the workspace between asset and helpdesk reporting.
+            Switch the workspace between asset, helpdesk, and tenant reporting.
           </div>
         </div>
 
@@ -67,6 +67,14 @@ export function ReportTabs({
             onClick={() => onReportTypeChange('helpdesk')}
           >
             Helpdesk Reports
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={reportType === 'tenant' ? 'default' : 'outline'}
+            onClick={() => onReportTypeChange('tenant')}
+          >
+            Tenant Management
           </Button>
         </div>
       </div>

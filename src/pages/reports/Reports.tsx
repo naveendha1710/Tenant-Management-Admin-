@@ -72,7 +72,7 @@ export default function Reports() {
       input || {
         globalFilters,
         sheets,
-        reportName: `${reportType === 'asset' ? 'Asset' : 'Helpdesk'}_Report`,
+        reportName: `${reportType === 'asset' ? 'Asset' : reportType === 'helpdesk' ? 'Helpdesk' : 'Tenant'}_Report`,
         reportType, // NEW - pass report type to RPC
       };
 
@@ -125,7 +125,7 @@ export default function Reports() {
         await recordExportHistory({
           templateId: reportInput.templateId || null,
           reportName:
-            reportInput.reportName || 'Asset_Report',
+            reportInput.reportName || (reportInput.reportType === 'tenant' ? 'Tenant_Report' : 'Asset_Report'),
           reportType:
             reportInput.reportType || 'custom',
           totalSheets:

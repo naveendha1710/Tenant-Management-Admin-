@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-const getUnique = (arr: string[]): string[] => Array.from(new Set(arr));
+const getUnique = (arr: any[]): string[] => Array.from(new Set(arr.filter(Boolean) as string[]));
 
 export function useHelpdeskFilterOptions() {
   const [categories, setCategories] = useState<string[]>([]);
@@ -14,108 +14,198 @@ export function useHelpdeskFilterOptions() {
   const [assignedTo, setAssignedTo] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
   const [safetyRisks, setSafetyRisks] = useState<string[]>([]);
+  const [tickets, setTickets] = useState<any[]>([]);
 
-  const loadFilterOptions = useCallback(async () => {
-    // Load ticket categories
-    const { data: catData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct category')
-      .order('category');
-    if (catData) setCategories(getUnique(catData.map((c) => c.category)));
-
-    // Load ticket sub-categories
-    const { data: subCatData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct sub_category')
-      .order('sub_category');
-    if (subCatData) setSubCategories(getUnique(subCatData.map((s) => s.sub_category)));
-
-    // Load priorities
-    const { data: priorityData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct priority')
-      .order('priority');
-    if (priorityData) setPriorities(getUnique(priorityData.map((p) => p.priority)));
-
-    // Load statuses
-    const { data: statusData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct status')
-      .order('status');
-    if (statusData) setStatuses(getUnique(statusData.map((s) => s.status)));
-
-    // Load buildings
-    const { data: buildingData } = await supabase
-      .from('buildings')
-      .select('id, name');
-    if (buildingData) setBuildings(buildingData);
-
-    // Load floors
-    const { data: floorData } = await supabase
-      .from('floors')
-      .select('id, name, building_id');
-    if (floorData) setFloors(floorData);
-
-    // Load rooms
-    const { data: roomData } = await supabase
-      .from('rooms')
-      .select('id, name, floor_id');
-    if (roomData) setRooms(roomData);
-
-    // Load assigned users
-    const { data: assignedToData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct assigned_to')
-      .order('assigned_to');
-    if (assignedToData) setAssignedTo(getUnique(assignedToData.map((a) => a.assigned_to)));
-
-    // Load tenants
-    const { data: tenantData } = await supabase
-      .from('tenants')
-      .select('id, name');
-    if (tenantData) setTenants(tenantData);
-
-    // Load safety risks
-    const { data: safetyRiskData } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct safety_risk')
-      .order('safety_risk');
-    if (safetyRiskData) setSafetyRisks(getUnique(safetyRiskData.map((s) => s.safety_risk)));
-
+  // Load all tickets first (similar to ManageTicketsPage.tsx)
+  const loadTickets = useCallback(async () => {
+    try {
+      const { data: ticketsData, error } = await supabase
+        .from('maintenance_tickets')
+        .select('*');
+      
+      if (error) throw error;
+      if (ticketsData && ticketsData.length > 0) {
+        setTickets(ticketsData);
+        
+        // Extract unique values from tickets data
+        const uniqueCategories = getUnique(ticketsData.map((t: any) => t.category));
+        setCategories(uniqueCategories);
+        
+        const uniqueSubCategories = getUnique(ticketsData.map((t: any) => t.sub_category));
+        setSubCategories(uniqueSubCategories);
+        
+        const uniquePriorities = getUnique(ticketsData.map((t: any) => t.priority));
+        setPriorities(uniquePriorities);
+        
+        const uniqueStatuses = getUnique(ticketsData.map((t: any) => t.status));
+        setStatuses(uniqueStatuses);
+      }
+    } catch (error) {
+      console.error('Error loading tickets for filters:', error);
+    }
   }, []);
+
+  // Load buildings, floors, rooms, tenants, and technicians
+  const loadResources = useCallback(async () => {
+    try {
+      // Load buildings
+      const { data: buildingData, error: buildingError } = await supabase
+        .from('buildings')
+        .select('id, name');
+      if (buildingError) throw buildingError;
+      if (buildingData) setBuildings(buildingData);
+
+      // Load floors (uses floor_number and floor_name columns)
+      const { data: floorData, error: floorError } = await supabase
+        .from('floors')
+        .select('id, building_id, floor_number, floor_name');
+      if (floorError) throw floorError;
+      if (floorData) {
+        // Map to standard format for compatibility with UI components
+        setFloors(floorData.map(f => ({
+          id: f.id,
+          name: f.floor_name || `Floor ${f.floor_number}`,
+          floor_number: f.floor_number,
+          floor_name: f.floor_name,
+          building_id: f.building_id
+        })));
+      }
+
+      // Load rooms (uses room_number column)
+      const { data: roomData, error: roomError } = await supabase
+        .from('rooms')
+        .select('id, floor_id, building_id, room_number');
+      if (roomError) throw roomError;
+      if (roomData) {
+        // Map to standard format for compatibility with UI components
+        setRooms(roomData.map(r => ({
+          id: r.id,
+          name: r.room_number,
+          room_number: r.room_number,
+          floor_id: r.floor_id,
+          building_id: r.building_id
+        })));
+      }
+
+      // Load tenants
+      const { data: tenantData, error: tenantError } = await supabase
+        .from('tenants')
+        .select('id, name');
+      if (tenantError) throw tenantError;
+      if (tenantData) setTenants(tenantData);
+
+      // Load technicians from users where selectedRoles includes 'Technician'
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, phone, selected_roles, is_active');
+      
+      if (userError) throw userError;
+      if (userData) {
+        const technicians = userData
+          .filter((u: any) => 
+            (u.selected_roles || []).includes('Technician') &&
+            u.is_active !== false
+          )
+          .map((u: any) => ({
+            id: u.id,
+            name: u.name || u.email || 'Unknown',
+            contact: u.phone || u.email || '',
+            specialization: u.technicianCategory || u.department || 'General'
+          }));
+        setAssignedTo(technicians);
+      }
+    } catch (error) {
+      console.error('Error loading resources for filters:', error);
+    }
+  }, []);
+
+  // Load safety risks from tickets
+  const loadSafetyRisks = useCallback(async () => {
+    try {
+      if (tickets.length === 0) return;
+      
+      const uniqueSafetyRisks = getUnique(tickets.map((t: any) => t.safety_risk));
+      setSafetyRisks(uniqueSafetyRisks);
+    } catch (error) {
+      console.error('Error loading safety risks:', error);
+    }
+  }, [tickets]);
 
   useEffect(() => {
-    loadFilterOptions();
-  }, [loadFilterOptions]);
+    loadTickets();
+  }, [loadTickets]);
+
+  useEffect(() => {
+    loadResources();
+  }, [loadResources]);
+
+  useEffect(() => {
+    loadSafetyRisks();
+  }, [loadSafetyRisks]);
 
   const loadFloorsForBuilding = useCallback(async (buildingId: string) => {
-    const { data } = await supabase
-      .from('floors')
-      .select('id, name')
-      .eq('building_id', buildingId)
-      .order('name');
-    
-    return data || [];
-  }, []);
+    try {
+      const { data, error } = await supabase
+        .from('floors')
+        .select('id, floor_number, floor_name')
+        .eq('building_id', buildingId)
+        .order('floor_number');
+      
+      if (error) throw error;
+      // Map to standard format for compatibility with UI components and update state
+      const mappedFloors = (data || []).map(f => ({
+        id: f.id,
+        name: f.floor_name || `Floor ${f.floor_number}`,
+        floor_number: f.floor_number,
+        floor_name: f.floor_name
+      }));
+      setFloors(mappedFloors);
+      return mappedFloors;
+    } catch (error) {
+      console.error('Error loading floors:', error);
+      setFloors([]);
+      return [];
+    }
+  }, [setFloors]);
 
   const loadRoomsForFloor = useCallback(async (floorId: string) => {
-    const { data } = await supabase
-      .from('rooms')
-      .select('id, name')
-      .eq('floor_id', floorId)
-      .order('name');
-    
-    return data || [];
-  }, []);
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('id, room_number')
+        .eq('floor_id', floorId)
+        .order('room_number');
+      
+      if (error) throw error;
+      // Map to standard format for compatibility with UI components and update state
+      const mappedRooms = (data || []).map(r => ({
+        id: r.id,
+        name: r.room_number,
+        room_number: r.room_number
+      }));
+      setRooms(mappedRooms);
+      return mappedRooms;
+    } catch (error) {
+      console.error('Error loading rooms:', error);
+      setRooms([]);
+      return [];
+    }
+  }, [setRooms]);
 
   const loadSubCategoriesForCategory = useCallback(async (category: string) => {
-    const { data } = await supabase
-      .from('maintenance_tickets')
-      .select('distinct sub_category')
-      .eq('category', category)
-      .order('sub_category');
-    
-    return data ? getUnique(data.map((d) => d.sub_category)) : [];
+    try {
+      const { data, error } = await supabase
+        .from('maintenance_tickets')
+        .select('distinct sub_category')
+        .eq('category', category)
+        .order('sub_category');
+      
+      if (error) throw error;
+      return data ? getUnique(data.map((d: any) => d.sub_category)) : [];
+    } catch (error) {
+      console.error('Error loading sub-categories:', error);
+      return [];
+    }
   }, []);
 
   return {

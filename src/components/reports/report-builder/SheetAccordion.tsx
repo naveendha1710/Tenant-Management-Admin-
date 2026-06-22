@@ -81,11 +81,13 @@ export function ReportBuilderSheetAccordion({
               onChange={(additionalFilters) =>
                 onUpdateSheet(sheet.id, { additionalFilters })
               }
+              reportType={reportType}
             />
 
             <SortSelector
               value={sheet.sortOrder ?? sheet.sort}
               onChange={(sortOrder) => onUpdateSheet(sheet.id, { sortOrder })}
+              reportType={reportType}
             />
 
             <div className="flex justify-end">

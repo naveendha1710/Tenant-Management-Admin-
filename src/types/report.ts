@@ -1,4 +1,4 @@
-export type ReportType = 'asset' | 'helpdesk';
+export type ReportType = 'asset' | 'helpdesk' | 'tenant';
 
 export interface GlobalReportFilters {
   // Asset fields (keep for backward compatibility)
@@ -18,6 +18,14 @@ export interface GlobalReportFilters {
   tenant?: string;
   safetyRisk?: string;
   previousOccurrence?: boolean;
+  companyGroup?: string;
+  tenantStatus?: string;
+  agreementStatus?: string;
+  isGstCompany?: string;
+  isMainBranch?: string;
+  dateField?: string;
+  dateFrom?: string;
+  dateTo?: string;
   createdDateRange?: [string, string]; // ISO strings
   targetDateRange?:   [string, string];
   resolvedDateRange?: [string, string];

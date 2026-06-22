@@ -1,8 +1,14 @@
 import { ReportFieldDefinition } from './reportFieldRegistry';
 
 export const HELPDESK_REPORT_FIELDS: ReportFieldDefinition[] = [
-  { key: 'ticket_no', label: 'Ticket No', category: 'General', type: 'text' },
+  { key: 'ticket_number', label: 'Ticket No', category: 'General', type: 'text' },
   { key: 'created_at', label: 'Date', category: 'General', type: 'date' },
+  { key: 'tenant', label: 'Tenant', category: 'General', type: 'text' },
+  { key: 'target_date', label: 'Target Date', category: 'General', type: 'date' },
+  { key: 'resolved_at', label: 'Resolved At', category: 'General', type: 'date' },
+  { key: 'safety_risk', label: 'Safety Risk', category: 'General', type: 'status' },
+  { key: 'previous_occurrence', label: 'Previous Occurrence', category: 'General', type: 'status' },
+  { key: 'sla_deadline', label: 'SLA Deadline', category: 'General', type: 'date' },
   { key: 'category', label: 'Category', category: 'Classification', type: 'text' },
   { key: 'sub_category', label: 'Sub Category', category: 'Classification', type: 'text' },
   { key: 'priority', label: 'Priority', category: 'Classification', type: 'text' },
@@ -52,4 +58,14 @@ export const getHelpdeskFieldsByCategory = () => {
     },
     {}
   );
+};
+
+export const normalizeHelpdeskFieldKey = (key: string) => {
+  if (key === 'ticket_no') return 'ticket_number';
+  return key;
+};
+
+export const getHelpdeskFieldLabel = (key: string) => {
+  const normalizedKey = normalizeHelpdeskFieldKey(key);
+  return HELPDESK_REPORT_FIELDS.find((field) => field.key === normalizedKey)?.label || normalizedKey;
 };

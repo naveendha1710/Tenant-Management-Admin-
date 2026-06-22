@@ -44,7 +44,11 @@ export function ReportWorkspaceDrawer({
           {/* Header */}
           <SheetHeader className='border-b px-6 py-5'>
             <SheetTitle className='text-2xl font-semibold tracking-tight'>
-              {reportType === 'asset' ? 'Asset Reports Workspace' : 'Helpdesk Reports Workspace'}
+              {reportType === 'asset'
+                ? 'Asset Reports Workspace'
+                : reportType === 'helpdesk'
+                  ? 'Helpdesk Reports Workspace'
+                  : 'Tenant Management Reports Workspace'}
             </SheetTitle>
           </SheetHeader>
 
