@@ -167,7 +167,7 @@ const MODULE_ROUTES: Record<string, string> = {
   'Configuration': '/assets/configuration',
   'Preventive Maintenance': '/assets/preventive-maintenance',
   'Physical Audit': '/assets/physical-audit',
-  'Reports': '/reports'
+  'Reports': '/reports/assets'
 };
 
 function getRoleDashboardPath(role: string | null, user: any = null): string {
@@ -469,7 +469,8 @@ function AppContent() {
                     <PhysicalAuditModule />
                   </ProtectedRoute>
                 } />
-                <Route path="/reports" element={
+                <Route path="/reports" element={<Navigate to="/reports/assets" replace />} />
+                <Route path="/reports/:reportType" element={
                   <ProtectedRoute>
                     <Reports />
                   </ProtectedRoute>

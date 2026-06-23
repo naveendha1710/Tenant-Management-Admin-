@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 const getUnique = (arr: any[]): string[] => Array.from(new Set(arr.filter(Boolean) as string[]));
 
-export function useHelpdeskFilterOptions() {
+export function useHelpdeskFilterOptions(enabled = true) {
   const [categories, setCategories] = useState<string[]>([]);
   const [subCategories, setSubCategories] = useState<string[]>([]);
   const [priorities, setPriorities] = useState<string[]>([]);
@@ -132,16 +132,19 @@ export function useHelpdeskFilterOptions() {
   }, [tickets]);
 
   useEffect(() => {
+    if (!enabled) return;
     loadTickets();
-  }, [loadTickets]);
+  }, [enabled, loadTickets]);
 
   useEffect(() => {
+    if (!enabled) return;
     loadResources();
-  }, [loadResources]);
+  }, [enabled, loadResources]);
 
   useEffect(() => {
+    if (!enabled) return;
     loadSafetyRisks();
-  }, [loadSafetyRisks]);
+  }, [enabled, loadSafetyRisks]);
 
   const loadFloorsForBuilding = useCallback(async (buildingId: string) => {
     try {

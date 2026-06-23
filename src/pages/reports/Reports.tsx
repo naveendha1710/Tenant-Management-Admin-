@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
 import { OperationsControlCenter } from './widgets/OperationsControlCenter';
@@ -22,8 +24,29 @@ import {
 import { recordExportHistory } from '@/utils/reports/reportHistory';
 import { ReportType } from '@/types/report';
 
+const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  asset: 'Asset Reports',
+  helpdesk: 'Helpdesk Reports',
+  tenant: 'Tenant Reports',
+};
+
+const REPORT_TYPE_SUBTITLES: Record<ReportType, string> = {
+  asset: 'Enterprise asset management insights',
+  helpdesk: 'Helpdesk reporting workspace',
+  tenant: 'Tenant reporting workspace',
+};
+
+function resolveReportType(param?: string): ReportType | null {
+  if (param === 'assets' || param === 'asset') return 'asset';
+  if (param === 'helpdesk') return 'helpdesk';
+  if (param === 'tenant' || param === 'tenants') return 'tenant';
+  return null;
+}
+
 export default function Reports() {
   const { toast } = useToast();
+  const { reportType: reportTypeParam } = useParams<{ reportType?: string }>();
+  const reportType = useMemo(() => resolveReportType(reportTypeParam), [reportTypeParam]);
 
   /* Drawer State */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -39,9 +62,6 @@ export default function Reports() {
   /* Report Generation State */
   const [isGenerating, setIsGenerating] =
     useState(false);
-
-  /* Report Type State */
-  const [reportType, setReportType] = useState<ReportType>('asset');
 
   /* Filter Store */
   const activeFilterCount = useFilterStore(
@@ -64,16 +84,28 @@ export default function Reports() {
   /* Current App User */
   const { user: currentUser } = useAuth();
 
+  useEffect(() => {
+    setDrawerOpen(false);
+    setActiveTab('report-builder');
+    setFiltersApplied(false);
+    clearAllSheets();
+    clearGlobalFilters();
+    resetFilters();
+    setLoadedTemplateId(null);
+  }, [reportType, clearAllSheets, clearGlobalFilters, resetFilters, setLoadedTemplateId]);
+
   /* Generate Report */
   const handleGenerateReport = async (
     input?: GenerateFlexibleReportInput
   ) => {
+    if (!reportType) return;
+
     const reportInput: GenerateFlexibleReportInput =
       input || {
         globalFilters,
         sheets,
         reportName: `${reportType === 'asset' ? 'Asset' : reportType === 'helpdesk' ? 'Helpdesk' : 'Tenant'}_Report`,
-        reportType, // NEW - pass report type to RPC
+        reportType,
       };
 
     /* Validation */
@@ -168,31 +200,43 @@ export default function Reports() {
     setActiveTab('report-builder');
   };
 
-  const handleReportTypeChange = (nextType: ReportType) => {
-    if (nextType === reportType) {
-      return;
-    }
-
-    setReportType(nextType);
-    setActiveTab('global-filters');
-    setFiltersApplied(false);
-    clearAllSheets();
-    clearGlobalFilters();
-    resetFilters();
-    setLoadedTemplateId(null);
-  };
+  if (!reportType) {
+    return <Navigate to="/reports/assets" replace />;
+  }
 
   return (
     <DashboardLayout
-      title="Analytics Dashboard"
-      subtitle="Enterprise asset management insights"
+      title={REPORT_TYPE_LABELS[reportType]}
+      subtitle={REPORT_TYPE_SUBTITLES[reportType]}
     >
       <div className="space-y-6">
-        {/* Dashboard Widgets */}
-        <OperationsControlCenter
-          onOpenReportWorkspace={() => setDrawerOpen(true)}
-          activeFilterCount={activeFilterCount}
-        />
+        {reportType === 'asset' ? (
+          <OperationsControlCenter
+            onOpenReportWorkspace={() => setDrawerOpen(true)}
+            activeFilterCount={activeFilterCount}
+          />
+        ) : (
+          <div className="flex min-h-[360px] items-center justify-center rounded-2xl border bg-background px-6 py-10 shadow-sm">
+            <div className="w-full max-w-[640px] space-y-6 text-center">
+              <div className="space-y-3">
+                <h2 className="text-2xl font-semibold tracking-tight">
+                  {reportType === 'helpdesk'
+                    ? 'Helpdesk Reports Dashboard'
+                    : 'Tenant Management Dashboard'}
+                </h2>
+                <p className="mx-auto max-w-[560px] text-sm text-muted-foreground">
+                  Dashboard widgets and analytics will be added in a future release.
+                </p>
+              </div>
+
+              <div className="flex justify-center">
+                <Button onClick={() => setDrawerOpen(true)}>
+                  Open Reporting Workspace
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Reports Workspace Drawer */}
@@ -201,7 +245,6 @@ export default function Reports() {
         onOpenChange={setDrawerOpen}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onReportTypeChange={handleReportTypeChange}
         filtersApplied={filtersApplied}
         onFiltersApplied={handleFiltersApplied}
         onGenerateReport={handleGenerateReport}

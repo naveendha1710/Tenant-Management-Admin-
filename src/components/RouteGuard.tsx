@@ -18,7 +18,10 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/admin/user-management': 'Users',
   '/admin/settings': 'Settings',
   '/admin/helpdesk': 'Manage Tickets',
-  '/admin/technician': 'Technician'
+  '/admin/technician': 'Technician',
+  '/reports/assets': 'Reports',
+  '/reports/helpdesk': 'Reports',
+  '/reports/tenant': 'Reports'
 };
 
 export const RouteGuard = ({ children, role }: { children: JSX.Element; role: string }) => {

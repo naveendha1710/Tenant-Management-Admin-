@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 const getUnique = (arr: string[]): string[] => Array.from(new Set(arr));
 
-export function useAssetFilterOptions() {
+export function useAssetFilterOptions(enabled = true) {
   const [categories, setCategories] = useState<string[]>([]);
   const [subCategories, setSubCategories] = useState<string[]>([]);
   const [types, setTypes] = useState<string[]>([]);
@@ -118,8 +118,9 @@ export function useAssetFilterOptions() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     loadFilterOptions();
-  }, [loadFilterOptions]);
+  }, [enabled, loadFilterOptions]);
 
   return {
     categories,

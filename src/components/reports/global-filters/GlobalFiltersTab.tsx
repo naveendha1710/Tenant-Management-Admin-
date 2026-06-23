@@ -20,9 +20,9 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   const { setFilters: setAnalyticsFilters } = useFilterStore();
   const noop = () => {};
 
-  const assetOptions = useAssetFilterOptions();
-  const helpdeskOptions = useHelpdeskFilterOptions();
-  const tenantOptions = useTenantReportFilterOptions();
+  const assetOptions = useAssetFilterOptions(reportType === 'asset');
+  const helpdeskOptions = useHelpdeskFilterOptions(reportType === 'helpdesk');
+  const tenantOptions = useTenantReportFilterOptions(reportType === 'tenant');
 
   const isAsset = reportType === 'asset';
   const isHelpdesk = reportType === 'helpdesk';

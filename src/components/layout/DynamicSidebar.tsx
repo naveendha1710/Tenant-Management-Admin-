@@ -39,7 +39,7 @@ const moduleRoutes = {
   'Rent Collection': '/admin/rent-collection',
   'Deposits': '/admin/deposits',
   'Expenses': '/admin/expenses',
-  'Reports': '/reports',
+  'Reports': '/reports/assets',
   'Settings': '/admin/settings',
   'Users': '/admin/user-management',
   'Helpdesk': '/admin/helpdesk'

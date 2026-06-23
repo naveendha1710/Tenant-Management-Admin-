@@ -1,4 +1,4 @@
-import { Building2, ChevronDown, ChevronRight, Plus, Shield, Users, Settings, DollarSign, CheckCircle, Package, LogOut, UserCircle } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Plus, Shield, Users, Settings, DollarSign, CheckCircle, Package, LogOut, UserCircle, FileSpreadsheet } from "lucide-react";
 import { NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import {
@@ -38,7 +38,7 @@ export function AppSidebar() {
   
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('sidebar-expanded-groups');
-    return saved ? new Set(JSON.parse(saved)) : new Set(['Companies', 'Asset Management']);
+    return saved ? new Set(JSON.parse(saved)) : new Set(['Companies', 'Asset Management', 'Reports']);
   });
 
   useEffect(() => {
@@ -84,6 +84,9 @@ export function AppSidebar() {
           ].some(module => hasPermission(user?.appUser, module, 'view'));
           return hasAnyAssetPermission ? group : null;
         }
+        if (group.title === 'Reports') {
+          return hasPermission(user?.appUser, 'Reports', 'view') ? group : null;
+        }
         if (group.title === 'Companies') {
           return hasPermission(user?.appUser, 'Companies', 'view') ? group : null;
         }
@@ -100,7 +103,6 @@ export function AppSidebar() {
           );
         }
         if (item.title === 'Helpdesk') return hasPermission(user?.appUser, 'Helpdesk', 'view') || hasPermission(user?.appUser, 'Manage Tickets', 'view');
-        if (item.title === 'Reports') return hasPermission(user?.appUser, 'Reports', 'view');
         return true;
       });
       
@@ -447,6 +449,50 @@ export function AppSidebar() {
                           if (item.title === 'Configuration') return hasPermission(user?.appUser, 'Configuration', 'view');
                           return true;
                         }).map((item) => (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild>
+                              <NavLink 
+                                to={item.url}
+                                className={getNavClass(item.url)}
+                              >
+                                <item.icon className="h-4 w-4" />
+                                <span className="text-sm">{item.title}</span>
+                              </NavLink>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </div>
+                    )}
+                  </SidebarMenu>
+                )}
+
+                {/* Reports Expandable Section */}
+                {group.expandable && group.title === 'Reports' && hasPermission(user?.appUser, 'Reports', 'view') && (
+                  <SidebarMenu className="px-2">
+                    <SidebarMenuItem>
+                      <SidebarMenuButton 
+                        onClick={() => toggleGroup('Reports')}
+                        className="cursor-pointer hover:bg-sidebar-accent/50"
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-2">
+                            <FileSpreadsheet className="h-4 w-4" />
+                            {!collapsed && <span>Reports</span>}
+                          </div>
+                          {!collapsed && (
+                            expandedGroups.has('Reports') ? 
+                            <ChevronDown className="h-4 w-4" /> : 
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </div>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    
+                    {!collapsed && group.subItems && (
+                      <div className={`ml-6 mt-1 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
+                        expandedGroups.has('Reports') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                      }`}>
+                        {group.subItems.map((item) => (
                           <SidebarMenuItem key={item.title}>
                             <SidebarMenuButton asChild>
                               <NavLink 

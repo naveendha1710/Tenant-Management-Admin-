@@ -16,9 +16,9 @@ interface SheetFiltersProps {
 export function SheetFilters({ filters = {}, onChange, reportType }: SheetFiltersProps) {
   const initialFilters = filters ?? {};
   const isAsset = reportType === 'asset';
-  const assetOptions = useAssetFilterOptions();
-  const helpdeskOptions = useHelpdeskFilterOptions();
-  const tenantOptions = useTenantReportFilterOptions();
+  const assetOptions = useAssetFilterOptions(isAsset);
+  const helpdeskOptions = useHelpdeskFilterOptions(reportType === 'helpdesk');
+  const tenantOptions = useTenantReportFilterOptions(reportType === 'tenant');
   const filterOptions: any = reportType === 'helpdesk'
     ? helpdeskOptions
     : reportType === 'tenant'

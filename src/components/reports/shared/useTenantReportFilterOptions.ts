@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 const getUnique = (arr: any[]): string[] => Array.from(new Set(arr.filter(Boolean) as string[]));
 
-export function useTenantReportFilterOptions() {
+export function useTenantReportFilterOptions(enabled = true) {
   const [tenants, setTenants] = useState<any[]>([]);
   const [companyGroups, setCompanyGroups] = useState<string[]>([]);
   const [tenantStatuses, setTenantStatuses] = useState<string[]>([]);
@@ -103,8 +103,9 @@ export function useTenantReportFilterOptions() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     loadFilterOptions();
-  }, [loadFilterOptions]);
+  }, [enabled, loadFilterOptions]);
 
   return {
     tenants,

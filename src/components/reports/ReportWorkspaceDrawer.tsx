@@ -9,7 +9,6 @@ interface ReportWorkspaceDrawerProps {
   onOpenChange: (open: boolean) => void;
   activeTab: ReportTabValue;
   onTabChange: (tab: ReportTabValue) => void;
-  onReportTypeChange: (type: ReportType) => void;
   filtersApplied: boolean;
   onFiltersApplied: () => void;
   onGenerateReport: (input?: GenerateFlexibleReportInput) => Promise<void>;
@@ -22,7 +21,6 @@ export function ReportWorkspaceDrawer({
   onOpenChange,
   activeTab,
   onTabChange,
-  onReportTypeChange,
   filtersApplied,
   onFiltersApplied,
   onGenerateReport,
@@ -58,7 +56,6 @@ export function ReportWorkspaceDrawer({
               <ReportTabs
                 activeTab={activeTab}
                 onTabChange={onTabChange}
-                onReportTypeChange={onReportTypeChange}
                 filtersApplied={filtersApplied}
                 onFiltersApplied={onFiltersApplied}
                 onGenerateReport={onGenerateReport}

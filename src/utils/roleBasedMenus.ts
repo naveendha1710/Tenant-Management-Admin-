@@ -70,7 +70,16 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Buildings", url: "/admin/buildings", icon: Building2 },
         { title: "Accounts", url: "/admin/accounts", icon: DollarSign },
         { title: "Helpdesk", url: "/admin/helpdesk", icon: Headphones },
-        { title: "Reports", url: "/reports", icon: FileSpreadsheet },
+      ]
+    },
+    {
+      title: "Reports",
+      expandable: true,
+      items: [],
+      subItems: [
+        { title: "Asset Reports", url: "/reports/assets", icon: FileSpreadsheet },
+        { title: "Helpdesk Reports", url: "/reports/helpdesk", icon: FileSpreadsheet },
+        { title: "Tenant Reports", url: "/reports/tenant", icon: FileSpreadsheet },
       ]
     },
     {
@@ -154,7 +163,16 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
         { title: "Buildings", url: "/admin/buildings", icon: Building2 },
         { title: "Accounts", url: "/admin/accounts", icon: DollarSign },
         { title: "Helpdesk", url: "/admin/helpdesk", icon: Headphones },
-        { title: "Reports", url: "/reports", icon: FileSpreadsheet },
+      ]
+    },
+    {
+      title: "Reports",
+      expandable: true,
+      items: [],
+      subItems: [
+        { title: "Asset Reports", url: "/reports/assets", icon: FileSpreadsheet },
+        { title: "Helpdesk Reports", url: "/reports/helpdesk", icon: FileSpreadsheet },
+        { title: "Tenant Reports", url: "/reports/tenant", icon: FileSpreadsheet },
       ]
     },
     {
@@ -333,13 +351,17 @@ export function isRouteAllowedForRole(route: string, role: UserRole | null): boo
   if (route.startsWith(rolePrefix)) return true;
   
   const menus = getMenusForRole(role);
-  return menus.some(group => 
-    group.items.some(item => {
-      // Exact match
-      if (item.url === route) return true;
-      // Sub-route match (ensure it's a proper sub-path)
-      if (route.startsWith(item.url + '/')) return true;
-      return false;
-    })
+  const matchesItem = (item: MenuItem): boolean => {
+    if (item.url === route) return true;
+    if (route.startsWith(item.url + '/')) return true;
+    if (item.expandable && item.subItems) {
+      return item.subItems.some(matchesItem);
+    }
+    return false;
+  };
+
+  return menus.some(group =>
+    group.items.some(matchesItem) ||
+    (group.subItems ? group.subItems.some(matchesItem) : false)
   );
 }
