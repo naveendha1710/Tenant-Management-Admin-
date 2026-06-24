@@ -752,8 +752,8 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
                 <SelectContent>
                   <SelectItem value="all">All Users</SelectItem>
                   {assignedTo.map((user) => (
-                    <SelectItem key={user} value={user}>
-                      {user}
+                    <SelectItem key={user.id} value={String(user.id)}>
+                      {user.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

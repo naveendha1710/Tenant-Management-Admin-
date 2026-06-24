@@ -367,8 +367,8 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
               <SelectContent>
                 <SelectItem value="all">All Technicians</SelectItem>
                 {(assignedToOptions || []).map((item: any) => (
-                  <SelectItem key={item.id || item.name} value={item.id || item.name}>
-                    {item.name || item.full_name || item.contact || item}
+                    <SelectItem key={String(item.id)} value={String(item.id)}>
+                      {item.name || item.full_name || item.contact || 'Unknown'}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ReportTabs, ReportTabValue } from './ReportTabs';
 import { GenerateFlexibleReportInput } from '@/utils/reports/generateFlexibleReport';
 import { ReportType } from '@/types/report';
@@ -48,6 +48,9 @@ export function ReportWorkspaceDrawer({
                   ? 'Helpdesk Reports Workspace'
                   : 'Tenant Management Reports Workspace'}
             </SheetTitle>
+            <SheetDescription>
+              Configure filters and generate reports for your data.
+            </SheetDescription>
           </SheetHeader>
 
           {/* Body */}
