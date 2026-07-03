@@ -12,6 +12,22 @@ interface FilterStore {
   getActiveFilterCount: () => number;
 }
 
+// Update the type definition to support arrays for multi-select filters
+export type ReportFilters = {
+  category?: string | string[];
+  subCategory?: string | string[];
+  type?: string | string[];
+  status?: string | string[];
+  building?: string | string[];
+  floor?: string | string[];
+  room?: string | string[];
+  tenant?: string | string[];
+  vendor?: string;
+  sezStatus?: string | string[];
+  warrantyStatus?: string;
+  sortOrder?: 'asc' | 'desc';
+};
+
 const defaultFilters: ReportFilters = {
   category: 'all',
   subCategory: 'all',
@@ -85,6 +101,9 @@ export const useFilterStore = create<FilterStore>()(
 function countActiveFilters(filters: ReportFilters): number {
   return Object.entries(filters).filter(([key, value]) => {
     if (key === 'sortOrder') return false;
+    if (Array.isArray(value)) {
+      return value.length > 0 && !value.every(v => v === 'all');
+    }
     if (value === 'all' || value === undefined || value === null) return false;
     if (key === 'dateRange' && (!value.from || !value.to)) return false;
     return true;

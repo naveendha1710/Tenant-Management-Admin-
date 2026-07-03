@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { useAssetFilterOptions } from '../shared/useAssetFilterOptions';
 import { useHelpdeskFilterOptions } from '../shared/useHelpdeskFilterOptions';
 import { useTenantReportFilterOptions } from '../shared/useTenantReportFilterOptions';
 import { ReportType } from '@/types/report';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 
 interface SheetFiltersProps {
   filters?: Record<string, any>;
@@ -46,22 +46,23 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     assignedTo: assignedToOptions,
   } = filterOptions;
 
-  const [category, setCategory] = useState(initialFilters.category || 'all');
-  const [subCategory, setSubCategory] = useState(initialFilters.subCategory || 'all');
-  const [assetType, setAssetType] = useState(initialFilters.assetType || 'all');
-  const [status, setStatus] = useState(initialFilters.status || 'all');
-  const [building, setBuilding] = useState(initialFilters.building || 'all');
-  const [floor, setFloor] = useState(initialFilters.floor || 'all');
-  const [room, setRoom] = useState(initialFilters.room || 'all');
-  const [tenant, setTenant] = useState(initialFilters.tenant || 'all');
+  // Multi-select state for fields that should support multiple selections
+  const [category, setCategory] = useState<string | string[]>(initialFilters.category || 'all');
+  const [subCategory, setSubCategory] = useState<string | string[]>(initialFilters.subCategory || 'all');
+  const [assetType, setAssetType] = useState<string | string[]>(initialFilters.assetType || 'all');
+  const [status, setStatus] = useState<string | string[]>(initialFilters.status || 'all');
+  const [building, setBuilding] = useState<string | string[]>(initialFilters.building || 'all');
+  const [floor, setFloor] = useState<string | string[]>(initialFilters.floor || 'all');
+  const [room, setRoom] = useState<string | string[]>(initialFilters.room || 'all');
+  const [tenant, setTenant] = useState<string | string[]>(initialFilters.tenant || 'all');
   const [dateField, setDateField] = useState(initialFilters.dateField || 'all');
   const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom || '');
   const [dateTo, setDateTo] = useState(initialFilters.dateTo || '');
-  const [priority, setPriority] = useState(initialFilters.priority || 'all');
-  const [assignedToUser, setAssignedToUser] = useState(initialFilters.assignedTo || 'all');
-  const [companyGroup, setCompanyGroup] = useState(initialFilters.companyGroup || 'all');
-  const [tenantStatus, setTenantStatus] = useState(initialFilters.tenantStatus || 'all');
-  const [agreementStatus, setAgreementStatus] = useState(initialFilters.agreementStatus || 'all');
+  const [priority, setPriority] = useState<string | string[]>(initialFilters.priority || 'all');
+  const [assignedToUser, setAssignedToUser] = useState<string | string[]>(initialFilters.assignedTo || 'all');
+  const [companyGroup, setCompanyGroup] = useState<string | string[]>(initialFilters.companyGroup || 'all');
+  const [tenantStatus, setTenantStatus] = useState<string | string[]>(initialFilters.tenantStatus || 'all');
+  const [agreementStatus, setAgreementStatus] = useState<string | string[]>(initialFilters.agreementStatus || 'all');
   const [gstCompany, setGstCompany] = useState(
     initialFilters.isGstCompany === true ? 'yes' : initialFilters.isGstCompany === false ? 'no' : initialFilters.isGstCompany || 'all'
   );
@@ -268,47 +269,107 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Ticket Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for ticket categories */}
+            {Array.isArray(category) ? (
+              <Select
+                value={category}
+                onValueChange={(value) => setCategory(value)}
+                isMulti
+                placeholder="Select categories"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
             <Label>Priority</Label>
-            <Select value={priority} onValueChange={setPriority}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Priorities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                {(priorities || []).map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for priorities */}
+            {Array.isArray(priority) ? (
+              <Select
+                value={priority}
+                onValueChange={(value) => setPriority(value)}
+                isMulti
+                placeholder="Select priorities"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Priorities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  {(priorities || []).map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Priorities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  {(priorities || []).map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
             <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {statuses.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for status */}
+            {Array.isArray(status) ? (
+              <Select
+                value={status}
+                onValueChange={(value) => setStatus(value)}
+                isMulti
+                placeholder="Select statuses"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -360,36 +421,80 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
           <div>
             <Label>Assigned To</Label>
-            <Select value={assignedToUser} onValueChange={setAssignedToUser}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Technicians" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Technicians</SelectItem>
-                {(assignedToOptions || []).map((item: any) => (
+            {/* Multi-select for assigned to */}
+            {Array.isArray(assignedToUser) ? (
+              <Select
+                value={assignedToUser}
+                onValueChange={(value) => setAssignedToUser(value)}
+                isMulti
+                placeholder="Select technicians"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Technicians" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {(assignedToOptions || []).map((item: any) => (
                     <SelectItem key={String(item.id)} value={String(item.id)}>
                       {item.name || item.full_name || item.contact || 'Unknown'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={assignedToUser} onValueChange={setAssignedToUser}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Technicians" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {(assignedToOptions || []).map((item: any) => (
+                    <SelectItem key={String(item.id)} value={String(item.id)}>
+                      {item.name || item.full_name || item.contact || 'Unknown'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
             <Label>Tenant</Label>
-            <Select value={tenant} onValueChange={setTenant}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Tenants" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tenants</SelectItem>
-                {tenants.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.company || item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for tenant */}
+            {Array.isArray(tenant) ? (
+              <Select
+                value={tenant}
+                onValueChange={(value) => setTenant(value)}
+                isMulti
+                placeholder="Select tenants"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {tenants.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.company || item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={tenant} onValueChange={setTenant}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {tenants.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.company || item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -460,64 +565,124 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Company Group</Label>
-            <Select value={companyGroup} onValueChange={setCompanyGroup}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Company Groups" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Company Groups</SelectItem>
-                {companyGroups.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Tenant</Label>
-              <Select value={tenant} onValueChange={setTenant}>
+            {/* Multi-select for company groups */}
+            {Array.isArray(companyGroup) ? (
+              <Select
+                value={companyGroup}
+                onValueChange={(value) => setCompanyGroup(value)}
+                isMulti
+                placeholder="Select company groups"
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder={companyGroup === 'all' ? 'All Tenants' : 'Select tenant in group'} />
+                  <SelectValue placeholder="All Company Groups" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Tenants</SelectItem>
-                  {tenantOptionsForCompanyGroup.map((item: any) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.company || item.name}
-                    </SelectItem>
+                  <SelectItem value="all">All Company Groups</SelectItem>
+                  {companyGroups.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <Label>Tenant Status</Label>
-              <Select value={tenantStatus} onValueChange={setTenantStatus}>
+            ) : (
+              <Select value={companyGroup} onValueChange={setCompanyGroup}>
                 <SelectTrigger>
-                <SelectValue placeholder="All Tenant Statuses" />
+                  <SelectValue placeholder="All Company Groups" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Company Groups</SelectItem>
+                  {companyGroups.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div>
+            <Label>Tenant</Label>
+            <Select value={tenant} onValueChange={setTenant}>
+              <SelectTrigger>
+                <SelectValue placeholder={companyGroup === 'all' ? 'All Tenants' : 'Select tenant in group'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Tenant Statuses</SelectItem>
-                {tenantStatuses.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                <SelectItem value="all">All Tenants</SelectItem>
+                {tenantOptionsForCompanyGroup.map((item: any) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.company || item.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           <div>
+            <Label>Tenant Status</Label>
+            {/* Multi-select for tenant status */}
+            {Array.isArray(tenantStatus) ? (
+              <Select
+                value={tenantStatus}
+                onValueChange={(value) => setTenantStatus(value)}
+                isMulti
+                placeholder="Select tenant statuses"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenant Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenant Statuses</SelectItem>
+                  {tenantStatuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={tenantStatus} onValueChange={setTenantStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenant Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenant Statuses</SelectItem>
+                  {tenantStatuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div>
             <Label>Agreement Status</Label>
-            <Select value={agreementStatus} onValueChange={setAgreementStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Agreement Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Agreement Statuses</SelectItem>
-                {agreementStatuses.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for agreement status */}
+            {Array.isArray(agreementStatus) ? (
+              <Select
+                value={agreementStatus}
+                onValueChange={(value) => setAgreementStatus(value)}
+                isMulti
+                placeholder="Select agreement statuses"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Agreement Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agreement Statuses</SelectItem>
+                  {agreementStatuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={agreementStatus} onValueChange={setAgreementStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Agreement Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agreement Statuses</SelectItem>
+                  {agreementStatuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -639,17 +804,37 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Asset Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for asset categories */}
+            {Array.isArray(category) ? (
+              <Select
+                value={category}
+                onValueChange={(value) => setCategory(value)}
+                isMulti
+                placeholder="Select categories"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -684,17 +869,37 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
           <div>
             <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {statuses.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Multi-select for status */}
+            {Array.isArray(status) ? (
+              <Select
+                value={status}
+                onValueChange={(value) => setStatus(value)}
+                isMulti
+                placeholder="Select statuses"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statuses.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -746,43 +951,41 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
           <div>
             <Label>Tenant</Label>
-            <Select value={tenant} onValueChange={setTenant}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Tenants" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tenants</SelectItem>
-                {tenants.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.company || item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label>Date Field</Label>
-            <Select value={dateField} onValueChange={setDateField}>
-              <SelectTrigger>
-                <SelectValue placeholder="No date filter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">No Date Filter</SelectItem>
-                <SelectItem value="purchase_date">Purchase Date</SelectItem>
-                <SelectItem value="invoice_date">Invoice Date</SelectItem>
-                <SelectItem value="boe_date">BOE Date</SelectItem>
-                <SelectItem value="import_date">Import Date</SelectItem>
-                <SelectItem value="warranty_date">Warranty Date</SelectItem>
-                <SelectItem value="pm_date">PM Date</SelectItem>
-                <SelectItem value="last_pm_date">Last PM Date</SelectItem>
-                <SelectItem value="depreciation_date">Depreciation Date</SelectItem>
-                <SelectItem value="last_depreciation_date">Last Depreciation Date</SelectItem>
-                <SelectItem value="decommission_date">Decommission Date</SelectItem>
-                <SelectItem value="created_at">Created At</SelectItem>
-                <SelectItem value="updated_at">Updated At</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Multi-select for tenant */}
+            {Array.isArray(tenant) ? (
+              <Select
+                value={tenant}
+                onValueChange={(value) => setTenant(value)}
+                isMulti
+                placeholder="Select tenants"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {tenants.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.company || item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={tenant} onValueChange={setTenant}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Tenants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {tenants.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.company || item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>

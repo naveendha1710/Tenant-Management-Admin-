@@ -2,17 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type GlobalReportFilters = {
-  tenant?: string;
-  building?: string;
-  floor?: string;
-  room?: string;
-  category?: string;
-  subCategory?: string;
-  assetType?: string;
-  status?: string;
-  companyGroup?: string;
-  tenantStatus?: string;
-  agreementStatus?: string;
+  tenant?: string | string[];
+  building?: string | string[];
+  floor?: string | string[];
+  room?: string | string[];
+  category?: string | string[];
+  subCategory?: string | string[];
+  assetType?: string | string[];
+  status?: string | string[];
+  companyGroup?: string | string[];
+  tenantStatus?: string | string[];
+  agreementStatus?: string | string[];
   isGstCompany?: string;
   isMainBranch?: string;
   dateField?: string;

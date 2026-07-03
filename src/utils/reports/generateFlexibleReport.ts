@@ -1,10 +1,16 @@
 import ExcelJS from 'exceljs';
+import { addMonths, format } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { GlobalReportFilters } from '@/store/useGlobalReportFilterStore';
 import { SheetConfig } from '@/store/useReportSheetStore';
 import { getFieldLabel } from './reportFieldRegistry';
 import { getHelpdeskFieldLabel, normalizeHelpdeskFieldKey } from './helpdeskReportFields';
-import { getTenantFieldLabel, normalizeTenantFieldKey } from './tenantReportFields';
+import {
+  getTenantFieldLabel,
+  normalizeTenantFieldKey,
+  loadTenantDynamicChargeFields,
+  type TenantDynamicChargeFieldDefinition,
+} from './tenantReportFields';
 import { ReportType } from '@/types/report';
 
 export type ExportSheet = {
@@ -468,6 +474,22 @@ const buildTenantLookupMaps = async (agreements: any[], tenants: any[], filters:
   const allAssignments = agreements.flatMap((agreement) =>
     Array.isArray(agreement.space_assignments) ? agreement.space_assignments : []
   );
+  const escalationFloorIds = gatherIds(
+    agreements.flatMap((agreement) =>
+      Array.isArray(agreement.escalations)
+        ? agreement.escalations.flatMap((escalation: any) =>
+            Array.isArray(escalation.floorWiseEscalations)
+              ? escalation.floorWiseEscalations.flatMap((floor: any) => [
+                  floor?.floorId,
+                  floor?.floor_id,
+                  floor?.id,
+                  floor?.floor,
+                ])
+              : [escalation?.floorId, escalation?.floor_id, escalation?.floor, escalation?.id]
+          )
+        : []
+    )
+  );
 
   const buildingIds = gatherIds([
     ...allAssignments.flatMap((assignment: any) => [assignment.buildingId, assignment.building]),
@@ -475,6 +497,7 @@ const buildTenantLookupMaps = async (agreements: any[], tenants: any[], filters:
   ]);
   const floorIds = gatherIds([
     ...allAssignments.flatMap((assignment: any) => [assignment.floorId, assignment.floor]),
+    ...escalationFloorIds,
     filters.floor,
   ]);
   const roomIds = gatherIds([
@@ -657,16 +680,427 @@ const calculateAgreementTotals = (agreement: any) => {
   };
 };
 
+const formatServiceCharge = (charge: any) => {
+  if (!charge) return '';
+
+  const serviceNames = Array.isArray(charge.serviceNames)
+    ? charge.serviceNames.filter(Boolean).join(', ')
+    : String(charge.serviceNames || '').trim();
+  const amount = Number(charge.amount || 0);
+  const hasMeaningfulValue = Boolean(serviceNames) || amount > 0 || charge.isIncludedInRent === true;
+  if (!hasMeaningfulValue) return '';
+
+  const namePrefix = serviceNames ? `${serviceNames} - ` : '';
+  const included = charge.isIncludedInRent ? 'Yes' : 'No';
+
+  return `${namePrefix}Amount: ${formatTenantNumber(amount)} (Included: ${included})`;
+};
+
+const resolveFloorNameFromLookup = (floor: any, floorLookup: Record<string, string>) => {
+  if (!floor) return 'Unknown Floor';
+
+  const rawFloorId = floor?.floorId ?? floor?.floor_id ?? floor?.id ?? floor?.floor;
+  if (rawFloorId !== null && rawFloorId !== undefined && rawFloorId !== '') {
+    const resolvedById = floorLookup[String(rawFloorId)];
+    if (resolvedById) return resolvedById;
+  }
+
+  const floorName = floor?.floorName || floor?.floor_name || floor?.name;
+  if (floorName) return String(floorName);
+
+  const floorNumber = floor?.floorNumber ?? floor?.floor_number;
+  if (floorNumber !== null && floorNumber !== undefined && floorNumber !== '') {
+    return `Floor ${floorNumber}`;
+  }
+
+  return 'Unknown Floor';
+};
+
+const formatEscalations = (escalations: any[], floorLookup: Record<string, string> = {}) => {
+  if (!Array.isArray(escalations) || escalations.length === 0) return '';
+
+  return escalations
+    .flatMap((esc) => {
+      const date = esc?.date || esc?.effectiveDate || 'N/A';
+      const percentage = formatTenantNumber(esc?.percentage ?? 0);
+      const baseRent = formatTenantNumber(esc?.newRent ?? esc?.calculatedRent ?? 0);
+      const floorEntries = Array.isArray(esc?.floorWiseEscalations) && esc.floorWiseEscalations.length > 0
+        ? esc.floorWiseEscalations
+        : [esc];
+
+      return floorEntries.map((floorEntry: any) => {
+        const rent = formatTenantNumber(
+          floorEntry?.newRent ?? floorEntry?.calculatedRent ?? esc?.newRent ?? esc?.calculatedRent ?? 0
+        ) || baseRent;
+        const floor = resolveFloorNameFromLookup(floorEntry, floorLookup);
+        const floorPercentage = formatTenantNumber(floorEntry?.percentage ?? esc?.percentage ?? 0);
+        return `Date: ${date} | ${floorPercentage}% | New Rent: ${rent} | Floor: ${floor}`;
+      });
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const formatGeneralCharges = (charges: any[]) => {
+  if (!Array.isArray(charges) || charges.length === 0) return '';
+
+  return charges
+    .map((charge) => {
+      const name = charge?.chargeName || charge?.name || 'Charge';
+      const amount = formatTenantNumber(charge?.amount || 0);
+      const dueDate = charge?.dueDate || 'N/A';
+      return `${name} | Amount: ${amount} | Due: ${dueDate}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const formatMaintenance = (maint: any) => {
+  if (!maint) return '';
+
+  if (Array.isArray(maint)) {
+    return maint
+      .map((item) => {
+        const floorName = item?.floorName || 'Unknown Floor';
+        const sqft = formatTenantNumber(item?.sqft || item?.assignedSqft || 0);
+        const rate = formatTenantNumber(item?.ratePerSqft || 0);
+        const included = item?.isIncludedInRent ? 'Yes' : 'No';
+        return `${floorName} | ${sqft} sqft | Rate: ${rate} | Included: ${included}`;
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  const floorName = maint.floorName || 'Unknown Floor';
+  const sqft = formatTenantNumber(maint.sqft || maint.assignedSqft || 0);
+  const rate = formatTenantNumber(maint.ratePerSqft || 0);
+  const included = maint.isIncludedInRent ? 'Yes' : 'No';
+
+  return `${floorName} | ${sqft} sqft | Rate: ${rate} | Included: ${included}`;
+};
+
+const formatTenantNumber = (value: any, precision = 2) => {
+  if (value === null || value === undefined || value === '') return '';
+
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numericValue)) return String(value);
+
+  const rounded = Number(numericValue.toFixed(precision));
+  if (Number.isInteger(rounded)) return String(rounded);
+
+  return rounded.toFixed(precision).replace(/\.?0+$/, '');
+};
+
+const normalizeTenantChargeName = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const toTenantDate = (value: any) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatTenantDuration = (fromDate: any, toDate: any) => {
+  const start = toTenantDate(fromDate);
+  const end = toTenantDate(toDate);
+  if (!start || !end || end < start) return '';
+
+  let cursor = new Date(start);
+  let years = 0;
+  let months = 0;
+
+  while (cursor.getFullYear() < end.getFullYear() || (cursor.getFullYear() === end.getFullYear() && cursor.getMonth() < end.getMonth())) {
+    const nextYearCursor = new Date(cursor);
+    nextYearCursor.setFullYear(nextYearCursor.getFullYear() + 1);
+    if (nextYearCursor <= end) {
+      cursor = nextYearCursor;
+      years += 1;
+      continue;
+    }
+
+    const nextMonthCursor = addMonths(cursor, 1);
+    if (nextMonthCursor <= end) {
+      cursor = nextMonthCursor;
+      months += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  const days = Math.max(0, Math.floor((end.getTime() - cursor.getTime()) / (1000 * 60 * 60 * 24)));
+  const parts: string[] = [];
+
+  if (years > 0) parts.push(`${years} year${years !== 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
+  if (days > 0 || parts.length === 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+
+  return parts.join(' ');
+};
+
+const getAgreementDaysDifference = (fromDate: any, toDate: any) => {
+  const start = toTenantDate(fromDate);
+  const end = toTenantDate(toDate);
+  if (!start || !end) return null;
+  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const getAssignmentSqft = (assignment: any) =>
+  Number(assignment?.assignedSqft ?? assignment?.area ?? 0) || 0;
+
+const getAssignmentRate = (assignment: any) => {
+  const sqft = getAssignmentSqft(assignment);
+  const explicitRate = Number(assignment?.ratePerSqft ?? assignment?.rate_per_sqft ?? 0);
+  if (Number.isFinite(explicitRate) && explicitRate > 0) return explicitRate;
+
+  const amount = Number(assignment?.amount ?? 0);
+  if (sqft > 0 && amount > 0) {
+    return amount / sqft;
+  }
+
+  return 0;
+};
+
+const getAssignmentLabel = (assignment: any) =>
+  String(assignment?.assignmentType ?? assignment?.type ?? '').trim();
+
+const getSpaceTypeLabel = (assignment: any) =>
+  String(assignment?.spaceType ?? assignment?.category ?? '').trim();
+
+const getAssignmentSummary = (agreement: any) => {
+  const assignments = Array.isArray(agreement?.space_assignments) ? agreement.space_assignments : [];
+  const totalSqft = assignments.reduce((sum: number, assignment: any) => sum + getAssignmentSqft(assignment), 0);
+
+  const rateWeightedBySqft = assignments.reduce((sum: number, assignment: any) => {
+    const sqft = getAssignmentSqft(assignment);
+    const rate = getAssignmentRate(assignment);
+    return sum + (sqft * rate);
+  }, 0);
+
+  const assignmentTypes = Array.from(
+    new Set(assignments.map((assignment: any) => getAssignmentLabel(assignment)).filter(Boolean))
+  );
+  const spaceTypes = Array.from(
+    new Set(assignments.map((assignment: any) => getSpaceTypeLabel(assignment)).filter(Boolean))
+  );
+
+  return {
+    totalSqft,
+    ratePerSqft: totalSqft > 0 ? rateWeightedBySqft / totalSqft : 0,
+    assignmentType: assignmentTypes.join('\n'),
+    spaceType: spaceTypes.join('\n'),
+  };
+};
+
+const getDynamicChargeMatchTokens = (field: TenantDynamicChargeFieldDefinition) => {
+  const suffix = field.key
+    .split('__')
+    .slice(1)
+    .join('__')
+    .replace(/__\d+$/, '');
+  return Array.from(
+    new Set(
+      [
+        field.chargeName,
+        suffix,
+        field.chargeKey,
+        ...field.aliases,
+      ]
+        .filter(Boolean)
+        .map(normalizeTenantChargeName)
+    )
+  );
+};
+
+const getDynamicChargeFieldValue = (
+  agreement: any,
+  field: TenantDynamicChargeFieldDefinition
+) => {
+  const normalizedTokens = getDynamicChargeMatchTokens(field);
+
+  if (field.formType === 'general_charges') {
+    const generalCharges = Array.isArray(agreement?.general_charges) ? agreement.general_charges : [];
+    const charge = generalCharges.find((item: any) => {
+      const candidate = normalizeTenantChargeName(
+        String(item?.chargeName ?? item?.name ?? item?.label ?? item?.short_code ?? '')
+      );
+      return normalizedTokens.includes(candidate);
+    });
+
+    return formatTenantNumber(charge?.amount || 0);
+  }
+
+  const serviceCharge = agreement?.service_charge || {};
+  const serviceNames = Array.isArray(serviceCharge.serviceNames) ? serviceCharge.serviceNames : [];
+  const selectedServiceMatches = serviceNames.some((name: string) =>
+    normalizedTokens.includes(normalizeTenantChargeName(String(name)))
+  );
+
+  return selectedServiceMatches ? formatTenantNumber(serviceCharge.amount || 0) : '0';
+};
+
+const resolveDynamicChargeFieldByKey = (agreement: any, fieldKey: string) => {
+  const normalizedKey = normalizeTenantFieldKey(fieldKey);
+
+  if (!normalizedKey.startsWith('general_charge__') && !normalizedKey.startsWith('service_charge__')) {
+    return null;
+  }
+
+  const [prefix, ...rest] = normalizedKey.split('__');
+  const chargeSlug = rest.join('__').replace(/__\d+$/, '');
+  if (!chargeSlug) return null;
+
+  const pseudoField: TenantDynamicChargeFieldDefinition = {
+    key: normalizedKey,
+    label: chargeSlug.replace(/_/g, ' '),
+    category: 'Financial',
+    type: 'currency',
+    formType: prefix === 'general_charge' ? 'general_charges' : 'service_charges',
+    chargeName: chargeSlug,
+    chargeKey: normalizedKey,
+    aliases: [chargeSlug],
+  };
+
+  return getDynamicChargeFieldValue(agreement, pseudoField);
+};
+
+const getTenantEscalationMetrics = (agreement: any) => {
+  const escalations = Array.isArray(agreement?.escalations) ? agreement.escalations : [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const normalizedEscalations = escalations
+    .map((escalation: any) => {
+      const escalationDate = toTenantDate(escalation?.date ?? escalation?.effectiveDate);
+      return escalationDate ? { escalation, escalationDate } : null;
+    })
+    .filter(Boolean) as Array<{ escalation: any; escalationDate: Date }>;
+
+  const sortedEscalations = [...normalizedEscalations].sort(
+    (left, right) => left.escalationDate.getTime() - right.escalationDate.getTime()
+  );
+
+  const upcomingEscalations = sortedEscalations
+    .filter(({ escalationDate }) => escalationDate > today)
+    .sort((left, right) => left.escalationDate.getTime() - right.escalationDate.getTime());
+
+  const appliedEscalations = sortedEscalations
+    .filter(({ escalationDate }) => escalationDate <= today)
+    .sort((left, right) => left.escalationDate.getTime() - right.escalationDate.getTime());
+
+  const nextEscalation = upcomingEscalations[0]?.escalation || null;
+  const latestAppliedEscalation = appliedEscalations[appliedEscalations.length - 1]?.escalation || null;
+  const latestEscalation = sortedEscalations[sortedEscalations.length - 1]?.escalation || null;
+
+  return {
+    escalations,
+    nextEscalation,
+    latestAppliedEscalation,
+    latestEscalation,
+  };
+};
+
+const calculateCurrentEscalatedRent = (agreement: any) => {
+  const baseRent = Number(agreement?.rent_amount || 0);
+  const spaceAssignments = Array.isArray(agreement?.space_assignments) ? agreement.space_assignments : [];
+  const {
+    latestAppliedEscalation,
+    latestEscalation,
+  } = getTenantEscalationMetrics(agreement);
+  const sortedAppliedEscalations = Array.isArray(agreement?.escalations)
+    ? [...agreement.escalations]
+        .map((escalation: any) => ({
+          escalation,
+          escalationDate: toTenantDate(escalation?.date ?? escalation?.effectiveDate),
+        }))
+        .filter((item: any) => item.escalationDate)
+        .sort((left: any, right: any) => left.escalationDate.getTime() - right.escalationDate.getTime())
+        .map((item: any) => item.escalation)
+    : [];
+
+  const calculatedRentFromEscalation = Number(
+    latestAppliedEscalation?.calculatedRent ?? latestEscalation?.calculatedRent ?? 0
+  );
+  if (calculatedRentFromEscalation > 0) {
+    return calculatedRentFromEscalation;
+  }
+
+  const today = new Date();
+  const appliedEscalations = Array.isArray(agreement?.escalations) ? agreement.escalations : [];
+
+  if (spaceAssignments.length > 0) {
+    let currentRent = 0;
+
+    spaceAssignments.forEach((assignment: any, index: number) => {
+      const uniqueId = assignment?.id || `${assignment?.floorId || assignment?.floor || index}`;
+      let assignmentRent = Number(assignment?.amount || 0);
+
+      sortedAppliedEscalations.forEach((escalation: any) => {
+        if (!escalation?.date) return;
+        const escalationDate = toTenantDate(escalation.date);
+        if (!escalationDate || escalationDate > today) return;
+
+        const floorEscalation = Array.isArray(escalation.floorWiseEscalations)
+          ? escalation.floorWiseEscalations.find((floor: any) => {
+              const floorId = String(floor?.floorId ?? '');
+              return floorId === uniqueId || floorId === String(assignment?.floorId ?? '') || floorId === String(assignment?.id ?? '');
+            })
+          : null;
+
+        if (floorEscalation?.percentage) {
+          assignmentRent += assignmentRent * (Number(floorEscalation.percentage) / 100);
+        } else if (escalation.percentage) {
+          assignmentRent += assignmentRent * (Number(escalation.percentage) / 100);
+        }
+      });
+
+      currentRent += assignmentRent;
+    });
+
+    return currentRent > 0 ? Math.round(currentRent) : baseRent;
+  }
+
+  if (latestAppliedEscalation?.calculatedRent) {
+    return Number(latestAppliedEscalation.calculatedRent);
+  }
+
+  let escalatedRent = baseRent;
+  sortedAppliedEscalations.forEach((escalation: any, index: number) => {
+    if (!escalation?.percentage) return;
+    if (index === 0) {
+      escalatedRent = baseRent + (baseRent * Number(escalation.percentage) / 100);
+      return;
+    }
+    escalatedRent = escalatedRent + (escalatedRent * Number(escalation.percentage) / 100);
+  });
+
+  return Math.round(escalatedRent);
+};
+
 const resolveTenantFieldValue = (
   field: string,
   tenant: any,
   agreement: any,
-  refs: TenantLookupMaps
+  refs: TenantLookupMaps,
+  dynamicFields: TenantDynamicChargeFieldDefinition[] = []
 ) => {
   const normalizedField = normalizeTenantFieldKey(field);
   const totals = calculateAgreementTotals(agreement);
   const assignments = Array.isArray(agreement?.space_assignments) ? agreement.space_assignments : [];
   const documentCount = Array.isArray(agreement?.documents) ? agreement.documents.length : 0;
+  const assignmentSummary = getAssignmentSummary(agreement);
+  const escalationMetrics = getTenantEscalationMetrics(agreement);
+  const currentEscalatedRent = calculateCurrentEscalatedRent(agreement);
+  const lockInMonths = Number.parseInt(String(agreement?.lock_in_period ?? '').match(/\d+/)?.[0] || '', 10);
+  const rentCommencementDate = toTenantDate(agreement?.rent_commencement_date);
+  const nextDueDate = toTenantDate(tenant?.nextduedate);
+  const leaseEndDate = toTenantDate(agreement?.lease_end_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   switch (normalizedField) {
     case 'tenant_id':
@@ -713,25 +1147,65 @@ const resolveTenantFieldValue = (
     case 'agreement_updated_at':
       return agreement?.updated_at;
     case 'rent_amount':
-      return agreement?.rent_amount;
+      return formatTenantNumber(agreement?.rent_amount);
     case 'security_deposit':
-      return agreement?.security_deposit;
+      return formatTenantNumber(agreement?.security_deposit);
+    case 'annual_rent':
+      return formatTenantNumber(Number(agreement?.rent_amount || 0) * 12);
+    case 'rent_per_sqft':
+      return formatTenantNumber(
+        assignmentSummary.totalSqft > 0
+        ? Number(agreement?.rent_amount || 0) / assignmentSummary.totalSqft
+        : 0
+      );
+    case 'deposit_per_sqft':
+      return formatTenantNumber(
+        assignmentSummary.totalSqft > 0
+        ? Number(agreement?.security_deposit || 0) / assignmentSummary.totalSqft
+        : 0
+      );
     case 'maintenance_total':
-      return totals.maintenanceTotal;
+      return formatTenantNumber(totals.maintenanceTotal);
     case 'general_total':
-      return totals.generalTotal;
+      return formatTenantNumber(totals.generalTotal);
     case 'service_charge_amount':
-      return totals.serviceChargeAmount;
+      return formatTenantNumber(totals.serviceChargeAmount);
     case 'total_monthly_cost':
-      return totals.totalMonthlyCost;
+      return formatTenantNumber(totals.totalMonthlyCost);
+    case 'assigned_sqft':
+      return formatTenantNumber(assignmentSummary.totalSqft);
+    case 'rate_per_sqft':
+      return formatTenantNumber(assignmentSummary.ratePerSqft);
+    case 'assignment_type':
+      return assignmentSummary.assignmentType;
+    case 'space_type':
+      return assignmentSummary.spaceType;
     case 'maintenance_charges':
-      return agreement?.maintenance_charges || [];
+      return formatMaintenance(agreement?.maintenance_charges);
     case 'general_charges':
-      return agreement?.general_charges || [];
+      return formatGeneralCharges(agreement?.general_charges);
     case 'service_charge':
-      return agreement?.service_charge || {};
+      return formatServiceCharge(agreement?.service_charge);
+    case 'lease_remaining_days':
+      return formatTenantNumber(getAgreementDaysDifference(today, leaseEndDate), 0);
+    case 'agreement_age':
+      return rentCommencementDate ? formatTenantDuration(rentCommencementDate, today) : '';
+    case 'end_of_lock_in':
+      return rentCommencementDate && Number.isFinite(lockInMonths)
+        ? format(addMonths(rentCommencementDate, lockInMonths), 'dd-MMM-yyyy')
+        : '';
+    case 'next_due_in':
+      return formatTenantNumber(getAgreementDaysDifference(today, nextDueDate), 0);
+    case 'next_escalation_date':
+      return escalationMetrics.nextEscalation?.date || escalationMetrics.nextEscalation?.effectiveDate || null;
+    case 'next_escalation_percentage':
+      return formatTenantNumber(escalationMetrics.nextEscalation?.percentage ?? null);
+    case 'escalation_count':
+      return formatTenantNumber(escalationMetrics.escalations.length, 0);
+    case 'current_escalated_rent':
+      return formatTenantNumber(currentEscalatedRent);
     case 'escalations':
-      return agreement?.escalations || [];
+      return formatEscalations(agreement?.escalations, refs.floors);
     case 'building':
       return Array.from(new Set(assignments.map((assignment: any) => getSpaceAssignmentValue(assignment, 'building', refs.buildings)).filter(Boolean))).join('\n');
     case 'floor':
@@ -741,7 +1215,7 @@ const resolveTenantFieldValue = (
     case 'space_summary':
       return buildSpaceSummary(agreement, refs);
     case 'space_count':
-      return assignments.length;
+      return formatTenantNumber(assignments.length, 0);
     case 'assignedunits':
       return tenant.assignedunits || [];
     case 'space_assignments':
@@ -755,10 +1229,20 @@ const resolveTenantFieldValue = (
     case 'documents':
       return agreement?.documents || [];
     case 'document_count':
-      return documentCount;
+      return formatTenantNumber(documentCount, 0);
     case 'idproof_available':
       return tenant.idproof ? 'Yes' : 'No';
     default:
+      if (dynamicFields.length > 0) {
+        const dynamicField = dynamicFields.find((definition) => definition.key === normalizedField);
+        if (dynamicField) {
+          return getDynamicChargeFieldValue(agreement, dynamicField);
+        }
+      }
+      const dynamicFallback = resolveDynamicChargeFieldByKey(agreement, normalizedField);
+      if (dynamicFallback !== null) {
+        return dynamicFallback;
+      }
       return agreement?.[normalizedField] ?? tenant?.[normalizedField];
   }
 };
@@ -791,7 +1275,8 @@ const sortTenantRows = (rows: Record<string, any>[], field: string, direction: '
 
 const fetchTenantSheetData = async (
   sheet: SheetConfig,
-  globalFilters: GlobalReportFilters
+  globalFilters: GlobalReportFilters,
+  dynamicFields: TenantDynamicChargeFieldDefinition[] = []
 ): Promise<ExportSheet> => {
   const mergedFilters = normalizeTenantFilters({
     ...globalFilters,
@@ -834,11 +1319,11 @@ const fetchTenantSheetData = async (
       }
 
       const row = normalizedFields.reduce<Record<string, any>>((acc, field) => {
-        const raw = resolveTenantFieldValue(field, tenant, agreementRecord, refs);
+        const raw = resolveTenantFieldValue(field, tenant, agreementRecord, refs, dynamicFields);
         acc[field] = formatExportValue(raw);
         return acc;
       }, {});
-      row.__sortValue = resolveTenantFieldValue(sortField, tenant, agreementRecord, refs);
+      row.__sortValue = resolveTenantFieldValue(sortField, tenant, agreementRecord, refs, dynamicFields);
 
       rows.push(row);
     });
@@ -1246,26 +1731,29 @@ export async function generateFlexibleReport({
   const startTime = performance.now();
   const workbook = new ExcelJS.Workbook();
   let totalRows = 0;
+  const tenantDynamicFields = reportType === 'tenant'
+    ? await loadTenantDynamicChargeFields()
+    : [];
 
   for (let index = 0; index < sheets.length; index += 1) {
     const sheet = sheets[index];
     const exportSheet = reportType === 'helpdesk'
       ? await fetchHelpdeskSheetData(sheet, globalFilters)
       : reportType === 'tenant'
-        ? await fetchTenantSheetData(sheet, globalFilters)
+        ? await fetchTenantSheetData(sheet, globalFilters, tenantDynamicFields)
         : await fetchSheetData(sheet, globalFilters);
     totalRows += exportSheet.data.length;
 
     const worksheet = workbook.addWorksheet(exportSheet.name || `Sheet ${index + 1}`);
-    worksheet.columns = exportSheet.fields.map((field) => ({
-      header: reportType === 'helpdesk'
-        ? getHelpdeskFieldLabel(field)
-        : reportType === 'tenant'
-          ? getTenantFieldLabel(field)
+      worksheet.columns = exportSheet.fields.map((field) => ({
+        header: reportType === 'helpdesk'
+          ? getHelpdeskFieldLabel(field)
+          : reportType === 'tenant'
+          ? getTenantFieldLabel(field, tenantDynamicFields)
           : getFieldLabel(field),
-      key: field,
-      width: 20,
-    }));
+        key: field,
+        width: 20,
+      }));
 
     exportSheet.data.forEach((row) => {
       worksheet.addRow(row);

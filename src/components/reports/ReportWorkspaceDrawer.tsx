@@ -33,7 +33,7 @@ export function ReportWorkspaceDrawer({
     }
   }, [open, onTabChange]);
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className='w-[840px] max-w-[98vw] min-w-[630px] overflow-hidden border-l bg-background p-0 shadow-2xl'

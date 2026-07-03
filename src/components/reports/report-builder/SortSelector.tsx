@@ -2,7 +2,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ASSET_REPORT_FIELDS } from '@/utils/reports/reportFieldRegistry';
 import { HELPDESK_REPORT_FIELDS } from '@/utils/reports/helpdeskReportFields';
-import { TENANT_REPORT_FIELDS } from '@/utils/reports/tenantReportFields';
+import { getTenantSortableFields } from '@/utils/reports/tenantReportFields';
+import { useTenantReportFieldDefinitions } from '@/components/reports/shared/useTenantReportFieldDefinitions';
 import { ReportType } from '@/types/report';
 
 interface SortSelectorProps {
@@ -15,6 +16,7 @@ interface SortSelectorProps {
 }
 
 export function SortSelector({ value, onChange, reportType }: SortSelectorProps) {
+  const { dynamicFields } = useTenantReportFieldDefinitions(reportType === 'tenant');
   const helpdeskSortableKeys = new Set([
     'ticket_number',
     'created_at',
@@ -39,45 +41,11 @@ export function SortSelector({ value, onChange, reportType }: SortSelectorProps)
     'opex_code',
     'updated_at',
   ]);
-  const tenantSortableKeys = new Set([
-    'tenant_id',
-    'name',
-    'company',
-    'email',
-    'phone',
-    'tenant_status',
-    'companygroup',
-    'branch_name',
-    'branch_type',
-    'parent_tenant',
-    'is_main_branch',
-    'is_gst_company',
-    'nextduedate',
-    'created_at',
-    'updated_at',
-    'agreement_row_id',
-    'agreement_id',
-    'agreement_name',
-    'agreement_status',
-    'payment_cycle',
-    'lease_agreement_date',
-    'operation_date',
-    'rent_commencement_date',
-    'lease_end_date',
-    'rent_amount',
-    'security_deposit',
-    'maintenance_total',
-    'general_total',
-    'service_charge_amount',
-    'total_monthly_cost',
-    'agreement_created_at',
-    'agreement_updated_at',
-  ]);
   const sortableFields = reportType === 'helpdesk'
     ? HELPDESK_REPORT_FIELDS.filter((field) => helpdeskSortableKeys.has(field.key))
     : reportType === 'tenant'
-      ? TENANT_REPORT_FIELDS.filter((field) => tenantSortableKeys.has(field.key))
-    : ASSET_REPORT_FIELDS;
+      ? getTenantSortableFields(dynamicFields)
+      : ASSET_REPORT_FIELDS;
 
   return (
     <div className="space-y-2">

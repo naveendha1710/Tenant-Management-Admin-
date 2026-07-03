@@ -1,10 +1,9 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { getFieldsByCategory } from '@/utils/reports/reportFieldRegistry';
-import { HELPDESK_FIELD_CATEGORIES, getHelpdeskFieldsByCategory } from '@/utils/reports/helpdeskReportFields';
-import { getTenantFieldsByCategory } from '@/utils/reports/tenantReportFields';
-import { supabase } from '@/lib/supabaseClient';
+import { getHelpdeskFieldsByCategory } from '@/utils/reports/helpdeskReportFields';
+import { useTenantReportFieldDefinitions } from '@/components/reports/shared/useTenantReportFieldDefinitions';
 import { ReportType } from '@/types/report';
 
 interface FieldSelectorProps {
@@ -14,45 +13,16 @@ interface FieldSelectorProps {
 }
 
 export function FieldSelector({ selectedFields, onChange, reportType }: FieldSelectorProps) {
+  const { fieldsByCategory: tenantFieldsByCategory } = useTenantReportFieldDefinitions(reportType === 'tenant');
   const groupedFields = useMemo(() => {
     if (reportType === 'helpdesk') {
       return getHelpdeskFieldsByCategory();
     }
     if (reportType === 'tenant') {
-      return getTenantFieldsByCategory();
+      return tenantFieldsByCategory;
     }
     return getFieldsByCategory();
-  }, [reportType]);
-  
-  const [assetsColumns, setAssetsColumns] = useState<string[]>([]);
-  const [onlyTableFields, setOnlyTableFields] = useState<boolean>(true);
-
-  useEffect(() => {
-    if (reportType === 'asset') {
-      const loadColumns = async () => {
-        try {
-          const { data, error } = await supabase.from('assets').select('*').limit(1);
-          if (error) throw error;
-
-          if (data && data.length > 0) {
-            setAssetsColumns(Object.keys(data[0]));
-          } else {
-            // fallback: if table empty, allow all known registry fields
-            const allKeys = Object.values(groupedFields).flat().map((f) => f.key);
-            setAssetsColumns(allKeys);
-          }
-        } catch (err) {
-          // On error, fall back to all registry fields so UI remains usable
-          const allKeys = Object.values(groupedFields).flat().map((f) => f.key);
-          setAssetsColumns(allKeys);
-        }
-      };
-
-      loadColumns();
-    } else {
-      setAssetsColumns([]);
-    }
-  }, [groupedFields, reportType]);
+  }, [reportType, tenantFieldsByCategory]);
 
   const toggleField = (fieldKey: string, checked: boolean) => {
     if (checked) {
