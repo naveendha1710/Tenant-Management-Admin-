@@ -261,6 +261,20 @@ export const userService = {
   // Add new user
   addUser: async (userData: Omit<AppUser, 'id' | 'createdAt' | 'permissions'>): Promise<AppUser | null> => {
     try {
+      // First, ensure the email is not already taken – the users table has a unique constraint on email.
+      const { data: existing, error: existingError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', userData.email)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existing) {
+        // Conflict – user with this email already exists.
+        console.error('User with this email already exists');
+        return null;
+      }
+
       const permissions = userData.userType === 'custom' ? [] : defaultPermissions[userData.role as Exclude<UserRole, 'Custom'>];
       
       const { data, error } = await supabase
@@ -290,6 +304,7 @@ export const userService = {
       notifyUserListeners();
       return newUser;
     } catch (error) {
+      console.error('Error adding user:', error);
       return null;
     }
   },
