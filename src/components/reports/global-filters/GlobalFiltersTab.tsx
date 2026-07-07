@@ -90,6 +90,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   const [dateField, setDateField] = useState(filters.dateField || 'all');
   const [dateFrom, setDateFrom] = useState(filters.dateFrom || '');
   const [dateTo, setDateTo] = useState(filters.dateTo || '');
+  const [dataField, setDataField] = useState(filters.dataField || 'all');
 
   // Helpdesk specific filters
   const [ticketCategory, setTicketCategory] = useState(filters.ticketCategory || 'all');
@@ -164,6 +165,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
         room,
         tenant,
         sortOrder,
+        dataField,
       };
     } else if (reportType === 'tenant') {
       nextFilters = {
@@ -237,6 +239,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
     setDateField('all');
     setDateFrom('');
     setDateTo('');
+    setDataField('all');
 
     // Helpdesk specific filters
     setTicketCategory('all');
@@ -403,6 +406,30 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
                       {t.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="data-field">Data Field</Label>
+              <Select value={dataField} onValueChange={setDataField}>
+                <SelectTrigger id="data-field">
+                  <SelectValue placeholder="Select data field" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Fields</SelectItem>
+                  <SelectItem value="purchase_date">Purchase Date</SelectItem>
+                  <SelectItem value="invoice_date">Invoice Date</SelectItem>
+                  <SelectItem value="boe_date">BOE Date</SelectItem>
+                  <SelectItem value="import_date">Import Date</SelectItem>
+                  <SelectItem value="warranty_date">Warranty Date</SelectItem>
+                  <SelectItem value="pm_date">PM Date</SelectItem>
+                  <SelectItem value="last_pm_date">Last PM Date</SelectItem>
+                  <SelectItem value="depreciation_date">Depreciation Date</SelectItem>
+                  <SelectItem value="last_depreciation_date">Last Depreciation Date</SelectItem>
+                  <SelectItem value="decommission_date">Decommission Date</SelectItem>
+                  <SelectItem value="created_at">Created At</SelectItem>
+                  <SelectItem value="updated_at">Updated At</SelectItem>
                 </SelectContent>
               </Select>
             </div>

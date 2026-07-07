@@ -19,6 +19,7 @@ export type GlobalReportFilters = {
   dateFrom?: string;
   dateTo?: string;
   sortOrder?: 'asc' | 'desc';
+  dataField?: string;
 };
 
 interface GlobalReportFilterStore {

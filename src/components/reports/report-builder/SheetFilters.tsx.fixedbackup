@@ -56,7 +56,6 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
   const [room, setRoom] = useState<string | string[]>(initialFilters.room || 'all');
   const [tenant, setTenant] = useState<string | string[]>(initialFilters.tenant || 'all');
   const [dateField, setDateField] = useState(initialFilters.dateField || 'all');
-  const [dataField, setDataField] = useState(initialFilters.dataField || 'all');
   const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom || '');
   const [dateTo, setDateTo] = useState(initialFilters.dateTo || '');
   const [priority, setPriority] = useState<string | string[]>(initialFilters.priority || 'all');
@@ -157,10 +156,9 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
       floor,
       room,
       tenant,
-      dataField,
+      dateField,
       dateFrom,
       dateTo,
-      previousOccurrence,
     });
   }, [
     reportType,
@@ -180,7 +178,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     agreementStatus,
     gstCompany,
     mainBranch,
-    dataField,
+    dateField,
     dateFrom,
     dateTo,
   ]);
@@ -991,36 +989,12 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
           </div>
 
           <div>
-            <Label>Date Field</Label>
-            <Select value={dataField} onValueChange={setDataField}>
-              <SelectTrigger>
-                <SelectValue placeholder="No date filter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">No Date Filter</SelectItem>
-                <SelectItem value="purchase_date">Purchase Date</SelectItem>
-                <SelectItem value="invoice_date">Invoice Date</SelectItem>
-                <SelectItem value="boe_date">BOE Date</SelectItem>
-                <SelectItem value="import_date">Import Date</SelectItem>
-                <SelectItem value="warranty_date">Warranty Date</SelectItem>
-                <SelectItem value="pm_date">PM Date</SelectItem>
-                <SelectItem value="last_pm_date">Last PM Date</SelectItem>
-                <SelectItem value="depreciation_date">Depreciation Date</SelectItem>
-                <SelectItem value="last_depreciation_date">Last Depreciation Date</SelectItem>
-                <SelectItem value="decommission_date">Decommission Date</SelectItem>
-                <SelectItem value="created_at">Created At</SelectItem>
-                <SelectItem value="updated_at">Updated At</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
             <Label>From</Label>
             <Input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom((e.target as HTMLInputElement).value)}
-              disabled={dataField === 'all'}
+              disabled={dateField === 'all'}
             />
           </div>
 
@@ -1030,7 +1004,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo((e.target as HTMLInputElement).value)}
-              disabled={dataField === 'all'}
+              disabled={dateField === 'all'}
             />
           </div>
         </div>
