@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,7 +121,13 @@ const ASSET_TYPE_MAPPING: Record<string, string[]> = {
   'Machinery': []
 };
 
-export default function AssetMaster() {
+// Props for read‑only tenant view
+interface AssetMasterProps {
+  readOnly?: boolean;
+  tenantId?: string;
+}
+
+export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -170,6 +177,13 @@ export default function AssetMaster() {
     warranty_extended: false,
     remarks: ''
   });
+
+  // Initialize tenant filter when a tenantId is provided (read‑only tenant view)
+  useEffect(() => {
+    if (tenantId) {
+      setFilterTenant(tenantId);
+    }
+  }, [tenantId]);
   const [assetDocuments, setAssetDocuments] = useState<any[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
@@ -197,6 +211,26 @@ export default function AssetMaster() {
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filterSize, setFilterSize] = useState('');
   const [filterTenant, setFilterTenant] = useState('');
+  // Clear all filter states (excluding sortOrder)
+  const clearAllFilters = () => {
+    setFilterCategory('');
+    setFilterSubCategory('');
+    setFilterType('');
+    setFilterStatus('');
+    setFilterBuilding('');
+    setFilterFloor('');
+    setFilterRoom('');
+    setFilterTenant('');
+    setFilterColor('');
+    setFilterMaterial('');
+    setFilterSize('');
+    // Reset dependent option lists
+    setFilterSubCategories([]);
+    setFilterTypes([]);
+    setFilterFloors([]);
+    setFilterRooms([]);
+    setFilterCombinations([]);
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showCategoryCards, setShowCategoryCards] = useState(false);
@@ -243,6 +277,17 @@ export default function AssetMaster() {
       loadAssetSettings();
     }
   }, [showForm]);
+
+  // Sync pagination state with URL query parameter "page" when component becomes active or URL changes
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const pageParam = searchParams.get('page');
+    const pageNumber = pageParam ? Number(pageParam) : 1;
+    if (!isNaN(pageNumber) && pageNumber !== currentPage) {
+      setCurrentPage(pageNumber);
+    }
+    // Note: we intentionally do not update the URL here to avoid loops; AssetList handles URL updates on page changes.
+  }, [searchParams, currentPage]);
 
   useEffect(() => {
     if (formData.contract === 'Yes') {
@@ -512,29 +557,35 @@ export default function AssetMaster() {
   const loadStats = async () => {
     try {
       // Load stats with optimized query - only counts, not full data
-      const { count: totalCount } = await supabase
-        .from('assets')
-        .select('*', { count: 'exact', head: true });
+      let totalQuery = supabase.from('assets').select('*', { count: 'exact', head: true });
+      if (readOnly && tenantId) {
+        totalQuery = totalQuery.eq('handover_to', tenantId);
+      }
+      const { count: totalCount } = await totalQuery;
       
-      const { count: activeCount } = await supabase
-        .from('assets')
-        .select('*', { count: 'exact', head: true })
-        .eq('asset_status', 'Active');
+      let activeQuery = supabase.from('assets').select('*', { count: 'exact', head: true }).eq('asset_status', 'Active');
+      if (readOnly && tenantId) {
+        activeQuery = activeQuery.eq('handover_to', tenantId);
+      }
+      const { count: activeCount } = await activeQuery;
       
-      const { count: idleCount } = await supabase
-        .from('assets')
-        .select('*', { count: 'exact', head: true })
-        .eq('asset_status', 'Idle');
+      let idleQuery = supabase.from('assets').select('*', { count: 'exact', head: true }).eq('asset_status', 'Idle');
+      if (readOnly && tenantId) {
+        idleQuery = idleQuery.eq('handover_to', tenantId);
+      }
+      const { count: idleCount } = await idleQuery;
       
-      const { count: repairCount } = await supabase
-        .from('assets')
-        .select('*', { count: 'exact', head: true })
-        .eq('asset_status', 'Repair');
+      let repairQuery = supabase.from('assets').select('*', { count: 'exact', head: true }).eq('asset_status', 'Repair');
+      if (readOnly && tenantId) {
+        repairQuery = repairQuery.eq('handover_to', tenantId);
+      }
+      const { count: repairCount } = await repairQuery;
       
-      const { count: scrapCount } = await supabase
-        .from('assets')
-        .select('*', { count: 'exact', head: true })
-        .or('asset_status.eq.Scrap,asset_status.eq.Disposed');
+      let scrapQuery = supabase.from('assets').select('*', { count: 'exact', head: true }).or('asset_status.eq.Scrap,asset_status.eq.Disposed');
+      if (readOnly && tenantId) {
+        scrapQuery = scrapQuery.eq('handover_to', tenantId);
+      }
+      const { count: scrapCount } = await scrapQuery;
       
       // Set stats with actual counts
       setStats({
@@ -3629,189 +3680,64 @@ export default function AssetMaster() {
                 </div>
               )}
               
-              <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center p-4 bg-white rounded-lg border">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 flex-1">
-                  <Select value={sortOrder} onValueChange={setSortOrder}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Sort" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="asc">↑ Ascending</SelectItem>
-                      <SelectItem value="desc">↓ Descending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterCategory} onValueChange={setFilterCategory}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Asset Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Asset Types</SelectItem>
-                      {assetCategories.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterSubCategory} onValueChange={setFilterSubCategory} disabled={!filterCategory || filterCategory === 'all'}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {filterSubCategories.map(sub => (
-                        <SelectItem key={sub} value={sub}>{sub}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterType} onValueChange={setFilterType} disabled={!filterSubCategory || filterSubCategory === 'all'}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Sub Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Sub Categories</SelectItem>
-                      {filterTypes.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      {assetStatuses.map(status => (
-                        <SelectItem key={status} value={status}>{status}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterBuilding} onValueChange={setFilterBuilding}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Building" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Buildings</SelectItem>
-                      {buildings.map(building => (
-                        <SelectItem key={building.id} value={building.id}>{building.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterFloor} onValueChange={setFilterFloor} disabled={!filterBuilding || filterBuilding === 'all'}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Floor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Floors</SelectItem>
-                      {filterFloors.map(floor => (
-                        <SelectItem key={floor.id} value={floor.id}>{floor.floor_name || floor.floor_number}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterRoom} onValueChange={setFilterRoom} disabled={!filterFloor || filterFloor === 'all'}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Room" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Rooms</SelectItem>
-                      {filterRooms.map(room => (
-                        <SelectItem key={room.id} value={room.id}>{room.room_number}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterTenant} onValueChange={v => { setFilterTenant(v); setFilterTenantSearch(''); }}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Tenant" />
-                    </SelectTrigger>
-                    <SelectContent onAnimationEnd={() => filterTenantSearchRef.current?.focus()} onCloseAutoFocus={e => e.preventDefault()}>
-                      <div className="px-2 py-1.5" onKeyDown={e => e.stopPropagation()}>
-                        <input
-                          ref={filterTenantSearchRef}
-                          className="w-full text-sm border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-400"
-                          placeholder="Search tenants..."
-                          value={filterTenantSearch}
-                          onChange={e => setFilterTenantSearch(e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      </div>
-                      <SelectItem value="all">All Tenants</SelectItem>
-                      {tenants
-                        .filter(t => {
-                          const q = filterTenantSearch.toLowerCase();
-                          return !q || (t.company || t.name || '').toLowerCase().includes(q);
-                        })
-                        .map((tenant) => (
-                          <SelectItem key={tenant.id} value={tenant.id}>{tenant.company || tenant.name}</SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterColor} onValueChange={setFilterColor} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Color" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Colors</SelectItem>
-                      {[...new Set(filterCombinations.map(c => c.color).filter(Boolean))].map(color => (
-                        <SelectItem key={color} value={color}>{color}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterMaterial} onValueChange={setFilterMaterial} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Material" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Materials</SelectItem>
-                      {[...new Set(filterCombinations.map(c => c.material).filter(Boolean))].map(material => (
-                        <SelectItem key={material} value={material}>{material}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterSize} onValueChange={setFilterSize} disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by Size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Sizes</SelectItem>
-                      {[...new Set(filterCombinations.map(c => c.size).filter(Boolean))].map(size => (
-                        <SelectItem key={size} value={size}>{size}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <AssetList 
-                onCreateNew={handleCreateNew} 
-                onEdit={handleEdit} 
-                onView={handleView} 
-                filterCategory={filterCategory}
-                filterSubCategory={filterSubCategory}
-                filterType={filterType}
-                filterStatus={filterStatus}
-                filterBuilding={filterBuilding}
-                filterFloor={filterFloor}
-                filterRoom={filterRoom}
-                filterTenant={filterTenant}
-                filterColor={filterColor}
-                filterMaterial={filterMaterial}
-                filterSize={filterSize}
-                sortOrder={sortOrder}
-                currentPage={currentPage}
-                itemsPerPage={itemsPerPage}
-                onPageChange={setCurrentPage}
-                onItemsPerPageChange={setItemsPerPage}
-                searchTerm={searchTerm}
-                onSearchChange={setSearchTerm}
-                selectedAssets={selectedAssets}
-                onSelectAsset={handleSelectAsset}
-                onSelectAllAssets={handleSelectAllAssets}
-                onSelectAllFiltered={handleSelectAllFiltered}
-                onClearSelection={() => setSelectedAssets(new Set())}
-                onTotalCountChange={(count) => {
-                  // Update stats with actual total from AssetList
-                  if (stats) {
-                    setStats({ ...stats, totalAssets: count });
-                  }
-                }}
-              />
+              <AssetList
+                              // In read‑only tenant view we hide create/edit/delete actions
+                              onCreateNew={readOnly ? undefined : handleCreateNew}
+                              onEdit={readOnly ? undefined : handleEdit}
+                              onView={handleView}
+                              readOnly={readOnly}
+                                           hideSelection={readOnly}
+                              filterCategory={filterCategory}
+                              filterSubCategory={filterSubCategory}
+                              filterType={filterType}
+                              filterStatus={filterStatus}
+                              filterBuilding={filterBuilding}
+                              filterFloor={filterFloor}
+                              filterRoom={filterRoom}
+                              filterTenant={filterTenant}
+                              filterColor={filterColor}
+                              filterMaterial={filterMaterial}
+                              filterSize={filterSize}
+                              sortOrder={sortOrder}
+                              setSortOrder={setSortOrder}
+                              setFilterCategory={setFilterCategory}
+                              setFilterSubCategory={setFilterSubCategory}
+                              setFilterType={setFilterType}
+                              setFilterStatus={setFilterStatus}
+                              setFilterBuilding={setFilterBuilding}
+                              setFilterFloor={setFilterFloor}
+                              setFilterRoom={setFilterRoom}
+                              setFilterTenant={setFilterTenant}
+                              setFilterColor={setFilterColor}
+                              setFilterMaterial={setFilterMaterial}
+                              setFilterSize={setFilterSize}
+                              assetCategories={assetCategories}
+                              filterSubCategories={filterSubCategories}
+                              filterTypes={filterTypes}
+                              assetStatuses={assetStatuses}
+                              filterFloors={filterFloors}
+                              filterRooms={filterRooms}
+                              tenants={tenants}
+                              filterCombinations={filterCombinations}
+                              onClearFilters={clearAllFilters}
+                              currentPage={currentPage}
+                              itemsPerPage={itemsPerPage}
+                              onPageChange={setCurrentPage}
+                              onItemsPerPageChange={setItemsPerPage}
+                              searchTerm={searchTerm}
+                              onSearchChange={setSearchTerm}
+                              selectedAssets={selectedAssets}
+                              onSelectAsset={handleSelectAsset}
+                              onSelectAllAssets={handleSelectAllAssets}
+                              onSelectAllFiltered={handleSelectAllFiltered}
+                              onClearSelection={() => setSelectedAssets(new Set())}
+                              onTotalCountChange={(count) => {
+                                // Update stats with actual total from AssetList
+                                if (stats) {
+                                  setStats({ ...stats, totalAssets: count });
+                                }
+                              }}
+                            />
             </div>
           )}
         </div>

@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AssetService, Asset } from '@/services/assetService';
 import { buildingService, Building } from '@/services/buildingService';
 import { supabase } from '@/lib/supabaseClient';
-import { Plus, Search, Edit, Trash2, Eye, Printer, FileSpreadsheet, Tag, Settings2, Check, FileText } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Printer, FileSpreadsheet, Tag, Settings2, Check, FileText, Filter, X } from 'lucide-react';
 // VirtualList: dynamically load react-window's FixedSizeList at runtime
 // and fall back to a simple non-virtualized renderer when unavailable.
 function VirtualList(props: any) {
@@ -42,7 +45,6 @@ function VirtualList(props: any) {
     </div>
   );
 }
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { QRCodeSVG } from 'qrcode.react';
@@ -81,6 +83,10 @@ interface AssetListProps {
   onEdit?: (asset: Asset) => void;
   onView?: (asset: Asset) => void;
   onDelete?: (asset: Asset) => void;
+  // When true, the list is displayed in a read‑only tenant view. Edit and Delete actions are hidden.
+  readOnly?: boolean;
+  // When true, hide the selection checkboxes (used for tenant read‑only view).
+  hideSelection?: boolean;
   filterCategory?: string;
   filterSubCategory?: string;
   filterType?: string;
@@ -93,6 +99,26 @@ interface AssetListProps {
   filterMaterial?: string;
   filterSize?: string;
   sortOrder?: string;
+  setSortOrder?: (value: string) => void;
+  setFilterCategory?: (value: string) => void;
+  setFilterSubCategory?: (value: string) => void;
+  setFilterType?: (value: string) => void;
+  setFilterStatus?: (value: string) => void;
+  setFilterBuilding?: (value: string) => void;
+  setFilterFloor?: (value: string) => void;
+  setFilterRoom?: (value: string) => void;
+  setFilterTenant?: (value: string) => void;
+  setFilterColor?: (value: string) => void;
+  setFilterMaterial?: (value: string) => void;
+  setFilterSize?: (value: string) => void;
+  assetCategories?: string[];
+  filterSubCategories?: string[];
+  filterTypes?: string[];
+  assetStatuses?: string[];
+  filterFloors?: { id: string; floor_name?: string; floor_number?: string }[];
+  filterRooms?: { id: string; room_number: string }[];
+  tenants?: { id: string; company?: string; name?: string }[];
+  filterCombinations?: { color?: string; material?: string; size?: string }[];
   currentPage?: number;
   itemsPerPage?: number;
   onPageChange?: (page: number) => void;
@@ -105,9 +131,10 @@ interface AssetListProps {
   onSelectAllFiltered?: () => void;
   onClearSelection?: () => void;
   onTotalCountChange?: (count: number) => void;
+  onClearFilters?: () => void;
 }
 
-export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize, sortOrder, currentPage: propCurrentPage, itemsPerPage: propItemsPerPage, onPageChange, onItemsPerPageChange, searchTerm = '', onSearchChange, selectedAssets: propSelectedAssets, onSelectAsset, onSelectAllAssets, onSelectAllFiltered, onClearSelection, onTotalCountChange }: AssetListProps) {
+export default function AssetList({ onCreateNew, onEdit, onView, onDelete, readOnly, hideSelection, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize, sortOrder, setSortOrder, setFilterCategory, setFilterSubCategory, setFilterType, setFilterStatus, setFilterBuilding, setFilterFloor, setFilterRoom, setFilterTenant, setFilterColor, setFilterMaterial, setFilterSize, assetCategories = [], filterSubCategories: filterSubCategoryOptions = [], filterTypes: filterTypeOptions = [], assetStatuses: assetStatusOptions = [], filterFloors: filterFloorOptions = [], filterRooms: filterRoomOptions = [], tenants: tenantOptions = [], filterCombinations: filterCombinationOptions = [], currentPage: propCurrentPage, itemsPerPage: propItemsPerPage, onPageChange, onItemsPerPageChange, searchTerm = '', onSearchChange, selectedAssets: propSelectedAssets, onSelectAsset, onSelectAllAssets, onSelectAllFiltered, onClearSelection, onTotalCountChange, onClearFilters }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [buildings, setBuildings] = useState<Building[]>([]);
@@ -119,15 +146,13 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   const [loading, setLoading] = useState(true);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const currentSelectedAssets = propSelectedAssets ? Array.from(propSelectedAssets) : selectedAssets;
-  const [currentPage, setCurrentPage] = useState(propCurrentPage || 1);
-  const [itemsPerPage, setItemsPerPage] = useState(propItemsPerPage || 10);
   // Keyset pagination state (cursor = last seen asset_id for paging)
   const [cursor, setCursor] = useState<string | null>(null);
   const [prevCursors, setPrevCursors] = useState<(string | null)[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   // Offset paging support for numeric page buttons (hybrid approach)
-  const [offsetPage, setOffsetPage] = useState<number | null>(null);
+  // (Will be initialized after searchParams is defined)
   const MAX_OFFSET_PAGES = 50; // safe threshold for OFFSET-based jumps
 
   useEffect(() => {
@@ -137,10 +162,40 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
   const [showDeepJumpConfirm, setShowDeepJumpConfirm] = useState(false);
   const [deepJumpTarget, setDeepJumpTarget] = useState<number | null>(null);
+  const [filterTenantSearch, setFilterTenantSearch] = useState('');
+  const filterTenantSearchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Offset paging support for numeric page buttons (hybrid approach)
+  // Initialize from URL "page" query param so that on first render the correct
+  // offset page is used (avoids race condition with key‑set pagination).
+  const [offsetPage, setOffsetPage] = useState<number | null>(() => {
+    const urlPage = Number(searchParams.get('page') ?? 1);
+    return urlPage > 1 ? urlPage : null;
+  });
+  // Initialize current page from prop or URL query param (default to 1)
+  const initialPage = propCurrentPage ?? Number(searchParams.get('page') ?? 1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  // Items per page state (default 10) – can be overridden via prop
+  const [itemsPerPage, setItemsPerPage] = useState(propItemsPerPage || 10);
   const columnPickerRef = useRef<HTMLDivElement>(null);
+  // Guard to avoid resetting page on initial mount when filters change
+  const isInitialMount = useRef(true);
+  const activeFilterCount = [
+    filterCategory,
+    filterSubCategory,
+    filterType,
+    filterStatus,
+    filterBuilding,
+    filterFloor,
+    filterRoom,
+    filterTenant,
+    filterColor,
+    filterMaterial,
+    filterSize,
+  ].filter((value) => Boolean(value) && value !== 'all').length;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -169,7 +224,11 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
   }, [cursor, offsetPage, itemsPerPage, filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, searchTerm, sortOrder]);
 
   useEffect(() => {
-    // Reset keyset pagination when filters/search change
+    // Reset keyset pagination when filters/search change, but skip on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     setCurrentPage(1);
     setPrevCursors([]);
     setCursor(null);
@@ -450,6 +509,10 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, filte
 
   const goToPage = (page: number) => {
     const target = Math.max(1, page);
+    // Persist page in URL query params for navigation persistence
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('page', String(target));
+    setSearchParams(newParams, { replace: true });
     if (target > MAX_OFFSET_PAGES) {
       // Ask user to confirm deep jump since large OFFSET queries can be slow
       setDeepJumpTarget(target);
@@ -824,9 +887,12 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
       </Dialog>
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Asset Master</h1>
-          <Button onClick={onCreateNew || (() => navigate('/assets/create'))}>
-            <Plus className="mr-2 h-4 w-4" /> Create Asset
-          </Button>
+          {/* Hide the create asset button in read‑only mode */}
+          {!readOnly && (
+            <Button onClick={onCreateNew || (() => navigate('/assets/create'))}>
+              <Plus className="mr-2 h-4 w-4" /> Create Asset
+            </Button>
+          )}
         </div>
 
         {currentSelectedAssets.length > 0 && (
@@ -857,6 +923,171 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
               className="pl-10"
             />
           </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="shrink-0 relative">
+                <Filter className="h-4 w-4" />
+                {activeFilterCount > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px]"
+                  >
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[42rem] max-w-[calc(100vw-2rem)] rounded-lg p-4" align="start">
+              <div className="grid grid-cols-3 gap-3">
+                <Select value={sortOrder} onValueChange={(value) => setSortOrder?.(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="asc">↑ Ascending</SelectItem>
+                    <SelectItem value="desc">↓ Descending</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterCategory} onValueChange={(value) => setFilterCategory?.(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Asset Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Asset Types</SelectItem>
+                    {assetCategories.map((category) => (
+                      <SelectItem key={category} value={category}>{category}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterSubCategory} onValueChange={(value) => setFilterSubCategory?.(value)} disabled={!filterCategory || filterCategory === 'all'}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {filterSubCategoryOptions.map((subCategory) => (
+                      <SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterType} onValueChange={(value) => setFilterType?.(value)} disabled={!filterSubCategory || filterSubCategory === 'all'}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Sub Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sub Categories</SelectItem>
+                    {filterTypeOptions.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterStatus} onValueChange={(value) => setFilterStatus?.(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {assetStatusOptions.map((status) => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterBuilding} onValueChange={(value) => setFilterBuilding?.(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Building" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Buildings</SelectItem>
+                    {buildings.map((building) => (
+                      <SelectItem key={building.id} value={building.id}>{building.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterFloor} onValueChange={(value) => setFilterFloor?.(value)} disabled={!filterBuilding || filterBuilding === 'all'}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Floor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Floors</SelectItem>
+                    {filterFloorOptions.map((floor) => (
+                      <SelectItem key={floor.id} value={floor.id}>{floor.floor_name || floor.floor_number}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterRoom} onValueChange={(value) => setFilterRoom?.(value)} disabled={!filterFloor || filterFloor === 'all'}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Room" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Rooms</SelectItem>
+                    {filterRoomOptions.map((room) => (
+                      <SelectItem key={room.id} value={room.id}>{room.room_number}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterTenant} onValueChange={(value) => { setFilterTenant?.(value); setFilterTenantSearch(''); }}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Tenant" />
+                  </SelectTrigger>
+                  <SelectContent onAnimationEnd={() => filterTenantSearchRef.current?.focus()} onCloseAutoFocus={(event) => event.preventDefault()}>
+                    <div className="px-2 py-1.5" onKeyDown={(event) => event.stopPropagation()}>
+                      <Input
+                        ref={filterTenantSearchRef}
+                        placeholder="Search tenants..."
+                        value={filterTenantSearch}
+                        onChange={(event) => setFilterTenantSearch(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="h-8"
+                      />
+                    </div>
+                    <SelectItem value="all">All Tenants</SelectItem>
+                    {tenantOptions
+                      .filter((tenant) => {
+                        const query = filterTenantSearch.toLowerCase();
+                        const label = (tenant.company || tenant.name || '').toLowerCase();
+                        return !query || label.includes(query);
+                      })
+                      .map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id}>{tenant.company || tenant.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterColor} onValueChange={(value) => setFilterColor?.(value)} disabled={!filterType || filterType === 'all' || filterCombinationOptions.length === 0}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Color" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Colors</SelectItem>
+                    {[...new Set(filterCombinationOptions.map((combination) => combination.color).filter(Boolean))].map((color) => (
+                      <SelectItem key={color} value={color}>{color}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterMaterial} onValueChange={(value) => setFilterMaterial?.(value)} disabled={!filterType || filterType === 'all' || filterCombinationOptions.length === 0}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Material" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Materials</SelectItem>
+                    {[...new Set(filterCombinationOptions.map((combination) => combination.material).filter(Boolean))].map((material) => (
+                      <SelectItem key={material} value={material}>{material}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterSize} onValueChange={(value) => setFilterSize?.(value)} disabled={!filterType || filterType === 'all' || filterCombinationOptions.length === 0}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sizes</SelectItem>
+                    {[...new Set(filterCombinationOptions.map((combination) => combination.size).filter(Boolean))].map((size) => (
+                      <SelectItem key={size} value={size}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </PopoverContent>
+          </Popover>
           {currentSelectedAssets.length > 0 && (
             <>
               <Button onClick={handleThermalLabels} variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
@@ -905,6 +1136,100 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
           )}
         </div>
 
+        {(filterCategory || filterSubCategory || filterType || filterStatus || filterBuilding || filterFloor || filterRoom || filterTenant || filterColor || filterMaterial || filterSize) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {filterCategory && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterCategory}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterCategory?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterSubCategory && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterSubCategory}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterSubCategory?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterType && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterType}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterType?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterStatus && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterStatus}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterStatus?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterBuilding && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterBuilding}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterBuilding?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterFloor && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterFloor}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterFloor?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterRoom && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterRoom}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterRoom?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterTenant && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterTenant}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterTenant?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterColor && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterColor}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterColor?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterMaterial && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterMaterial}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterMaterial?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {filterSize && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <span>{filterSize}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilterSize?.('')}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            <Button variant="outline" size="sm" onClick={onClearFilters}>Clear all</Button>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -915,12 +1240,16 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
               <table className="w-full caption-bottom text-sm">
                 <thead className="[&_tr]:border-b">
                   <tr className="transition-colors data-[state=selected]:bg-muted border-b border-gray-200 hover:bg-transparent bg-gray-50">
-                    <th className="h-12 px-4 text-left align-middle [&:has([role=checkbox])]:pr-0 w-12 text-gray-600 font-semibold uppercase text-xs">
-                      <Checkbox 
-                        checked={paginatedAssets.length > 0 && paginatedAssets.every(a => currentSelectedAssets.includes(a.id))}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </th>
+                    {/* Selection checkbox column – hidden when hideSelection is true */}
+                    {!hideSelection && (
+                      <th className="h-12 px-4 text-left align-middle [&:has([role=checkbox])]:pr-0 w-12 text-gray-600 font-semibold uppercase text-xs">
+                        <Checkbox 
+                          checked={paginatedAssets.length > 0 && paginatedAssets.every(a => currentSelectedAssets.includes(a.id))}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
+                    )}
+
                     {ALL_COLUMNS.filter(c => visibleColumns.includes(c.key)).map(col => (
                       <th key={col.key} className="h-12 px-4 text-left align-middle [&:has([role=checkbox])]:pr-0 text-gray-600 font-semibold uppercase text-xs">{col.label}</th>
                     ))}
@@ -929,13 +1258,16 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </thead>
                 <tbody className="[&_tr:last-child]:border-0">
                   {paginatedAssets.length === 0 ? (
-                    <tr><td colSpan={ALL_COLUMNS.length + 2} className="p-6 text-sm text-gray-500">No assets found.</td></tr>
+                    <tr><td colSpan={ALL_COLUMNS.length + (hideSelection ? 1 : 2)} className="p-6 text-sm text-gray-500">No assets found.</td></tr>
                   ) : (
                     paginatedAssets.map(asset => (
                       <tr key={asset.id} className="data-[state=selected]:bg-muted border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                        <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
-                          <Checkbox checked={currentSelectedAssets.includes(asset.id)} onCheckedChange={() => toggleAssetSelection(asset.id)} />
-                        </td>
+                        {/* Selection checkbox cell – hidden when hideSelection is true */}
+                        {!hideSelection && (
+                          <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
+                            <Checkbox checked={currentSelectedAssets.includes(asset.id)} onCheckedChange={() => toggleAssetSelection(asset.id)} />
+                          </td>
+                        )}
                         {visibleColumns.includes('asset_id') && (
                           <td className="p-4 align-middle [&:has([role=checkbox])]:pr-0 font-medium text-gray-900">
                             {asset.asset_id && String(asset.asset_id).trim() ? asset.asset_id : 'AUTO-GENERATED'}
@@ -1017,12 +1349,18 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                             <Button size="sm" variant="ghost" onClick={() => onView ? onView(asset) : navigate(`/assets/view/${asset.id}`)} title="View" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => onEdit ? onEdit(asset) : navigate(`/assets/edit/${asset.id}`)} title="Edit" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => onDelete ? onDelete(asset) : handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {/* Edit button is hidden in read‑only mode */}
+                            {!readOnly && (
+                              <Button size="sm" variant="ghost" onClick={() => onEdit ? onEdit(asset) : navigate(`/assets/edit/${asset.id}`, { state: { returnPage: currentPage } })} title="Edit" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {/* Delete button is hidden in read‑only mode */}
+                            {!readOnly && (
+                              <Button size="sm" variant="ghost" onClick={() => onDelete ? onDelete(asset) : handleDelete(asset.id)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

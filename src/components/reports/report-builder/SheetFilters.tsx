@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAssetFilterOptions } from '../shared/useAssetFilterOptions';
 import { useHelpdeskFilterOptions } from '../shared/useHelpdeskFilterOptions';
 import { useTenantReportFilterOptions } from '../shared/useTenantReportFilterOptions';
@@ -46,8 +50,19 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     assignedTo: assignedToOptions,
   } = filterOptions;
 
+  const normalizeAssetCategorySelection = (value: any): string[] => {
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).map(String);
+    }
+    if (!value || value === 'all') {
+      return [];
+    }
+    return [String(value)];
+  };
+
   // Multi-select state for fields that should support multiple selections
   const [category, setCategory] = useState<string | string[]>(initialFilters.category || 'all');
+  const [assetCategories, setAssetCategories] = useState<string[]>(normalizeAssetCategorySelection(initialFilters.category));
   const [subCategory, setSubCategory] = useState<string | string[]>(initialFilters.subCategory || 'all');
   const [assetType, setAssetType] = useState<string | string[]>(initialFilters.assetType || 'all');
   const [status, setStatus] = useState<string | string[]>(initialFilters.status || 'all');
@@ -88,6 +103,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
   const isInitialFloorEffect = useRef(true);
   const isInitialCategoryEffect = useRef(true);
   const isInitialSubCategoryEffect = useRef(true);
+  const assetCategoryCount = assetCategories.length;
   const tenantOptionsForCompanyGroup = useMemo(() => {
     if (reportType !== 'tenant') return tenants;
     if (companyGroup === 'all') return tenants;
@@ -149,7 +165,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     }
 
     onChangeRef.current({
-      category,
+      category: assetCategories,
       subCategory,
       assetType,
       status,
@@ -164,7 +180,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     });
   }, [
     reportType,
-    category,
+    assetCategories,
     assetType,
     priority,
     status,
@@ -225,20 +241,20 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
       return;
     }
 
-    if (category === 'all') {
+    if (assetCategories.length === 0) {
       setSubCategory('all');
       assetOptions.setSubCategories([]);
       setAssetType('all');
       assetOptions.setTypes([]);
     } else {
-      loadSubCategoriesForCategory(category);
+      loadSubCategoriesForCategory(assetCategories);
       if (!isInitialCategoryEffect.current) {
         setSubCategory('all');
         setAssetType('all');
       }
     }
     isInitialCategoryEffect.current = false;
-  }, [category, isAsset, loadSubCategoriesForCategory, assetOptions.setSubCategories, assetOptions.setTypes]);
+  }, [assetCategories, isAsset, loadSubCategoriesForCategory, assetOptions.setSubCategories, assetOptions.setTypes]);
 
   useEffect(() => {
     if (!isAsset) {
@@ -806,44 +822,56 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Asset Category</Label>
-            {/* Multi-select for asset categories */}
-            {Array.isArray(category) ? (
-              <Select
-                value={category}
-                onValueChange={(value) => setCategory(value)}
-                isMulti
-                placeholder="Select categories"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" className="w-full justify-between">
+                  <span>{assetCategoryCount > 0 ? `${assetCategoryCount} selected` : 'All Categories'}</span>
+                  {assetCategoryCount > 0 && <Badge variant="secondary" className="ml-2">{assetCategoryCount}</Badge>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3" align="start">
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                    <Checkbox
+                      checked={assetCategories.length === 0}
+                      onCheckedChange={() => setAssetCategories([])}
+                    />
+                    <span>All Categories</span>
+                  </label>
+                  {categories.map((item) => {
+                    const checked = assetCategories.includes(item);
+                    return (
+                      <label key={item} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(nextChecked) => {
+                            setAssetCategories((current) => {
+                              const next = nextChecked
+                                ? Array.from(new Set([...current, item]))
+                                : current.filter((value) => value !== item);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span>{item}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setAssetCategories([])}>
+                    Clear
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div>
             <Label>Sub Category</Label>
-            <Select value={subCategory} onValueChange={setSubCategory} disabled={category === 'all'}>
+            <Select value={subCategory} onValueChange={setSubCategory} disabled={assetCategories.length === 0}>
               <SelectTrigger>
-                <SelectValue placeholder={category === 'all' ? 'Select category first' : 'All Sub Categories'} />
+                <SelectValue placeholder={assetCategories.length === 0 ? 'Select category first' : 'All Sub Categories'} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Sub Categories</SelectItem>

@@ -79,23 +79,36 @@ export function useAssetFilterOptions(enabled = true) {
     if (roomData) setRooms(roomData);
   }, []);
 
-  const loadSubCategoriesForCategory = useCallback(async (categoryName: string) => {
+  const loadSubCategoriesForCategory = useCallback(async (categoryName: string | string[]) => {
+    const categoryNames = Array.isArray(categoryName) ? categoryName : [categoryName];
+    const normalizedNames = categoryNames.map((name) => String(name).trim()).filter(Boolean);
+
+    if (normalizedNames.length === 0) {
+      setSubCategories([]);
+      return;
+    }
+
     const { data: catData } = await supabase
       .from('form_dropdowns')
-      .select('id')
+      .select('id, name')
       .eq('form_type', 'asset')
-      .eq('name', categoryName)
-      .single();
+      .in('name', normalizedNames);
 
-    if (catData) {
-      const { data: subCatData } = await supabase
-        .from('form_subcategories')
-        .select('name')
-        .eq('form_type', 'asset')
-        .eq('category_id', catData.id)
-        .order('name');
-      if (subCatData) setSubCategories(getUnique(subCatData.map((s) => s.name)));
+    const categoryIds = (catData || []).map((item) => item.id).filter(Boolean);
+
+    if (categoryIds.length === 0) {
+      setSubCategories([]);
+      return;
     }
+
+    const { data: subCatData } = await supabase
+      .from('form_subcategories')
+      .select('name')
+      .eq('form_type', 'asset')
+      .in('category_id', categoryIds)
+      .order('name');
+
+    if (subCatData) setSubCategories(getUnique(subCatData.map((s) => s.name)));
   }, []);
 
   const loadTypesForSubCategory = useCallback(async (subCategoryName: string) => {

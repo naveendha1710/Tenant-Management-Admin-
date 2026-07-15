@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Users, Plus, Search, Filter, MoreHorizontal, Eye, Edit, Trash2, Mail, MessageSquare, Phone, Download, Send, Building, Lock, Settings, User as UserIcon, FileSpreadsheet } from 'lucide-react';
+import { Users, Plus, Search, Filter, MoreHorizontal, Eye, Edit, Trash2, Mail, MessageSquare, Phone, Download, Send, Building, Lock, Settings, User as UserIcon, FileSpreadsheet, Check } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { mockSpaces } from '@/data/mockData';
 import { TenantForm } from '@/components/admin/TenantForm';
@@ -22,6 +22,58 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/utils/permissions';
 import LoadingScreen from '@/components/LoadingScreen';
 import { useToast } from '@/hooks/use-toast';
+
+// ---------- Column definitions for tenant table ----------
+// Column keys for tenant table. Extend this union as new columns are added.
+type ColumnKey =
+  | 'company'
+  | 'companyGroup'
+  | 'floorRent'
+  | 'status'
+  // Additional fields from agreements/tenants
+  | 'baseRent'
+  | 'securityDeposit'
+  | 'paymentCycle'
+  | 'rentCommencementDate'
+  | 'leaseEndDate'
+  | 'lockInPeriod'
+  | 'maintenanceCharges'
+  | 'generalCharges'
+  | 'serviceCharge'
+  | 'agreementStatus'
+  | 'gstNumber'
+  | 'tanNumber'
+  | 'panNumber'
+  | 'isGstCompany'
+  | 'leaseTenure'
+  | 'cinNumber';
+
+const ALL_TENANT_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'company', label: 'Company/Business' },
+  { key: 'companyGroup', label: 'Company Group' },
+  { key: 'floorRent', label: 'Floor Rent' },
+  { key: 'status', label: 'Status' },
+  // Additional columns (hidden by default)
+  { key: 'baseRent', label: 'Base Rent' },
+  { key: 'securityDeposit', label: 'Security Deposit' },
+  { key: 'paymentCycle', label: 'Payment Cycle' },
+  { key: 'rentCommencementDate', label: 'Rent Commencement Date' },
+  { key: 'leaseEndDate', label: 'Lease End Date' },
+  { key: 'lockInPeriod', label: 'Lock‑In Period' },
+  { key: 'maintenanceCharges', label: 'Maintenance Charges' },
+  { key: 'generalCharges', label: 'General Charges' },
+  { key: 'serviceCharge', label: 'Service Charge' },
+  { key: 'agreementStatus', label: 'Agreement Status' },
+  { key: 'gstNumber', label: 'GST Number' },
+  { key: 'tanNumber', label: 'TAN Number' },
+  { key: 'panNumber', label: 'PAN Number' },
+  { key: 'isGstCompany', label: 'GST Company' },
+  { key: 'leaseTenure', label: 'Lease Tenure' },
+  { key: 'cinNumber', label: 'CIN Number' },
+];
+
+// Default visible columns when the user has not customized preferences.
+const DEFAULT_TENANT_COLUMNS: ColumnKey[] = ['company', 'companyGroup', 'floorRent', 'status'];
 
 const TenantManagement: React.FC = () => {
   const { user } = useAuth();
@@ -61,6 +113,11 @@ const TenantManagement: React.FC = () => {
   const [itemsPerPage] = useState(10);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
+  // ---------- Column visibility state ----------
+  const columnPickerRef = useRef<HTMLDivElement>(null);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_TENANT_COLUMNS);
+
   // Calculate current rent with floor-wise escalations applied
   const calculateCurrentRent = (tenant: Tenant) => {
     const agreements = tenant.agreements || [];
@@ -74,11 +131,8 @@ const TenantManagement: React.FC = () => {
     activeAgreements.forEach((agreement: any) => {
       const spaceAssignments = agreement.spaceAssignments || [];
       const escalations = agreement.escalations || [];
-      const maintenanceCharges = agreement.maintenanceCharges || [];
-      const generalCharges = agreement.generalCharges || [];
-      const serviceCharge = agreement.serviceCharge || { amount: 0, isIncludedInRent: false };
       
-      // Calculate escalated base rent
+      // Calculate escalated base rent only (excluding maintenance, general, and service charges)
       let baseRent = 0;
       for (let idx = 0; idx < spaceAssignments.length; idx++) {
         const assignment = spaceAssignments[idx];
@@ -100,29 +154,73 @@ const TenantManagement: React.FC = () => {
         baseRent += floorRent;
       }
       
-      // Calculate maintenance charges
-      const maintenanceTotal = maintenanceCharges
-        .filter((c: any) => !c.isIncludedInRent)
-        .reduce((sum: number, charge: any) => sum + ((charge.sqft || 0) * (charge.ratePerSqft || 0)), 0);
-      
-      // Calculate general charges (only current month)
-      const generalTotal = generalCharges.reduce((sum: number, charge: any) => {
-        if (charge.dueDate) {
-          const dueDate = new Date(charge.dueDate);
-          if (dueDate.getMonth() === today.getMonth() && dueDate.getFullYear() === today.getFullYear()) {
-            return sum + (charge.amount || 0);
-          }
-        }
-        return sum;
-      }, 0);
-      
-      // Add service charge if not included in rent
-      const serviceTotal = serviceCharge.isIncludedInRent ? 0 : (serviceCharge.amount || 0);
-      
-      totalRent += baseRent + maintenanceTotal + generalTotal + serviceTotal;
+      totalRent += baseRent;
     });
     
     return Math.round(totalRent);
+  };
+
+  // Calculate detailed rent information including total rent and escalation amount.
+  const calculateRentDetails = (tenant: Tenant) => {
+    const agreements = tenant.agreements || [];
+    const activeAgreements = agreements.filter((a: any) => a.status === 'Active' || a.status === 'Pending Move-In');
+    if (activeAgreements.length === 0) {
+      return { floorRent: 0, totalRent: 0, escalationTotal: 0 };
+    }
+
+    const today = new Date();
+    let floorRent = 0; // escalated base rent
+    let baseRentWithoutEsc = 0;
+    let maintenanceTotal = 0;
+    let generalTotal = 0;
+    let serviceChargeAmount = tenant.serviceCharge?.amount ?? 0;
+
+    activeAgreements.forEach((agreement: any) => {
+      const spaceAssignments = agreement.spaceAssignments || [];
+      const escalations = agreement.escalations || [];
+
+      // Base rent calculations
+      spaceAssignments.forEach((assignment: any, idx: number) => {
+        const uniqueId = assignment.id || `${assignment.floorId}_${idx}`;
+        const originalAmount = assignment.amount || 0;
+        let escalatedAmount = originalAmount;
+
+        // Apply escalations to this floor assignment
+        for (const escalation of escalations) {
+          if (!escalation.date) continue;
+          const escDate = new Date(escalation.date);
+          if (escDate > today) continue;
+          const floorEsc = escalation.floorWiseEscalations?.find((f: any) =>
+            f.floorId === uniqueId || f.floorId === assignment.floorId || f.floorId === assignment.id
+          );
+          if (floorEsc && floorEsc.percentage) {
+            escalatedAmount = escalatedAmount + (escalatedAmount * floorEsc.percentage / 100);
+          }
+        }
+        floorRent += escalatedAmount;
+        baseRentWithoutEsc += originalAmount;
+      });
+
+      // Maintenance charges (rate per sqft * assigned sqft) from agreement
+      if (agreement.maintenanceCharges) {
+        maintenanceTotal += agreement.maintenanceCharges.reduce((sum: number, charge: any) => {
+          const sqft = agreement.spaceAssignments?.find((sa: any) => sa.id === charge.spaceAssignmentId)?.assignedSqft || 0;
+          return sum + (charge.ratePerSqft ?? 0) * sqft;
+        }, 0);
+      }
+
+      // General charges (rate per sqft * assigned sqft) from agreement
+      if (agreement.generalCharges) {
+        generalTotal += agreement.generalCharges.reduce((sum: number, charge: any) => {
+          const sqft = agreement.spaceAssignments?.find((sa: any) => sa.id === charge.spaceAssignmentId)?.assignedSqft || 0;
+          return sum + (charge.ratePerSqft ?? 0) * sqft;
+        }, 0);
+      }
+    });
+
+    const totalRent = floorRent + maintenanceTotal + generalTotal + serviceChargeAmount;
+    const escalationTotal = floorRent - baseRentWithoutEsc;
+    return { floorRent: Math.round(floorRent), totalRent: Math.round(totalRent), escalationTotal: Math.round(escalationTotal) };
   };
 
   // Check permissions for Tenants module
@@ -134,6 +232,9 @@ const TenantManagement: React.FC = () => {
   useEffect(() => {
     loadTenants();
     loadChargeCategories();
+    if (user?.id) {
+      loadTenantColumnPreferences();
+    }
     
     // Set up real-time subscription for tenants, agreements, and floors tables
     const setupRealtimeSubscription = async () => {
@@ -183,6 +284,55 @@ const TenantManagement: React.FC = () => {
     }
     
     setLoading(false);
+  };
+
+  // Load column preferences for the current user
+  const loadTenantColumnPreferences = async () => {
+    try {
+      const { supabase } = await import('@/lib/supabaseClient');
+      const { data, error } = await supabase
+        .from('users')
+        .select('tenant_table_preferences')
+        .eq('id', user?.id)
+        .single();
+      if (error) throw error;
+      if (data?.tenant_table_preferences) {
+        const prefs = data.tenant_table_preferences as unknown;
+        if (Array.isArray(prefs)) {
+          setVisibleColumns(prefs as ColumnKey[]);
+        } else {
+          // Fallback to default if stored format is unexpected
+          setVisibleColumns(DEFAULT_TENANT_COLUMNS);
+        }
+      } else {
+        setVisibleColumns(DEFAULT_TENANT_COLUMNS);
+      }
+    } catch (e) {
+      console.error('Failed to load tenant column preferences', e);
+      setVisibleColumns(DEFAULT_TENANT_COLUMNS);
+    }
+  };
+
+  // Save column preferences for the current user
+  const saveTenantColumnPreferences = async (cols: ColumnKey[]) => {
+    try {
+      const { supabase } = await import('@/lib/supabaseClient');
+      const { error } = await supabase
+        .from('users')
+        .update({ tenant_table_preferences: cols })
+        .eq('id', user?.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error('Failed to save tenant column preferences', e);
+    }
+  };
+
+  const toggleTenantColumn = (key: ColumnKey) => {
+    setVisibleColumns(prev => {
+      const newCols = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      saveTenantColumnPreferences(newCols);
+      return newCols;
+    });
   };
 
   const loadChargeCategories = async () => {
@@ -336,20 +486,20 @@ const TenantManagement: React.FC = () => {
             company: tenantData.company,
             email: tenantData.email,
             phone: tenantData.phone,
-            phone_numbers: tenantData.phoneNumbers || [tenantData.phone],
+            phoneNumbers: tenantData.phoneNumbers || [tenantData.phone],
             password: tenantData.password,
             status: 'Pending Move-In',
-            companygroup: tenantData.companyGroup || null,
+            companyGroup: tenantData.companyGroup || null,
             address: tenantData.address || null,
-            idproof: tenantData.idProof || null,
-            is_gst_company: tenantData.isGstCompany || false,
-            gst_number: tenantData.gstNumber || null,
-            tan_number: tenantData.tanNumber || null,
-            pan_number: tenantData.panNumber || null,
-            cin_number: tenantData.cinNumber || null,
-            parent_tenant_id: tenantData.parentTenantId || null,
-            branch_name: tenantData.branchName || null,
-            is_main_branch: tenantData.isMainBranch ?? true
+            idProof: tenantData.idProof || null,
+            isGstCompany: tenantData.isGstCompany || false,
+            gstNumber: tenantData.gstNumber || null,
+            tanNumber: tenantData.tanNumber || null,
+            panNumber: tenantData.panNumber || null,
+            cinNumber: tenantData.cinNumber || null,
+            parentTenantId: tenantData.parentTenantId || null,
+            branchName: tenantData.branchName || null,
+            isMainBranch: tenantData.isMainBranch ?? true
           });
           
           if (!result || !result.id) {
@@ -378,14 +528,14 @@ const TenantManagement: React.FC = () => {
           // Update selectedTenant with the newly created tenant data
           setSelectedTenant({
             ...result,
-            companyGroup: result.companygroup,
-            idProof: result.idproof,
-            isGstCompany: result.is_gst_company,
-            gstNumber: result.gst_number,
-            tanNumber: result.tan_number,
-            panNumber: result.pan_number,
-            cinNumber: result.cin_number,
-            phoneNumbers: result.phone_numbers || [result.phone],
+            companyGroup: result.companyGroup,
+            idProof: result.idProof,
+            isGstCompany: result.isGstCompany,
+            gstNumber: result.gstNumber,
+            tanNumber: result.tanNumber,
+            panNumber: result.panNumber,
+            cinNumber: result.cinNumber,
+            phoneNumbers: result.phoneNumbers || [result.phone],
             parentTenantId: result.parent_tenant_id,
             branchName: result.branch_name,
             isMainBranch: result.is_main_branch,
@@ -1052,7 +1202,7 @@ const TenantManagement: React.FC = () => {
         {/* Header with Actions */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full sm:w-64 flex items-center">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 placeholder="Search tenants..."
@@ -1060,6 +1210,38 @@ const TenantManagement: React.FC = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
               />
+              {/* Column picker button (moved above table) */}
+              {false && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowColumnPicker(!showColumnPicker)}
+                  ref={columnPickerRef}
+                  className="ml-2"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              )}
+              <DropdownMenu open={showColumnPicker} onOpenChange={setShowColumnPicker}>
+                <DropdownMenuTrigger asChild>
+                  {/* hidden trigger – we control opening via the Settings button */}
+                  <span className="hidden" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {ALL_TENANT_COLUMNS.map(col => (
+                    <DropdownMenuItem
+                      key={col.key}
+                      onSelect={() => toggleTenantColumn(col.key as ColumnKey)}
+                      className="flex items-center justify-between cursor-pointer"
+                    >
+                      <span>{col.label}</span>
+                      {visibleColumns.includes(col.key as ColumnKey) && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-40">
@@ -1161,8 +1343,18 @@ const TenantManagement: React.FC = () => {
 
         {/* Tenant Table */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between pb-4">
             <CardTitle>Tenant Overview</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowColumnPicker(!showColumnPicker)}
+              ref={columnPickerRef}
+              className="text-gray-500 hover:text-gray-900"
+              title="Table Settings"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {loading ? (
@@ -1170,8 +1362,9 @@ const TenantManagement: React.FC = () => {
                 <LoadingScreen />
               </div>
             ) : (
-            <div className="rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
-              <Table>
+              <>
+                <div className="rounded-lg overflow-hidden bg-white shadow-md border border-gray-200">
+                  <Table>
                 <TableHeader>
                   <TableRow className="border-b border-gray-200 hover:bg-transparent bg-gray-50">
                     <TableHead className="w-12 text-gray-600 font-semibold uppercase text-xs">
@@ -1180,10 +1373,13 @@ const TenantManagement: React.FC = () => {
                         onCheckedChange={handleSelectAll}
                       />
                     </TableHead>
-                    <TableHead className="text-gray-600 font-semibold uppercase text-xs">COMPANY/BUSINESS</TableHead>
-                    <TableHead className="text-gray-600 font-semibold uppercase text-xs">COMPANY GROUP</TableHead>
-                    <TableHead className="text-gray-600 font-semibold uppercase text-xs">CURRENT RENT</TableHead>
-                    <TableHead className="text-gray-600 font-semibold uppercase text-xs">STATUS</TableHead>
+                    {ALL_TENANT_COLUMNS.map(col => (
+                      visibleColumns.includes(col.key) && (
+                        <TableHead key={col.key} className="text-gray-600 font-semibold uppercase text-xs">
+                          {col.label.toUpperCase()}
+                        </TableHead>
+                      )
+                    ))}
                     <TableHead className="text-gray-600 font-semibold uppercase text-xs text-center">ACTIONS</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1196,40 +1392,171 @@ const TenantManagement: React.FC = () => {
                           onCheckedChange={(checked) => handleSelectTenant(tenant.id, checked as boolean)}
                         />
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold">
-                            {tenant.company.charAt(0).toUpperCase()}
+                      {/* Company/Business column */}
+                      {visibleColumns.includes('company') && (
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold">
+                              {tenant.company.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{tenant.company}</p>
+                              <p className="text-sm text-gray-500">{tenant.email}</p>
+                              {viewMode === 'grouped' && tenant.branches && tenant.branches.length > 1 && (
+                                <p className="text-xs text-blue-600 mt-1">{tenant.branches.length} locations</p>
+                              )}
+                            </div>
                           </div>
+                        </TableCell>
+                      )}
+                      {/* Company Group column */}
+                      {visibleColumns.includes('companyGroup') && (
+                        <TableCell>
+                          {tenant.companyGroup ? (
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {tenant.companyGroup}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">Not Assigned</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {/* Floor Rent column with derived totals */}
+                      {visibleColumns.includes('floorRent') && (
+                        <TableCell>
                           <div>
-                            <p className="font-medium text-gray-900">{tenant.company}</p>
-                            <p className="text-sm text-gray-500">{tenant.email}</p>
-                            {viewMode === 'grouped' && tenant.branches && tenant.branches.length > 1 && (
-                              <p className="text-xs text-blue-600 mt-1">{tenant.branches.length} locations</p>
-                            )}
+                            {(() => {
+                              const { floorRent, totalRent, escalationTotal } = calculateRentDetails(tenant);
+                              return (
+                                <>
+                                  <p className="font-medium text-gray-900">₹{floorRent.toLocaleString()}</p>
+                                  <p className="text-sm text-gray-500">Floor Rent</p>
+                                  <p className="text-xs text-gray-500">Total Rent: ₹{totalRent.toLocaleString()}</p>
+                                  <p className="text-xs text-gray-500">Escalation Total: ₹{escalationTotal.toLocaleString()}</p>
+                                </>
+                              );
+                            })()}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {tenant.companyGroup ? (
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {tenant.companyGroup}
+                        </TableCell>
+                      )}
+                      {/* Status column */}
+                      {visibleColumns.includes('status') && (
+                        <TableCell>
+                          <Badge variant={getStatusColor(tenant.status)} className="capitalize">
+                            {tenant.status}
                           </Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">Not Assigned</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-gray-900">₹{calculateCurrentRent(tenant).toLocaleString()}</p>
-                          <p className="text-sm text-gray-500">per month</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusColor(tenant.status)} className="capitalize">
-                          {tenant.status}
-                        </Badge>
-                      </TableCell>
+                        </TableCell>
+                      )}
+                      {/* Base Rent column */}
+                      {visibleColumns.includes('baseRent') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">₹{tenant.rentAmount?.toLocaleString() ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Security Deposit column */}
+                      {visibleColumns.includes('securityDeposit') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">₹{tenant.securityDeposit?.toLocaleString() ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Payment Cycle column */}
+                      {visibleColumns.includes('paymentCycle') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.paymentCycle ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Rent Commencement Date column */}
+                      {visibleColumns.includes('rentCommencementDate') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.rentCommencementDate ? new Date(tenant.rentCommencementDate).toLocaleDateString() : '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Lease End Date column */}
+                      {visibleColumns.includes('leaseEndDate') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.leaseEndDate ? new Date(tenant.leaseEndDate).toLocaleDateString() : '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Lock‑In Period column */}
+                      {visibleColumns.includes('lockInPeriod') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.lockInPeriod ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Maintenance Charges column */}
+                      {visibleColumns.includes('maintenanceCharges') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">
+                            ₹{tenant.maintenanceCharges?.reduce((sum, charge) => {
+                              const sqft = selectedTenant?.spaceAssignments?.find(sa => sa.id === charge.spaceAssignmentId)?.assignedSqft || 0;
+                              return sum + (charge.ratePerSqft ?? 0) * sqft;
+                            }, 0).toLocaleString() ?? '—'}
+                          </p>
+                        </TableCell>
+                      )}
+                      {/* General Charges column */}
+                      {visibleColumns.includes('generalCharges') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">
+                            ₹{tenant.generalCharges?.reduce((sum, charge) => {
+                              const sqft = selectedTenant?.spaceAssignments?.find(sa => sa.id === charge.spaceAssignmentId)?.assignedSqft || 0;
+                              return sum + (charge.ratePerSqft ?? 0) * sqft;
+                            }, 0).toLocaleString() ?? '—'}
+                          </p>
+                        </TableCell>
+                      )}
+                      {/* Service Charge column */}
+                      {visibleColumns.includes('serviceCharge') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">₹{tenant.serviceCharge?.amount?.toLocaleString() ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Agreement Status column */}
+                      {visibleColumns.includes('agreementStatus') && (
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {tenant.agreements?.[0]?.status ?? '—'}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      {/* GST Number column */}
+                      {visibleColumns.includes('gstNumber') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.gstNumber ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* TAN Number column */}
+                      {visibleColumns.includes('tanNumber') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.tanNumber ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* PAN Number column */}
+                      {visibleColumns.includes('panNumber') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.panNumber ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* Is GST Company column */}
+                      {visibleColumns.includes('isGstCompany') && (
+                        <TableCell>
+                          <Badge variant={tenant.isGstCompany ? 'default' : 'secondary'} className="text-xs">
+                            {tenant.isGstCompany ? 'Yes' : 'No'}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      {/* Lease Tenure column */}
+                      {visibleColumns.includes('leaseTenure') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.leaseTenure ?? '—'}</p>
+                        </TableCell>
+                      )}
+                      {/* CIN Number column */}
+                      {visibleColumns.includes('cinNumber') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">{tenant.cinNumber ?? '—'}</p>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex gap-2 justify-center">
                           <Button size="sm" variant="ghost" onClick={() => handleViewTenant(tenant)} title="View" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
@@ -1306,8 +1633,7 @@ const TenantManagement: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-            )}
+              </div>
             {!loading && displayTenants.length > 0 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
                 <div className="text-sm text-gray-500">
@@ -1373,11 +1699,13 @@ const TenantManagement: React.FC = () => {
                       <path d="m9 18 6-6-6-6" />
                     </svg>
                   </button>
-                </nav>
+                  </nav>
                 </div>
-                )}
+              )} 
               </div>
-            )}
+            )} 
+            </> 
+          )} 
           </CardContent>
         </Card>
 

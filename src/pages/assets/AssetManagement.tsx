@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +28,18 @@ export default function AssetManagement() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  // Preserve pagination page across edit view toggles
+  const [assetListPage, setAssetListPage] = useState(1);
+  // Sync pagination page with URL query parameter "page" when component mounts or URL changes
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const pageParam = searchParams.get('page');
+    const pageNumber = pageParam ? Number(pageParam) : 1;
+    if (!isNaN(pageNumber) && pageNumber !== assetListPage) {
+      setAssetListPage(pageNumber);
+    }
+    // No need to update URL here; AssetList handles it on page changes.
+  }, [searchParams, assetListPage]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [floors, setFloors] = useState<Floor[]>([]);
   const { toast } = useToast();
@@ -396,7 +409,12 @@ export default function AssetManagement() {
               </CardContent>
             </Card>
               ) : (
-                <AssetList onCreateNew={handleCreateNew} onEdit={handleEdit} />
+                <AssetList
+                  onCreateNew={handleCreateNew}
+                  onEdit={handleEdit}
+                  currentPage={assetListPage}
+                  onPageChange={setAssetListPage}
+                />
               )}
             </TabsContent>
             

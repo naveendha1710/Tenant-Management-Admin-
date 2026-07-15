@@ -40,7 +40,10 @@ const PAGE_SIZE = 1000;
 const isUuid = (value: any) =>
   typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-const isActiveFilterValue = (value?: string) => {
+const isActiveFilterValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
   return value !== undefined && value !== null && value !== '' && value !== 'all';
 };
 
@@ -170,7 +173,7 @@ const applyReportFilters = (query: any, filters: Record<string, any>) => {
   Object.entries(mapping).forEach(([filterKey, column]) => {
     const value = filters[filterKey];
     if (isActiveFilterValue(value)) {
-      query = query.eq(column, value);
+      query = Array.isArray(value) ? query.in(column, value) : query.eq(column, value);
     }
   });
 

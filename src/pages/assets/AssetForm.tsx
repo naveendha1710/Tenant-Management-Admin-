@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,6 +12,7 @@ import { ArrowLeft, Save } from 'lucide-react';
 export default function AssetForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
@@ -63,7 +64,13 @@ export default function AssetForm() {
         await AssetService.createAsset(formData);
         toast({ title: 'Success', description: 'Asset created successfully' });
       }
-      navigate('/assets');
+      // Return to the asset list preserving the original page if we have it in route state
+      if (location.state && typeof location.state.returnPage === 'number') {
+        navigate(`/assets?page=${location.state.returnPage}`);
+      } else {
+        // Fallback to history back – this works when the form was reached via navigation from the list
+        navigate(-1);
+      }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to save asset', variant: 'destructive' });
     } finally {

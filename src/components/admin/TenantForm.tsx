@@ -314,6 +314,17 @@ export const TenantForm: React.FC<TenantFormProps> = ({ tenant, agreement, agree
     }
   }, [pendingAssignments]);
 
+  // Recalculate rent amount whenever space assignments are modified directly by the user.
+  // This ensures the Basic Lease Information tab reflects the latest total rent derived from assigned spaces.
+  // The update respects the manual rent edit flag to avoid overwriting user‑entered values.
+  useEffect(() => {
+    if (isRentManuallyEdited) return;
+    const calculatedRent = (spaceAssignments || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+    if (calculatedRent > 0) {
+      handleInputChange('rentAmount', calculatedRent.toString());
+    }
+  }, [spaceAssignments, isRentManuallyEdited]);
+
   useEffect(() => {
     if (!tenant) {
       setHasChanges(true);

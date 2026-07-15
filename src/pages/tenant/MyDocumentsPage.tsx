@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+// AlertDialog imports removed as delete functionality is no longer needed.
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, Download, Eye, Trash2, FileText, AlertTriangle, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -40,8 +40,6 @@ export default function MyDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [documentToDelete, setDocumentToDelete] = useState<any>(null);
   const [activeTenantIds, setActiveTenantIds] = useState<string[]>([]);
   const documentsTableRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -188,47 +186,7 @@ export default function MyDocumentsPage() {
     }
   };
 
-  const handleDeleteDocument = (doc: any) => {
-    setDocumentToDelete(doc);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const confirmDeleteDocument = async () => {
-    if (!documentToDelete || !tenant) return;
-    
-    try {
-      if (documentToDelete.file_path) {
-        await fetch('/api/delete', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath: documentToDelete.file_path })
-        });
-      }
-      
-      const { data: tenantData, error: fetchError } = await supabase
-        .from('tenants')
-        .select('documents')
-        .eq('id', tenant.id)
-        .single();
-      
-      if (fetchError) throw fetchError;
-      
-      const updatedDocs = (tenantData.documents || []).filter((doc: any) => doc.id !== documentToDelete.id);
-      const { error } = await supabase
-        .from('tenants')
-        .update({ documents: updatedDocs })
-        .eq('id', tenant.id);
-      
-      if (error) throw error;
-      
-      setDocuments(documents.filter(doc => doc.id !== documentToDelete.id));
-      setIsDeleteDialogOpen(false);
-      setDocumentToDelete(null);
-      toast({ title: "Success", description: "Document deleted successfully" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  };
+  // Delete functionality removed as per requirement to hide edit/delete options.
 
   const handleViewDetails = () => {
     documentsTableRef.current?.scrollIntoView({ behavior: 'smooth' });
