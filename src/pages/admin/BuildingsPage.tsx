@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Building2, Home, Wrench, Clock, CheckCircle, Settings, Plus, Lock, Trash2, MoreHorizontal } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Pagination } from '@/components/ui/pagination';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/utils/permissions';
@@ -25,6 +26,10 @@ function createBuildingSlug(name: string): string {
 
 // Buildings Tab Component
 function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats, canAdd, canEdit, canDelete, loading, onAddBuilding, onDeleteBuilding, navigate }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   const stats = [
     {
       title: "Total Sqft",
@@ -46,6 +51,30 @@ function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats
     }
   ];
 
+  const filteredBuildings = buildings.filter((building) => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return true;
+
+    return [building.name, building.description, building.address]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(query));
+  });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredBuildings.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedBuildings = filteredBuildings.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   return (
     <>
       {/* Space Stats */}
@@ -66,9 +95,15 @@ function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats
       </div>
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
         <h2 className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl font-bold">Buildings</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:flex-1">
+          <Input
+            placeholder="Search buildings..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:max-w-sm"
+          />
           {canAdd ? (
             <Button onClick={onAddBuilding}>
               <Plus className="h-4 w-4 mr-2" />
@@ -83,78 +118,138 @@ function BuildingsTab({ buildings, buildingFloors, actualFloorCounts, spaceStats
         </div>
       </div>
 
-      {/* Buildings Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        {loading ? (
-          <div className="col-span-2 flex justify-center py-8">
-            <LoadingScreen />
+      {/* Buildings List */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Building</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Floors</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Sqft</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center">
+                      <LoadingScreen />
+                    </td>
+                  </tr>
+                ) : filteredBuildings.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                      {searchTerm.trim() ? 'No buildings match your search.' : 'No buildings found. Add your first building to get started.'}
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedBuildings.map((building) => (
+                    <tr key={building.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                            <Building2 className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{building.name}</div>
+                            <div className="text-sm text-muted-foreground">ID: {building.id.slice(0, 8)}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {actualFloorCounts[building.id] || building.total_floors} floors
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {(buildingFloors[building.id] || building.total_sqft).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
+                        {building.description || 'No description'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
+                        {building.address || 'No address'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="inline-flex items-center gap-2">
+                          {canEdit ? (
+                            <Button
+                              size="sm"
+                              onClick={() => navigate(`/admin/building-manage/${createBuildingSlug(building.name)}`)}
+                            >
+                              <Settings className="h-4 w-4 mr-2" />
+                              Manage
+                            </Button>
+                          ) : (
+                            <Button size="sm" disabled title="You don't have permission to edit buildings">
+                              <Lock className="h-4 w-4 mr-2" />
+                              Manage
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="text-red-600"
+                                  onClick={() => onDeleteBuilding(building)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Building
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : buildings.length === 0 ? (
-          <div className="col-span-2 text-center py-8">
-            <p className="text-muted-foreground">No buildings found. Add your first building to get started.</p>
-          </div>
-        ) : (
-          buildings.map((building) => (
-            <Card key={building.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Building2 className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base sm:text-lg md:text-xl">{building.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground">{actualFloorCounts[building.id] || building.total_floors} floors</p>
-                  </div>
+          {filteredBuildings.length > 0 && (
+            <div className="flex flex-col gap-4 px-6 py-4 border-t border-gray-200 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <div className="text-sm text-gray-500">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredBuildings.length)} of {filteredBuildings.length} buildings
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center p-3 bg-blue-50 rounded-lg mb-4">
-                  <div className="text-lg sm:text-base sm:text-lg md:text-xl md:text-2xl font-bold text-blue-600">{(buildingFloors[building.id] || building.total_sqft).toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground">Total Sqft</div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-500">Per page:</label>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      const newItemsPerPage = Number(e.target.value);
+                      setItemsPerPage(newItemsPerPage);
+                      setCurrentPage(1);
+                    }}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  {canEdit ? (
-                    <Button 
-                      className="flex-1" 
-                      onClick={() => navigate(`/admin/building-manage/${createBuildingSlug(building.name)}`)}
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Manage
-                    </Button>
-                  ) : (
-                    <Button 
-                      className="flex-1" 
-                      disabled
-                      title="You don't have permission to edit buildings"
-                    >
-                      <Lock className="h-4 w-4 mr-2" />
-                      Manage
-                    </Button>
-                  )}
-                  {canDelete && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => onDeleteBuilding(building)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Building
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+              </div>
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  showControls
+                />
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }

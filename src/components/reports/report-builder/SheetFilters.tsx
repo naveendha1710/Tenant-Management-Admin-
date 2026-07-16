@@ -17,6 +17,81 @@ interface SheetFiltersProps {
   reportType: ReportType;
 }
 
+type MultiSelectOption = {
+  value: string;
+  label: string;
+};
+
+function MultiSelectPopover({
+  value,
+  options,
+  placeholder,
+  allLabel,
+  onChange,
+}: {
+  value: string | string[];
+  options: MultiSelectOption[];
+  placeholder: string;
+  allLabel: string;
+  onChange: (value: string[] | 'all') => void;
+}) {
+  const selectedValues = Array.isArray(value) ? value : value === 'all' || !value ? [] : [value];
+  const selectedCount = selectedValues.length;
+  const selectedLabels = options
+    .filter((option) => selectedValues.includes(option.value))
+    .map((option) => option.label);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="w-full justify-between">
+          <span className="truncate">
+            {selectedCount > 0 ? selectedLabels.join(', ') : placeholder}
+          </span>
+          {selectedCount > 0 && (
+            <Badge variant="secondary" className="ml-2 shrink-0">
+              {selectedCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="start">
+        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+            <Checkbox
+              checked={selectedCount === 0}
+              onCheckedChange={() => onChange('all')}
+            />
+            <span>{allLabel}</span>
+          </label>
+          {options.map((option) => {
+            const checked = selectedValues.includes(option.value);
+            return (
+              <label key={option.value} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(nextChecked) => {
+                    const nextValues = nextChecked
+                      ? Array.from(new Set([...selectedValues, option.value]))
+                      : selectedValues.filter((current) => current !== option.value);
+                    onChange(nextValues.length > 0 ? nextValues : 'all');
+                  }}
+                />
+                <span>{option.label}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange('all')}>
+            Clear
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function SheetFilters({ filters = {}, onChange, reportType }: SheetFiltersProps) {
   const initialFilters = filters ?? {};
   const isAsset = reportType === 'asset';
@@ -287,107 +362,35 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Ticket Category</Label>
-            {/* Multi-select for ticket categories */}
-            {Array.isArray(category) ? (
-              <Select
-                value={category}
-                onValueChange={(value) => setCategory(value)}
-                isMulti
-                placeholder="Select categories"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={category}
+              options={categories.map((item) => ({ value: item, label: item }))}
+              placeholder="All Categories"
+              allLabel="All Categories"
+              onChange={(nextValue) => setCategory(nextValue)}
+            />
           </div>
 
           <div>
             <Label>Priority</Label>
-            {/* Multi-select for priorities */}
-            {Array.isArray(priority) ? (
-              <Select
-                value={priority}
-                onValueChange={(value) => setPriority(value)}
-                isMulti
-                placeholder="Select priorities"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Priorities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  {(priorities || []).map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Priorities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  {(priorities || []).map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={priority}
+              options={(priorities || []).map((item) => ({ value: item, label: item }))}
+              placeholder="All Priorities"
+              allLabel="All Priorities"
+              onChange={(nextValue) => setPriority(nextValue)}
+            />
           </div>
 
           <div>
             <Label>Status</Label>
-            {/* Multi-select for status */}
-            {Array.isArray(status) ? (
-              <Select
-                value={status}
-                onValueChange={(value) => setStatus(value)}
-                isMulti
-                placeholder="Select statuses"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {statuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {statuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={status}
+              options={statuses.map((item) => ({ value: item, label: item }))}
+              placeholder="All Statuses"
+              allLabel="All Statuses"
+              onChange={(nextValue) => setStatus(nextValue)}
+            />
           </div>
 
           <div>
@@ -439,80 +442,27 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
           <div>
             <Label>Assigned To</Label>
-            {/* Multi-select for assigned to */}
-            {Array.isArray(assignedToUser) ? (
-              <Select
-                value={assignedToUser}
-                onValueChange={(value) => setAssignedToUser(value)}
-                isMulti
-                placeholder="Select technicians"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Technicians" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Technicians</SelectItem>
-                  {(assignedToOptions || []).map((item: any) => (
-                    <SelectItem key={String(item.id)} value={String(item.id)}>
-                      {item.name || item.full_name || item.contact || 'Unknown'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={assignedToUser} onValueChange={setAssignedToUser}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Technicians" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Technicians</SelectItem>
-                  {(assignedToOptions || []).map((item: any) => (
-                    <SelectItem key={String(item.id)} value={String(item.id)}>
-                      {item.name || item.full_name || item.contact || 'Unknown'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={assignedToUser}
+              options={(assignedToOptions || []).map((item: any) => ({
+                value: String(item.id),
+                label: item.name || item.full_name || item.contact || 'Unknown',
+              }))}
+              placeholder="All Technicians"
+              allLabel="All Technicians"
+              onChange={(nextValue) => setAssignedToUser(nextValue)}
+            />
           </div>
 
           <div>
             <Label>Tenant</Label>
-            {/* Multi-select for tenant */}
-            {Array.isArray(tenant) ? (
-              <Select
-                value={tenant}
-                onValueChange={(value) => setTenant(value)}
-                isMulti
-                placeholder="Select tenants"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Tenants" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tenants</SelectItem>
-                  {tenants.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.company || item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={tenant} onValueChange={setTenant}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Tenants" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tenants</SelectItem>
-                  {tenants.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.company || item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={tenant}
+              options={tenants.map((item) => ({ value: item.id, label: item.company || item.name }))}
+              placeholder="All Tenants"
+              allLabel="All Tenants"
+              onChange={(nextValue) => setTenant(nextValue)}
+            />
           </div>
 
           <div>
@@ -583,37 +533,13 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Company Group</Label>
-            {/* Multi-select for company groups */}
-            {Array.isArray(companyGroup) ? (
-              <Select
-                value={companyGroup}
-                onValueChange={(value) => setCompanyGroup(value)}
-                isMulti
-                placeholder="Select company groups"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Company Groups" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Company Groups</SelectItem>
-                  {companyGroups.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={companyGroup} onValueChange={setCompanyGroup}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Company Groups" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Company Groups</SelectItem>
-                  {companyGroups.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={companyGroup}
+              options={companyGroups.map((item) => ({ value: item, label: item }))}
+              placeholder="All Company Groups"
+              allLabel="All Company Groups"
+              onChange={(nextValue) => setCompanyGroup(nextValue)}
+            />
           </div>
 
           <div>
@@ -635,72 +561,24 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
           <div>
             <Label>Tenant Status</Label>
-            {/* Multi-select for tenant status */}
-            {Array.isArray(tenantStatus) ? (
-              <Select
-                value={tenantStatus}
-                onValueChange={(value) => setTenantStatus(value)}
-                isMulti
-                placeholder="Select tenant statuses"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Tenant Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tenant Statuses</SelectItem>
-                  {tenantStatuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={tenantStatus} onValueChange={setTenantStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Tenant Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tenant Statuses</SelectItem>
-                  {tenantStatuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={tenantStatus}
+              options={tenantStatuses.map((item) => ({ value: item, label: item }))}
+              placeholder="All Tenant Statuses"
+              allLabel="All Tenant Statuses"
+              onChange={(nextValue) => setTenantStatus(nextValue)}
+            />
           </div>
 
           <div>
             <Label>Agreement Status</Label>
-            {/* Multi-select for agreement status */}
-            {Array.isArray(agreementStatus) ? (
-              <Select
-                value={agreementStatus}
-                onValueChange={(value) => setAgreementStatus(value)}
-                isMulti
-                placeholder="Select agreement statuses"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Agreement Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Agreement Statuses</SelectItem>
-                  {agreementStatuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Select value={agreementStatus} onValueChange={setAgreementStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Agreement Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Agreement Statuses</SelectItem>
-                  {agreementStatuses.map((item) => (
-                    <SelectItem key={item} value={item}>{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <MultiSelectPopover
+              value={agreementStatus}
+              options={agreementStatuses.map((item) => ({ value: item, label: item }))}
+              placeholder="All Agreement Statuses"
+              allLabel="All Agreement Statuses"
+              onChange={(nextValue) => setAgreementStatus(nextValue)}
+            />
           </div>
 
           <div>
