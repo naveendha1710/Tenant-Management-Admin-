@@ -28,18 +28,21 @@ const REPORT_TYPE_LABELS: Record<ReportType, string> = {
   asset: 'Asset Reports',
   helpdesk: 'Helpdesk Reports',
   tenant: 'Tenant Reports',
+  movement: 'Asset Movement Reports',
 };
 
 const REPORT_TYPE_SUBTITLES: Record<ReportType, string> = {
   asset: 'Enterprise asset management insights',
   helpdesk: 'Helpdesk reporting workspace',
   tenant: 'Tenant reporting workspace',
+  movement: 'Asset movement tracking and analytics',
 };
 
 function resolveReportType(param?: string): ReportType | null {
   if (param === 'assets' || param === 'asset') return 'asset';
   if (param === 'helpdesk') return 'helpdesk';
   if (param === 'tenant' || param === 'tenants') return 'tenant';
+  if (param === 'movement') return 'movement';
   return null;
 }
 
@@ -121,6 +124,13 @@ export default function Reports() {
     }
 
     setIsGenerating(true);
+
+    // Debug: Log each sheet's configuration to verify data presence during export
+    console.log('Exporting report sheets configuration:');
+    sheets.forEach((sheet, idx) => {
+      const fieldCount = sheet.fields?.length ?? 0;
+      console.log(`Sheet ${idx + 1}${sheet.name ? ` (${sheet.name})` : ''}: ${fieldCount} field(s) selected`);
+    });
 
     try {
       // Ensure templateId and generatedBy are set from app state if missing

@@ -29,6 +29,8 @@ type ColumnKey =
   | 'company'
   | 'companyGroup'
   | 'floorRent'
+  | 'totalRent'
+  | 'totalEscalation'
   | 'status'
   // Additional fields from agreements/tenants
   | 'baseRent'
@@ -52,6 +54,8 @@ const ALL_TENANT_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'company', label: 'Company/Business' },
   { key: 'companyGroup', label: 'Company Group' },
   { key: 'floorRent', label: 'Floor Rent' },
+  { key: 'totalRent', label: 'Total Rent' },
+  { key: 'totalEscalation', label: 'Total Escalation' },
   { key: 'status', label: 'Status' },
   // Additional columns (hidden by default)
   { key: 'baseRent', label: 'Base Rent' },
@@ -1426,17 +1430,30 @@ const TenantManagement: React.FC = () => {
                         <TableCell>
                           <div>
                             {(() => {
-                              const { floorRent, totalRent, escalationTotal } = calculateRentDetails(tenant);
+                              const { floorRent } = calculateRentDetails(tenant);
                               return (
                                 <>
                                   <p className="font-medium text-gray-900">₹{floorRent.toLocaleString()}</p>
-                                  <p className="text-sm text-gray-500">Floor Rent</p>
-                                  <p className="text-xs text-gray-500">Total Rent: ₹{totalRent.toLocaleString()}</p>
-                                  <p className="text-xs text-gray-500">Escalation Total: ₹{escalationTotal.toLocaleString()}</p>
                                 </>
                               );
                             })()}
                           </div>
+                        </TableCell>
+                      )}
+                      {/* Total Rent column */}
+                      {visibleColumns.includes('totalRent') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">
+                            ₹{calculateRentDetails(tenant).totalRent.toLocaleString()}
+                          </p>
+                        </TableCell>
+                      )}
+                      {/* Total Escalation column */}
+                      {visibleColumns.includes('totalEscalation') && (
+                        <TableCell>
+                          <p className="text-sm text-gray-900">
+                            ₹{calculateRentDetails(tenant).escalationTotal.toLocaleString()}
+                          </p>
                         </TableCell>
                       )}
                       {/* Status column */}

@@ -116,8 +116,12 @@ export function ReportBuilderTab({
             </Dialog>
           </div>
 
+          {/* Ensure the report generation completes before UI state changes */}
           <Button
-            onClick={() => onGenerateReport()}
+            onClick={async () => {
+              // Await the async generation to guarantee data fetching finishes
+              await onGenerateReport();
+            }}
             disabled={!isValid || isGenerating}
           >
             {isGenerating ? 'Generating...' : 'Generate Report'}

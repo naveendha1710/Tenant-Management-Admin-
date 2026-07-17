@@ -78,6 +78,7 @@ const roleBasedMenus: Record<UserRole, MenuGroup[]> = {
       items: [],
       subItems: [
         { title: "Asset Reports", url: "/reports/assets", icon: FileSpreadsheet },
+        { title: "Asset Movement", url: "/reports/movement", icon: TrendingUp },
         { title: "Helpdesk Reports", url: "/reports/helpdesk", icon: FileSpreadsheet },
         { title: "Tenant Reports", url: "/reports/tenant", icon: FileSpreadsheet },
       ]

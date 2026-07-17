@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useAssetFilterOptions } from '../shared/useAssetFilterOptions';
 import { useHelpdeskFilterOptions } from '../shared/useHelpdeskFilterOptions';
 import { useTenantReportFilterOptions } from '../shared/useTenantReportFilterOptions';
+import { useMovementFilterOptions } from '../shared/useMovementFilterOptions';
 import { ReportType } from '@/types/report';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 
@@ -98,10 +99,13 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
   const assetOptions = useAssetFilterOptions(isAsset);
   const helpdeskOptions = useHelpdeskFilterOptions(reportType === 'helpdesk');
   const tenantOptions = useTenantReportFilterOptions(reportType === 'tenant');
+  const movementOptions = useMovementFilterOptions(reportType === 'movement');
   const filterOptions: any = reportType === 'helpdesk'
     ? helpdeskOptions
     : reportType === 'tenant'
       ? tenantOptions
+    : reportType === 'movement'
+      ? movementOptions
       : assetOptions;
   const {
     categories,
@@ -174,6 +178,14 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
         ? 'no'
         : initialFilters.previousOccurrence || 'all'
   );
+  // Movement-specific state variables
+  const [movementType, setMovementType] = useState<string | string[]>(initialFilters.movementType || 'all');
+  const [movementStatus, setMovementStatus] = useState<string | string[]>(initialFilters.movementStatus || 'all');
+  const [approvalStatus, setApprovalStatus] = useState<string | string[]>(initialFilters.approvalStatus || 'all');
+  const [vendor, setVendor] = useState<string | string[]>(initialFilters.vendor || 'all');
+  const [handoverTo, setHandoverTo] = useState<string | string[]>(initialFilters.handoverTo || 'all');
+  const [fromTenant, setFromTenant] = useState<string | string[]>(initialFilters.fromTenant || 'all');
+  const [toTenant, setToTenant] = useState<string | string[]>(initialFilters.toTenant || 'all');
   const isInitialBuildingEffect = useRef(true);
   const isInitialFloorEffect = useRef(true);
   const isInitialCategoryEffect = useRef(true);
@@ -201,17 +213,30 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  // Helper to normalise filter values before sending upstream.
+  // - If the value is an array, remove any sentinel 'all' entries.
+  // - If the resulting array is empty, return the string 'all'.
+  // - Otherwise return the cleaned array.
+  // - Non‑array values are returned unchanged.
+  const normaliseFilter = (val: any) => {
+    if (Array.isArray(val)) {
+      const filtered = val.filter((v) => v !== 'all');
+      return filtered.length === 0 ? 'all' : filtered;
+    }
+    return val;
+  };
+
   useEffect(() => {
     if (reportType === 'helpdesk') {
       onChangeRef.current({
-        category,
-        priority,
-        status,
-        building,
-        floor,
-        room,
-        tenant,
-        assignedTo: assignedToUser,
+        category: normaliseFilter(category),
+        priority: normaliseFilter(priority),
+        status: normaliseFilter(status),
+        building: normaliseFilter(building),
+        floor: normaliseFilter(floor),
+        room: normaliseFilter(room),
+        tenant: normaliseFilter(tenant),
+        assignedTo: normaliseFilter(assignedToUser),
         safetyRisk,
         previousOccurrence,
         dateField,
@@ -239,6 +264,25 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
       return;
     }
 
+    if (reportType === 'movement') {
+      onChangeRef.current({
+        movementType,
+        movementStatus,
+        approvalStatus,
+        vendor,
+        handoverTo,
+        fromTenant,
+        toTenant,
+        building,
+        floor,
+        room,
+        dateFrom,
+        dateTo,
+      });
+      return;
+    }
+
+    // Default asset case
     onChangeRef.current({
       category: assetCategories,
       subCategory,
@@ -274,6 +318,14 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     dataField,
     dateFrom,
     dateTo,
+    // movement variables
+    movementType,
+    movementStatus,
+    approvalStatus,
+    vendor,
+    handoverTo,
+    fromTenant,
+    toTenant,
   ]);
 
   useEffect(() => {
@@ -351,11 +403,12 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
 
   const isHelpdesk = reportType === 'helpdesk';
   const isTenant = reportType === 'tenant';
+  const isMovement = reportType === 'movement';
 
   return (
     <div className="space-y-3">
       <h4 className="text-sm font-semibold">
-        {isHelpdesk ? 'Helpdesk Sheet Filters' : isTenant ? 'Tenant Sheet Filters' : 'Additional Filters'}
+        {isHelpdesk ? 'Helpdesk Sheet Filters' : isMovement ? 'Movement Sheet Filters' : isTenant ? 'Tenant Sheet Filters' : 'Additional Filters'}
       </h4>
 
       {isHelpdesk ? (
@@ -529,6 +582,191 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
             />
           </div>
         </div>
+      ) : isMovement ? (
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="movement-type">Movement Type</Label>
+              <Select value={movementType} onValueChange={setMovementType}>
+                <SelectTrigger id="movement-type">
+                  <SelectValue placeholder="Select movement type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {movementOptions.movementTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="movement-status">Movement Status</Label>
+              <Select value={movementStatus} onValueChange={setMovementStatus}>
+                <SelectTrigger id="movement-status">
+                  <SelectValue placeholder="Select movement status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {movementOptions.movementStatuses.map((stat) => (
+                    <SelectItem key={stat} value={stat}>
+                      {stat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="approval-status">Approval Status</Label>
+              <Select value={approvalStatus} onValueChange={setApprovalStatus}>
+                <SelectTrigger id="approval-status">
+                  <SelectValue placeholder="Select approval status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Approvals</SelectItem>
+                  {movementOptions.approvalStatuses.map((appr) => (
+                    <SelectItem key={appr} value={appr}>
+                      {appr}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="vendor">Vendor</Label>
+              <Select value={vendor} onValueChange={setVendor}>
+                <SelectTrigger id="vendor">
+                  <SelectValue placeholder="Select vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Vendors</SelectItem>
+                  {movementOptions.vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="handover-to">Handover To</Label>
+              <Select value={handoverTo} onValueChange={setHandoverTo}>
+                <SelectTrigger id="handover-to">
+                  <SelectValue placeholder="Select handover" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {movementOptions.handoverToOptions.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="from-tenant">From Tenant</Label>
+              <Select value={fromTenant} onValueChange={setFromTenant}>
+                <SelectTrigger id="from-tenant">
+                  <SelectValue placeholder="Select from tenant" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {movementOptions.tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="to-tenant">To Tenant</Label>
+              <Select value={toTenant} onValueChange={setToTenant}>
+                <SelectTrigger id="to-tenant">
+                  <SelectValue placeholder="Select to tenant" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tenants</SelectItem>
+                  {movementOptions.tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Building/Floor/Room filters */}
+            <div>
+              <Label htmlFor="building">Building</Label>
+              <Select value={building} onValueChange={setBuilding}>
+                <SelectTrigger id="building">
+                  <SelectValue placeholder="Select building" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Buildings</SelectItem>
+                  {buildings.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="floor">Floor</Label>
+              <Select value={floor} onValueChange={setFloor} disabled={building === 'all'}>
+                <SelectTrigger id="floor">
+                  <SelectValue placeholder={building === 'all' ? "Select building first" : "Select floor"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Floors</SelectItem>
+                  {floors.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="room">Room</Label>
+              <Select value={room} onValueChange={setRoom} disabled={!building || building === 'all'}>
+                <SelectTrigger id="room">
+                  <SelectValue placeholder={building === 'all' ? "Select building first" : "Select room"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Rooms</SelectItem>
+                  {rooms.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="date-from">Date From</Label>
+              <Input id="date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+
+            <div>
+              <Label htmlFor="date-to">Date To</Label>
+              <Input id="date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </div>
+        </>
       ) : isTenant ? (
         <div className="grid gap-3 md:grid-cols-2">
           <div>

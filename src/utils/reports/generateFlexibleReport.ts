@@ -112,7 +112,16 @@ const parseTriState = (value: any) => {
   return null;
 };
 
-const isActiveHelpdeskFilterValue = (value: any) => value !== undefined && value !== null && value !== '' && value !== 'all';
+// Updated to correctly handle both scalar and array filter values for Helpdesk.
+// An array is considered active only if it contains at least one element that is not the sentinel 'all'.
+// This mirrors the generic `isActiveFilterValue` helper used elsewhere.
+const isActiveHelpdeskFilterValue = (value: any) => {
+  if (Array.isArray(value)) {
+    const realValues = value.filter((v) => v !== 'all');
+    return realValues.length > 0;
+  }
+  return value !== undefined && value !== null && value !== '' && value !== 'all';
+};
 
 const fieldIsDateLike = (field: string) =>
   [
@@ -284,28 +293,74 @@ const matchesHelpdeskFilters = (
   const ticketCategory = filters.ticketCategory ?? filters.category;
   const ticketSubCategory = filters.ticketSubCategory ?? filters.subCategory;
 
+  // Helper to compare a field value against a filter value that may be a scalar or an array.
+  // - For scalar filters we keep the original equality check.
+  // - For array filters we consider the filter active if any element (excluding the sentinel 'all')
+  //   matches the field value after normalisation and optional lookup resolution.
   const matchesText = (fieldValue: any, filterValue: any, lookup?: Record<string, string>) => {
     if (!isActiveHelpdeskFilterValue(filterValue)) return true;
+
     const resolvedValue = resolveHelpdeskValue(fieldValue, lookup || {});
+    const normalizedResolved = normalizeValue(resolvedValue);
+
+    // Array filter handling – check inclusion of the resolved field value.
+    if (Array.isArray(filterValue)) {
+      const cleaned = filterValue.filter((v) => v !== 'all');
+      if (cleaned.length === 0) return true;
+      return cleaned.some((v) => {
+        const resolved = resolveHelpdeskValue(v, lookup || {});
+        return normalizeValue(resolved) === normalizedResolved;
+      });
+    }
+
+    // Scalar filter handling – keep original behaviour.
     const resolvedFilter = resolveHelpdeskValue(filterValue, lookup || {});
-    return normalizeValue(resolvedValue) === normalizeValue(filterValue)
-      || normalizeValue(resolvedValue) === normalizeValue(resolvedFilter);
+    return normalizedResolved === normalizeValue(filterValue)
+      || normalizedResolved === normalizeValue(resolvedFilter);
   };
 
-  if (isActiveHelpdeskFilterValue(ticketCategory) && normalizeValue(ticket.category) !== normalizeValue(ticketCategory)) {
-    return false;
+  // Category comparison – support array filters.
+  if (isActiveHelpdeskFilterValue(ticketCategory)) {
+    if (Array.isArray(ticketCategory)) {
+      const normalizedTicket = normalizeValue(ticket.category);
+      const matches = ticketCategory.some((v) => normalizeValue(v) === normalizedTicket);
+      if (!matches) return false;
+    } else if (normalizeValue(ticket.category) !== normalizeValue(ticketCategory)) {
+      return false;
+    }
   }
 
-  if (isActiveHelpdeskFilterValue(ticketSubCategory) && normalizeValue(ticket.sub_category) !== normalizeValue(ticketSubCategory)) {
-    return false;
+  // Sub‑category comparison – support array filters.
+  if (isActiveHelpdeskFilterValue(ticketSubCategory)) {
+    if (Array.isArray(ticketSubCategory)) {
+      const normalizedTicket = normalizeValue(ticket.sub_category);
+      const matches = ticketSubCategory.some((v) => normalizeValue(v) === normalizedTicket);
+      if (!matches) return false;
+    } else if (normalizeValue(ticket.sub_category) !== normalizeValue(ticketSubCategory)) {
+      return false;
+    }
   }
 
-  if (isActiveHelpdeskFilterValue(filters.priority) && normalizeValue(ticket.priority) !== normalizeValue(filters.priority)) {
-    return false;
+  // Priority comparison – support array filters.
+  if (isActiveHelpdeskFilterValue(filters.priority)) {
+    if (Array.isArray(filters.priority)) {
+      const normalizedTicket = normalizeValue(ticket.priority);
+      const matches = filters.priority.some((v) => normalizeValue(v) === normalizedTicket);
+      if (!matches) return false;
+    } else if (normalizeValue(ticket.priority) !== normalizeValue(filters.priority)) {
+      return false;
+    }
   }
 
-  if (isActiveHelpdeskFilterValue(filters.status) && normalizeValue(ticket.status) !== normalizeValue(filters.status)) {
-    return false;
+  // Status comparison – support array filters.
+  if (isActiveHelpdeskFilterValue(filters.status)) {
+    if (Array.isArray(filters.status)) {
+      const normalizedTicket = normalizeValue(ticket.status);
+      const matches = filters.status.some((v) => normalizeValue(v) === normalizedTicket);
+      if (!matches) return false;
+    } else if (normalizeValue(ticket.status) !== normalizeValue(filters.status)) {
+      return false;
+    }
   }
 
   if (!matchesText(ticket.building, filters.building, refs.buildings)) {
@@ -1460,6 +1515,134 @@ const fetchHelpdeskSheetData = async (
   };
 };
 
+// Fetch movement data for the movement report type
+const fetchMovementSheetData = async (
+  sheet: SheetConfig,
+  globalFilters: GlobalReportFilters
+): Promise<ExportSheet> => {
+  const mergedFilters = {
+    ...globalFilters,
+    ...(sheet.filters ?? {}),
+    ...(sheet.additionalFilters ?? {}),
+  } as Record<string, any>;
+
+  const sortConfig = sheet.sortOrder ?? sheet.sort;
+  const sortField = sortConfig?.field || 'id';
+  const sortDirection = sortConfig?.direction || globalFilters.sortOrder || 'asc';
+  const selectFields = buildSelectFields(sheet.fields, sortField);
+
+  let lastValue: any = null;
+  const rows: any[] = [];
+
+  while (true) {
+    let query = supabase
+      .from('asset_movements')
+      .select(selectFields.join(', '))
+      .order(sortField, { ascending: sortDirection === 'asc' })
+      .limit(PAGE_SIZE);
+
+    // Apply movement specific filters
+    if (isActiveFilterValue(mergedFilters.movementType) && mergedFilters.movementType !== 'all') {
+      query = query.eq('movement_type', mergedFilters.movementType);
+    }
+    if (isActiveFilterValue(mergedFilters.movementStatus) && mergedFilters.movementStatus !== 'all') {
+      query = query.eq('status', mergedFilters.movementStatus);
+    }
+    if (isActiveFilterValue(mergedFilters.approvalStatus) && mergedFilters.approvalStatus !== 'all') {
+      query = query.eq('approval_status', mergedFilters.approvalStatus);
+    }
+    if (isActiveFilterValue(mergedFilters.vendor) && mergedFilters.vendor !== 'all') {
+      query = query.eq('vendor_id', mergedFilters.vendor);
+    }
+    if (isActiveFilterValue(mergedFilters.handoverTo) && mergedFilters.handoverTo !== 'all') {
+      query = query.eq('handover_to', mergedFilters.handoverTo);
+    }
+    if (isActiveFilterValue(mergedFilters.fromTenant) && mergedFilters.fromTenant !== 'all') {
+      query = query.eq('from_tenant', mergedFilters.fromTenant);
+    }
+    if (isActiveFilterValue(mergedFilters.toTenant) && mergedFilters.toTenant !== 'all') {
+      query = query.eq('to_tenant', mergedFilters.toTenant);
+    }
+    if (isActiveFilterValue(mergedFilters.building) && mergedFilters.building !== 'all') {
+      query = query.eq('building', mergedFilters.building);
+    }
+    if (isActiveFilterValue(mergedFilters.floor) && mergedFilters.floor !== 'all') {
+      query = query.eq('floor_id', mergedFilters.floor);
+    }
+    if (isActiveFilterValue(mergedFilters.room) && mergedFilters.room !== 'all') {
+      query = query.eq('room_id', mergedFilters.room);
+    }
+    // Date range on created_at
+    if (mergedFilters.dateFrom) {
+      query = query.gte('created_at', mergedFilters.dateFrom);
+    }
+    if (mergedFilters.dateTo) {
+      query = query.lte('created_at', mergedFilters.dateTo);
+    }
+
+    if (lastValue !== null && lastValue !== undefined) {
+      query = sortDirection === 'asc'
+        ? query.gt(sortField, lastValue)
+        : query.lt(sortField, lastValue);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    const newLastValue = data[data.length - 1][sortField];
+    if (newLastValue === lastValue) break;
+    lastValue = newLastValue;
+  }
+
+  // Resolve lookup maps similar to asset handling for related entities
+  const buildingIds = gatherIds(rows.map((r) => r.building));
+  const floorIds = gatherIds(rows.map((r) => r.floor_id));
+  const roomIds = gatherIds(rows.map((r) => r.room_id));
+  const tenantIds = gatherIds(rows.map((r) => r.handover_to || r.from_tenant || r.to_tenant));
+  const vendorIds = gatherIds(rows.map((r) => r.vendor_id));
+
+  const [buildingMap, floorMap, roomMap, tenantMap, vendorMap] = await Promise.all([
+    fetchLookupMap('buildings', buildingIds, 'id, name', (row) => ({ id: row.id, label: row.name })),
+    fetchLookupMap('floors', floorIds, 'id, floor_name, floor_number', (row) => ({ id: row.id, label: row.floor_name || `Floor ${row.floor_number}` })),
+    fetchLookupMap('rooms', roomIds, 'id, room_number', (row) => ({ id: row.id, label: row.room_number })),
+    fetchLookupMap('tenants', tenantIds, 'id, company, name', (row) => ({ id: row.id, label: row.company || row.name })),
+    fetchLookupMap('vendors', vendorIds, 'id, vendor_name', (row) => ({ id: row.id, label: row.vendor_name })),
+  ]);
+
+  const filteredRows = rows.map((row) =>
+    sheet.fields.reduce<Record<string, any>>((acc, field) => {
+      const raw = row[field as keyof typeof row];
+      switch (field) {
+        case 'building':
+          acc[field] = raw ? (buildingMap[raw] || raw) : raw;
+          break;
+        case 'floor_id':
+          acc[field] = raw ? (floorMap[raw] || raw) : raw;
+          break;
+        case 'room_id':
+          acc[field] = raw ? (roomMap[raw] || raw) : raw;
+          break;
+        case 'handover_to':
+          acc[field] = raw ? (tenantMap[raw] || raw) : raw;
+          break;
+        case 'vendor_id':
+          acc[field] = raw ? (vendorMap[raw] || raw) : raw;
+          break;
+        default:
+          acc[field] = formatExportValue(raw);
+      }
+      return acc;
+    }, {})
+  );
+
+  return {
+    name: sheet.name || 'Sheet',
+    data: filteredRows,
+    fields: sheet.fields,
+  };
+};
+
 const fetchSheetData = async (
   sheet: SheetConfig,
   globalFilters: GlobalReportFilters
@@ -1744,7 +1927,9 @@ export async function generateFlexibleReport({
       ? await fetchHelpdeskSheetData(sheet, globalFilters)
       : reportType === 'tenant'
         ? await fetchTenantSheetData(sheet, globalFilters, tenantDynamicFields)
-        : await fetchSheetData(sheet, globalFilters);
+        : reportType === 'movement'
+          ? await fetchMovementSheetData(sheet, globalFilters)
+          : await fetchSheetData(sheet, globalFilters);
     totalRows += exportSheet.data.length;
 
     const worksheet = workbook.addWorksheet(exportSheet.name || `Sheet ${index + 1}`);

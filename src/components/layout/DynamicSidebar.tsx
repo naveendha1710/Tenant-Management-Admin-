@@ -29,7 +29,9 @@ const moduleIcons = {
   'Reports': BarChart3,
   'Settings': Settings,
   'Users': UserCog,
-  'Helpdesk': Wrench
+  'Helpdesk': Wrench,
+  // Asset Movement report
+  'Asset Movement': TrendingUp
 };
 
 const moduleRoutes = {
@@ -42,7 +44,9 @@ const moduleRoutes = {
   'Reports': '/reports/assets',
   'Settings': '/admin/settings',
   'Users': '/admin/user-management',
-  'Helpdesk': '/admin/helpdesk'
+  'Helpdesk': '/admin/helpdesk',
+  // Asset Movement report route
+  'Asset Movement': '/reports/movement'
 };
 
 export const DynamicSidebar: React.FC<DynamicSidebarProps> = ({ user }) => {

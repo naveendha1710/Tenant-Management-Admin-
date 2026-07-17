@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { getFieldsByCategory } from '@/utils/reports/reportFieldRegistry';
@@ -32,6 +33,18 @@ export function FieldSelector({ selectedFields, onChange, reportType }: FieldSel
     }
   };
 
+  const toggleCategory = (fields: { key: string }[], checked: boolean) => {
+    const fieldKeys = fields.map((field) => field.key);
+    if (checked) {
+      const mergedFields = new Set(selectedFields);
+      fieldKeys.forEach((key) => mergedFields.add(key));
+      onChange(Array.from(mergedFields));
+      return;
+    }
+
+    onChange(selectedFields.filter((field) => !fieldKeys.includes(field)));
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -44,7 +57,25 @@ export function FieldSelector({ selectedFields, onChange, reportType }: FieldSel
       <div className="space-y-4">
         {Object.entries(groupedFields).map(([category, fields]) => (
           <div key={category} className="space-y-2">
-            <h3 className="font-medium">{category}</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-medium">{category}</h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  const allSelected = fields.every((field) =>
+                    selectedFields.includes(field.key)
+                  );
+                  toggleCategory(fields, !allSelected);
+                }}
+              >
+                {fields.every((field) => selectedFields.includes(field.key))
+                  ? 'Deselect all'
+                  : 'Select all'}
+              </Button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {fields.map((field) => (
                 <div key={field.key} className="flex items-center space-x-2">

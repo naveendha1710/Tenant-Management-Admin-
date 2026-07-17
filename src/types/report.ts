@@ -1,4 +1,4 @@
-export type ReportType = 'asset' | 'helpdesk' | 'tenant';
+export type ReportType = 'asset' | 'helpdesk' | 'tenant' | 'movement';
 
 export interface GlobalReportFilters {
   // Asset fields (keep for backward compatibility)
@@ -30,6 +30,14 @@ export interface GlobalReportFilters {
   targetDateRange?:   [string, string];
   resolvedDateRange?: [string, string];
   sortOrder?: 'asc' | 'desc';
+  // Movement specific filters
+  movementType?: string;
+  movementStatus?: string;
+  approvalStatus?: string;
+  vendor?: string;
+  handoverTo?: string;
+  fromTenant?: string;
+  toTenant?: string;
 }
 
 /** Payload sent to generateFlexibleReport */

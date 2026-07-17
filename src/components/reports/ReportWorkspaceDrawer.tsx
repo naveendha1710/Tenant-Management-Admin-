@@ -46,7 +46,9 @@ export function ReportWorkspaceDrawer({
                 ? 'Asset Reports Workspace'
                 : reportType === 'helpdesk'
                   ? 'Helpdesk Reports Workspace'
-                  : 'Tenant Management Reports Workspace'}
+                  : reportType === 'tenant'
+                    ? 'Tenant Management Reports Workspace'
+                    : 'Asset Movement Reports Workspace'}
             </SheetTitle>
             <SheetDescription>
               Configure filters and generate reports for your data.

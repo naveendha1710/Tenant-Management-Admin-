@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAssetFilterOptions } from '../shared/useAssetFilterOptions';
 import { useHelpdeskFilterOptions } from '../shared/useHelpdeskFilterOptions';
 import { useTenantReportFilterOptions } from '../shared/useTenantReportFilterOptions';
+import { useMovementFilterOptions } from '../shared/useMovementFilterOptions';
 import { useGlobalReportFilterStore } from '@/store/useGlobalReportFilterStore';
 import { useFilterStore } from '@/pages/reports/store/filterStore';
 import { ReportType } from '@/types/report';
@@ -23,11 +24,13 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   const assetOptions = useAssetFilterOptions(reportType === 'asset');
   const helpdeskOptions = useHelpdeskFilterOptions(reportType === 'helpdesk');
   const tenantOptions = useTenantReportFilterOptions(reportType === 'tenant');
+  const movementOptions = useMovementFilterOptions(reportType === 'movement');
 
   const isAsset = reportType === 'asset';
   const isHelpdesk = reportType === 'helpdesk';
+  const isMovement = reportType === 'movement';
 
-  const activeOptions = isAsset ? assetOptions : isHelpdesk ? helpdeskOptions : tenantOptions;
+  const activeOptions = isAsset ? assetOptions : isHelpdesk ? helpdeskOptions : isMovement ? movementOptions : tenantOptions;
   const {
     categories,
     subCategories,
@@ -37,6 +40,11 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
     floors,
     rooms,
     tenants,
+    movementTypes,
+    movementStatuses,
+    approvalStatuses,
+    vendors,
+    handoverToOptions,
     companyGroups = [],
     tenantStatuses = [],
     agreementStatuses = [],
@@ -73,6 +81,14 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   const [subCategory, setSubCategory] = useState(filters.subCategory || 'all');
   const [assetType, setAssetType] = useState(filters.assetType || 'all');
   const [status, setStatus] = useState(filters.status || 'all');
+  // Movement specific state
+  const [movementType, setMovementType] = useState(filters.movementType || 'all');
+  const [movementStatus, setMovementStatus] = useState(filters.movementStatus || 'all');
+  const [approvalStatus, setApprovalStatus] = useState(filters.approvalStatus || 'all');
+  const [vendor, setVendor] = useState(filters.vendor || 'all');
+  const [handoverTo, setHandoverTo] = useState(filters.handoverTo || 'all');
+  const [fromTenant, setFromTenant] = useState(filters.fromTenant || 'all');
+  const [toTenant, setToTenant] = useState(filters.toTenant || 'all');
   const [building, setBuilding] = useState(filters.building || 'all');
   const [floor, setFloor] = useState(filters.floor || 'all');
   const [room, setRoom] = useState(filters.room || 'all');
@@ -151,6 +167,11 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   }, [category, loadSubCategoriesForCategory, reportType]);
 
   const handleApply = () => {
+    // Helper to serialize array values into comma‑separated strings
+    const formatFilterValue = (value: any) => {
+      return Array.isArray(value) ? value.join(',') : value;
+    };
+
     // Build the filter object based on report type
     let nextFilters: any = {};
     
@@ -183,24 +204,40 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
         dateTo,
         sortOrder,
       };
-    } else {
-      // Helpdesk filters
+    } else if (reportType === 'movement') {
       nextFilters = {
-        ticketCategory,
-        ticketSubCategory,
-        priority,
-        status,
+        movementType,
+        movementStatus,
+        approvalStatus,
+        vendor,
+        handoverTo,
+        fromTenant,
+        toTenant,
         building,
         floor,
         room,
-        assignedTo: assignedToUser,
-        tenant,
-        safetyRisk,
-        previousOccurrence,
-        createdDateRange,
-        targetDateRange,
-        resolvedDateRange,
+        dateFrom,
+        dateTo,
         sortOrder,
+      };
+    } else {
+      // Helpdesk filters – serialize any array values
+      nextFilters = {
+        ticketCategory: formatFilterValue(ticketCategory),
+        ticketSubCategory: formatFilterValue(ticketSubCategory),
+        priority: formatFilterValue(priority),
+        status: formatFilterValue(status),
+        building: formatFilterValue(building),
+        floor: formatFilterValue(floor),
+        room: formatFilterValue(room),
+        assignedTo: formatFilterValue(assignedToUser),
+        tenant: formatFilterValue(tenant),
+        safetyRisk: formatFilterValue(safetyRisk),
+        previousOccurrence: formatFilterValue(previousOccurrence),
+        createdDateRange: formatFilterValue(createdDateRange),
+        targetDateRange: formatFilterValue(targetDateRange),
+        resolvedDateRange: formatFilterValue(resolvedDateRange),
+        sortOrder: formatFilterValue(sortOrder),
       };
     }
 
@@ -446,6 +483,201 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
         </>
       )}
 
+        {reportType === 'movement' && (
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="movement-type">Movement Type</Label>
+                <Select value={movementType} onValueChange={setMovementType}>
+                  <SelectTrigger id="movement-type">
+                    <SelectValue placeholder="Select movement type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {movementTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="movement-status">Movement Status</Label>
+                <Select value={movementStatus} onValueChange={setMovementStatus}>
+                  <SelectTrigger id="movement-status">
+                    <SelectValue placeholder="Select movement status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {movementStatuses.map((stat) => (
+                      <SelectItem key={stat} value={stat}>
+                        {stat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="approval-status">Approval Status</Label>
+                <Select value={approvalStatus} onValueChange={setApprovalStatus}>
+                  <SelectTrigger id="approval-status">
+                    <SelectValue placeholder="Select approval status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Approvals</SelectItem>
+                    {approvalStatuses.map((appr) => (
+                      <SelectItem key={appr} value={appr}>
+                        {appr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="vendor">Vendor</Label>
+                <Select value={vendor} onValueChange={setVendor}>
+                  <SelectTrigger id="vendor">
+                    <SelectValue placeholder="Select vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Vendors</SelectItem>
+                    {vendors.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="handover-to">Handover To</Label>
+                <Select value={handoverTo} onValueChange={setHandoverTo}>
+                  <SelectTrigger id="handover-to">
+                    <SelectValue placeholder="Select handover" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    {handoverToOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="from-tenant">From Tenant</Label>
+                <Select value={fromTenant} onValueChange={setFromTenant}>
+                  <SelectTrigger id="from-tenant">
+                    <SelectValue placeholder="Select from tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tenants</SelectItem>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="to-tenant">To Tenant</Label>
+                <Select value={toTenant} onValueChange={setToTenant}>
+                  <SelectTrigger id="to-tenant">
+                    <SelectValue placeholder="Select to tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tenants</SelectItem>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Reuse existing building/floor/room selects */}
+              <div>
+                <Label htmlFor="building">Building</Label>
+                <Select value={building} onValueChange={setBuilding}>
+                  <SelectTrigger id="building">
+                    <SelectValue placeholder="Select building" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Buildings</SelectItem>
+                    {buildings.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="floor">Floor</Label>
+                <Select value={floor} onValueChange={setFloor} disabled={building === 'all'}>
+                  <SelectTrigger id="floor">
+                    <SelectValue placeholder={building === 'all' ? "Select building first" : "Select floor"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Floors</SelectItem>
+                    {floors.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="room">Room</Label>
+                <Select value={room} onValueChange={setRoom} disabled={!building || building === 'all'}>
+                  <SelectTrigger id="room">
+                    <SelectValue placeholder={building === 'all' ? "Select building first" : "Select room"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Rooms</SelectItem>
+                    {rooms.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="date-from">Date From</Label>
+                <Input id="date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+
+              <div>
+                <Label htmlFor="date-to">Date To</Label>
+                <Input id="date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="flex justify-between">
+              <Button type="button" variant="outline" onClick={handleClear}>
+                Clear Filters
+              </Button>
+              <Button type="button" onClick={handleApply}>
+                Apply Filters
+              </Button>
+            </div>
+          </>
+        )}
       {reportType === 'tenant' && (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
