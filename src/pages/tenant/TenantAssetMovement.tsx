@@ -547,8 +547,35 @@ export default function AssetMovement() {
         requested_by: user?.appUser?.id || null,
       } as any;
       
+      // Verify an active workflow exists before creating the movement (if approval is required).
+      if (formData.approval_required) {
+        const isSystemUser = user?.appUser?.role !== 'Tenant';
+        const workflowQuery = supabase
+          .from('workflows')
+          .select('id')
+          .eq('entity_type', 'asset_movement')
+          .eq('is_active', true);
+        if (isSystemUser) {
+          workflowQuery.eq('tenant_id', null);
+        } else {
+          workflowQuery.eq('tenant_id', formData.tenant_id);
+        }
+        const { data: activeWorkflow, error: wfError } = await workflowQuery.single();
+        if (wfError || !activeWorkflow) {
+          toast({
+            title: 'Error',
+            description: 'No active workflow found for this movement. Submission blocked.',
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          submitLockRef.current = false;
+          return;
+        }
+      }
+
+      // Create the movement now that we know a workflow is available (if required).
       const movement = await AssetService.createMovement(movementPayload);
-      
+
       // Start workflow if approval required
       if (formData.approval_required && formData.tenant_id) {
         try {
@@ -559,13 +586,20 @@ export default function AssetMovement() {
             {
               request_number: requestNumber,
               movement_type: formData.movement_type,
-              asset_count: formData.asset_ids.length
+              asset_count: formData.asset_ids.length,
             }
           );
           toast({ title: 'Success', description: `Movement request created and sent for approval` });
         } catch (workflowError) {
-          console.error('Workflow start failed:', workflowError);
-          toast({ title: 'Warning', description: 'Movement created but workflow could not be started', variant: 'destructive' });
+          // Roll back the movement because the workflow could not be started.
+          const { error: deleteError } = await supabase.from('asset_movements').delete().eq('id', movement.id);
+          if (deleteError) {
+            console.error('Failed to delete movement after workflow start failure:', deleteError);
+          }
+          toast({ title: 'Error', description: 'Movement could not be created because the approval workflow failed to start', variant: 'destructive' });
+          setIsSubmitting(false);
+          submitLockRef.current = false;
+          return;
         }
       } else {
         toast({ title: 'Success', description: `Movement request created with ${formData.asset_ids.length} asset(s)` });
