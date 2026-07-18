@@ -1161,8 +1161,7 @@ const resolveTenantFieldValue = (
   today.setHours(0, 0, 0, 0);
 
   switch (normalizedField) {
-    case 'tenant_id':
-      return tenant.id;
+    // Tenant ID field removed per request – no longer included in export
     case 'name':
     case 'company':
     case 'email':
@@ -1238,12 +1237,34 @@ const resolveTenantFieldValue = (
       return assignmentSummary.assignmentType;
     case 'space_type':
       return assignmentSummary.spaceType;
-    case 'maintenance_charges':
-      return formatMaintenance(agreement?.maintenance_charges);
+    // Return calculated totals for financial array fields based on raw data
+    case 'maintenance_charges': {
+      // Reduce the raw maintenance_charges array, computing amount via sqft*rate when available
+      const charges = Array.isArray(agreement?.maintenance_charges) ? agreement.maintenance_charges : [];
+      return charges.reduce((sum: number, charge: any) => {
+        const sqft = Number(charge.sqft ?? charge.assignedSqft ?? 0);
+        const rate = Number(charge.ratePerSqft ?? charge.rate ?? 0);
+        const amount = Number(charge.amount ?? 0);
+        if (sqft > 0 && rate > 0) return sum + sqft * rate;
+        return sum + amount;
+      }, 0);
+    }
     case 'general_charges':
-      return formatGeneralCharges(agreement?.general_charges);
-    case 'service_charge':
-      return formatServiceCharge(agreement?.service_charge);
+      // Keep existing summed total for general charges (amount field only)
+      return totals.generalTotal;
+    case 'service_charge': {
+      // Service charge may be a single object or an array; compute total similarly
+      const raw = agreement?.service_charge;
+      if (!raw) return 0;
+      const charges = Array.isArray(raw) ? raw : [raw];
+      return charges.reduce((sum: number, charge: any) => {
+        const sqft = Number(charge.sqft ?? charge.assignedSqft ?? 0);
+        const rate = Number(charge.ratePerSqft ?? charge.rate ?? 0);
+        const amount = Number(charge.amount ?? 0);
+        if (sqft > 0 && rate > 0) return sum + sqft * rate;
+        return sum + amount;
+      }, 0);
+    }
     case 'lease_remaining_days':
       return formatTenantNumber(getAgreementDaysDifference(today, leaseEndDate), 0);
     case 'agreement_age':
@@ -1943,9 +1964,52 @@ export async function generateFlexibleReport({
         width: 20,
       }));
 
+    // ---------------------------------------------------------------------
+    // Row population and running totals calculation
+    // ---------------------------------------------------------------------
+    const runningTotals: Record<string, number> = {};
+    if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+      sheet.totalsFor.forEach((key) => {
+        runningTotals[key] = 0;
+      });
+    }
+
     exportSheet.data.forEach((row) => {
       worksheet.addRow(row);
+      // Accumulate totals for the requested fields while iterating rows
+      if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+        sheet.totalsFor.forEach((key) => {
+          const raw = row[key];
+          const num = typeof raw === 'number' ? raw : parseFloat(raw as any);
+          if (!isNaN(num)) {
+            runningTotals[key] = (runningTotals[key] ?? 0) + num;
+          }
+        });
+      }
     });
+
+    // ---------------------------------------------------------------------
+    // Totals row handling – per‑sheet totals defined in `sheet.totalsFor`
+    // ---------------------------------------------------------------------
+    if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+      // Initialise a totals object with empty strings for all columns
+      const totalsRowData: Record<string, any> = {};
+      exportSheet.fields.forEach((field) => {
+        totalsRowData[field] = '';
+      });
+      // Place the label "Total" in the first column (or first field)
+      const firstField = exportSheet.fields[0];
+      if (firstField) totalsRowData[firstField] = 'Total';
+
+      // Populate the computed running totals
+      sheet.totalsFor.forEach((key) => {
+        totalsRowData[key] = runningTotals[key] ?? 0;
+      });
+
+      const totalRow = worksheet.addRow(totalsRowData);
+      // Apply bold styling to the totals row for emphasis
+      totalRow.font = { bold: true };
+    }
 
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };

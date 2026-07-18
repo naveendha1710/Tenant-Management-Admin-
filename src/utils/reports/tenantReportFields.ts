@@ -21,7 +21,7 @@ const TENANT_DYNAMIC_CHARGE_PREFIXES: Record<TenantDynamicChargeFormType, string
 };
 
 const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
-  { key: 'tenant_id', label: 'Tenant ID', category: 'General', type: 'text' },
+  // Removed `tenant_id` from the selectable General fields as per request.
   { key: 'name', label: 'Contact Name', category: 'General', type: 'text' },
   { key: 'company', label: 'Company Name', category: 'General', type: 'text' },
   { key: 'email', label: 'Email', category: 'General', type: 'text' },
@@ -97,7 +97,7 @@ const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
 ];
 
 const TENANT_SORTABLE_FIELD_KEYS = new Set([
-  'tenant_id',
+  // `tenant_id` removed from sortable fields as it is no longer displayed in sheet filters.
   'name',
   'company',
   'email',

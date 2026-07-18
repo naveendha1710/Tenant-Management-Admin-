@@ -74,6 +74,9 @@ export function ReportBuilderSheetAccordion({
               selectedFields={sheet.fields}
               onChange={(fields) => onUpdateSheet(sheet.id, { fields })}
               reportType={reportType}
+              sheetId={sheet.id}
+              totalsFor={sheet.totalsFor}
+              onTotalsChange={(totals) => onUpdateSheet(sheet.id, { totalsFor: totals })}
             />
 
             <SheetFilters

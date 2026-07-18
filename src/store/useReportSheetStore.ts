@@ -4,7 +4,10 @@ import { persist } from 'zustand/middleware';
 export type SheetConfig = {
   id: string;
   name?: string;
+  /** UI column keys that the user has selected for export */
   fields: string[];
+  /** Keys of fields that should be summed in the final Excel totals row */
+  totalsFor?: string[];
   additionalFilters?: Record<string, any>;
   sortOrder?: {
     field: string;
@@ -34,6 +37,7 @@ const createSheet = (index: number): SheetConfig => ({
   id: crypto.randomUUID(),
   name: `Sheet ${index + 1}`,
   fields: [],
+  totalsFor: [],
   additionalFilters: {},
 });
 
@@ -50,6 +54,14 @@ export const useReportSheetStore = create<ReportSheetStore>()(
         set((state) => ({
           sheets: state.sheets.map((sheet) =>
             sheet.id === id ? { ...sheet, ...updates } : sheet
+          ),
+        }));
+      },
+      /** Update only the totalsFor array for a given sheet */
+      updateSheetTotals: (sheetId: string, totals: string[]) => {
+        set((state) => ({
+          sheets: state.sheets.map((sheet) =>
+            sheet.id === sheetId ? { ...sheet, totalsFor: totals } : sheet
           ),
         }));
       },
