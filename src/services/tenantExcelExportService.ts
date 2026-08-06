@@ -276,35 +276,37 @@ export function exportTenantReport(reportData: TenantReportResponse): void {
 
   // Sheet 4: Financial Breakdown
   if (reportData.financialBreakdown.length > 0) {
-    const financialData = [
-      [
-        'Company Name',
-        'Agreement ID',
-        'Rent',
-        'Maintenance Charges',
-        'General Charges',
-        'Service Charges',
-        'Total Monthly Cost',
-        'Escalation %',
-        'Next Escalation Date',
-      ],
-      ...reportData.financialBreakdown.map(row => [
-        row.tenant_name,
-        row.agreement_id,
-        row.rent,
-        row.maintenance_charges,
-        row.general_charges,
-        row.service_charges,
-        row.total_monthly_cost,
-        row.escalation_percentage !== null ? row.escalation_percentage : '',
-        row.next_escalation_date || '',
-      ]),
-    ];
+      const financialData = [
+        [
+          'Company Name',
+          'Agreement ID',
+          'Rent',
+          'Maintenance Charges',
+          'General Charges',
+          'Service Charges',
+          'Total Monthly Cost',
+          'Escalation %',
+          'Escalations',
+          'Next Escalation Date',
+        ],
+        ...reportData.financialBreakdown.map(row => [
+          row.tenant_name,
+          row.agreement_id,
+          row.rent,
+          row.maintenance_charges,
+          row.general_charges,
+          row.service_charges,
+          row.total_monthly_cost,
+          row.escalation_percentage !== null ? row.escalation_percentage : '',
+          row.escalations || '',
+          row.next_escalation_date || '',
+        ]),
+      ];
 
     const financialSheet = XLSX.utils.aoa_to_sheet(financialData);
     financialSheet['!cols'] = [
       { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 },
-      { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 15 }, { wch: 20 },
+      { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 20 },
     ];
     XLSX.utils.book_append_sheet(workbook, financialSheet, 'Financial Breakdown');
   }

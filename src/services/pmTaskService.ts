@@ -56,7 +56,8 @@ class PMTaskService {
         .from('pm_task_instances')
         .update({ status: 'OVERDUE' })
         .lt('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'OVERDUE');
 
       if (overdueError) throw overdueError;
       
@@ -65,7 +66,8 @@ class PMTaskService {
         .from('pm_task_instances')
         .update({ status: 'PENDING' })
         .eq('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'PENDING');
 
       if (pendingError) throw pendingError;
       
@@ -74,7 +76,8 @@ class PMTaskService {
         .from('pm_task_instances')
         .update({ status: 'UPCOMING' })
         .gt('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'UPCOMING');
 
       if (upcomingError) throw upcomingError;
     } catch (error) {

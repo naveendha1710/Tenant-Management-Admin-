@@ -98,14 +98,24 @@ const formatExportObject = (value: any): string => {
     .join(', ');
 };
 
+// Formats values for export, applying ISO timestamp conversion and other sanitizations
 const formatExportValue = (value: any): string => {
+  // Convert ISO 8601 timestamps to "YYYY-MM-DD HH:MM:SS"
+  if (typeof value === 'string' && /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/.test(value)) {
+    try {
+      const d = new Date(value);
+      if (!Number.isNaN(d.getTime())) {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+    } catch {}
+  }
   if (value === null || value === undefined || value === '') return '';
   if (value instanceof Date) return value.toLocaleString();
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value) || isPlainObject(value)) return formatExportObject(value);
   return String(value);
 };
-
 const parseTriState = (value: any) => {
   if (value === true || value === 'yes' || value === 'true') return true;
   if (value === false || value === 'no' || value === 'false') return false;
@@ -1974,7 +1984,34 @@ export async function generateFlexibleReport({
       });
     }
 
-    exportSheet.data.forEach((row) => {
+    // Clean data rows according to new Helpdesk export requirements before adding to worksheet.
+    const cleanRow = (row: Record<string, any>) => {
+      const cleaned: Record<string, any> = { ...row };
+      // Resolution Notes – replace line breaks with spaces and trim.
+      if (cleaned['resolution_notes'] && typeof cleaned['resolution_notes'] === 'string') {
+        cleaned['resolution_notes'] = cleaned['resolution_notes'].replace(/\r?\n/g, ' ').trim();
+      }
+      // Materials – replace newlines with commas.
+      if (cleaned['materials'] && typeof cleaned['materials'] === 'string') {
+        cleaned['materials'] = cleaned['materials'].replace(/\r?\n/g, ', ');
+      }
+      // ISO timestamps – reformat to "YYYY-MM-DD HH:MM:SS".
+      Object.keys(cleaned).forEach((key) => {
+        const val = cleaned[key];
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(val)) {
+          const date = new Date(val);
+          if (!isNaN(date.getTime())) {
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            cleaned[key] = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+          }
+        }
+      });
+      return cleaned;
+    };
+
+    const cleanedData = exportSheet.data.map(cleanRow);
+
+    cleanedData.forEach((row) => {
       worksheet.addRow(row);
       // Accumulate totals for the requested fields while iterating rows
       if (sheet.totalsFor && sheet.totalsFor.length > 0) {
@@ -2011,13 +2048,47 @@ export async function generateFlexibleReport({
       totalRow.font = { bold: true };
     }
 
+    // ---------------------------------------------------------------------
+    // Post‑processing: data cleanup, dynamic column removal, and styling
+    // ---------------------------------------------------------------------
+
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+    // Updated header fill color per new requirement.
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB4C6E7' } };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 
+    // 2️⃣ Dynamically drop columns that are completely empty across all rows.
+    const columnsToKeep = worksheet.columns.filter((col) => {
+      const key = col.key as string;
+      // Check if any row has a non‑empty value for this key.
+      return exportSheet.data.some((row) => {
+        const cell = row[key];
+        return cell !== null && cell !== undefined && cell !== '';
+      });
+    });
+    worksheet.columns = columnsToKeep;
+
+    // 3️⃣ Uniform styling for all cells.
+    worksheet.eachRow((row, rowNumber) => {
+      row.height = 15; // uniform row height
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        // Apply border to every cell.
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+        // Set a default column width if not already set.
+        const col = worksheet.getColumn(cell.col);
+        if (!col.width) col.width = 25;
+      });
+    });
+
     worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    // Auto‑size columns after potential removal and width overrides.
     autoSizeColumns(worksheet);
   }
 

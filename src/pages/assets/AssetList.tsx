@@ -111,6 +111,7 @@ interface AssetListProps {
   setFilterColor?: (value: string) => void;
   setFilterMaterial?: (value: string) => void;
   setFilterSize?: (value: string) => void;
+  tenantId?: string;
   assetCategories?: string[];
   filterSubCategories?: string[];
   filterTypes?: string[];
@@ -1124,10 +1125,13 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
               Export Selected ({currentSelectedAssets.length})
             </Button>
           ) : (
-            <Button onClick={handleExportFiltered} variant="outline">
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Export Report ({totalCount})
-            </Button>
+            // Hide Export Report button in read‑only (tenant) view
+            !readOnly && (
+              <Button onClick={handleExportFiltered} variant="outline">
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Export Report ({totalCount})
+              </Button>
+            )
           )}
           {currentSelectedAssets.length > 0 && (
             <Button onClick={handleBulkDelete} variant="destructive">

@@ -12,6 +12,7 @@ import { TenantData } from '@/services/tenantService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { X, Save, Plus, AlertCircle, TrendingUp, Calendar, QrCode, Search, Check, ChevronsUpDown, Building2, ArrowRight, CheckCircle, XCircle, Settings, FileText } from 'lucide-react';
+import { Pagination } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 import QRScannerModal from '@/components/shared/QRScannerModal';
 import { supabase } from '@/lib/supabase';
@@ -1380,6 +1381,15 @@ export default function AssetMovement() {
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Selected Assets ({selectedAssets.length})</h4>
+                              {/* Pagination for the asset list */}
+                              <div className="flex justify-center mt-4">
+                                <Pagination
+                                  currentPage={assetListPage}
+                                  totalPages={totalAssetPages}
+                                  onPageChange={(page) => setAssetListPage(page)}
+                                  itemsPerPage={assetsPerPage}
+                                />
+                              </div>
                     <div className="space-y-1">
                       {selectedAssets.map(asset => (
                         <div key={asset.id} className="text-sm text-gray-600">{asset.asset_id} - {asset.asset_name}</div>

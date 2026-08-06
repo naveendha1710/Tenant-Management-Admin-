@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { workflowEngine } from '@/services/workflowEngine';
+import { Pagination } from '@/components/ui/pagination';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApprovalList } from '@/components/workflow/ApprovalList';
 
@@ -1231,29 +1232,17 @@ export default function AssetMovement() {
                 </div>
                 <div className="flex items-center justify-between text-sm text-gray-600 px-1">
                   <span>
-                    {(formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal') 
+                    {(formData.movement_type === 'Maintenance' || formData.movement_type === 'Disposal')
                       ? `Showing ${((assetListPage - 1) * assetsPerPage) + 1}-${Math.min(assetListPage * assetsPerPage, totalAssets)} of ${totalAssets} assets`
                       : `Showing ${((assetListPage - 1) * assetsPerPage) + 1}-${Math.min(assetListPage * assetsPerPage, filteredAssets.length)} of ${filteredAssets.length} assets`
                     }
                   </span>
                   {totalAssetPages > 1 && (
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => setAssetListPage(p => Math.max(1, p - 1))} 
-                        disabled={assetListPage === 1 || loadingAssets}
-                        className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                      >
-                        Previous
-                      </button>
-                      <span className="px-2">Page {assetListPage} of {totalAssetPages}</span>
-                      <button 
-                        onClick={() => setAssetListPage(p => Math.min(totalAssetPages, p + 1))} 
-                        disabled={assetListPage === totalAssetPages || loadingAssets}
-                        className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                      >
-                        Next
-                      </button>
-                    </div>
+                    <Pagination
+                      currentPage={assetListPage}
+                      totalPages={totalAssetPages}
+                      onPageChange={setAssetListPage}
+                    />
                   )}
                 </div>
                 <div className="h-[calc(100%-120px)] overflow-y-auto border rounded-md">
@@ -1308,9 +1297,11 @@ export default function AssetMovement() {
                         </table>
                       </div>
                       <div className="border-t border-gray-300 p-2 flex items-center justify-between bg-gray-50">
-                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="text-xs px-2 py-1 border rounded disabled:opacity-50">&lt;</button>
-                        <span className="text-xs">{currentPage} / {Math.ceil(selectedAssets.length / itemsPerPage)}</span>
-                        <button onClick={() => setCurrentPage(p => Math.min(Math.ceil(selectedAssets.length / itemsPerPage), p + 1))} disabled={currentPage === Math.ceil(selectedAssets.length / itemsPerPage)} className="text-xs px-2 py-1 border rounded disabled:opacity-50">&gt;</button>
+                        <Pagination
+                          currentPage={currentPage}
+                          totalPages={Math.ceil(selectedAssets.length / itemsPerPage)}
+                          onPageChange={setCurrentPage}
+                        />
                       </div>
                     </div>
                   </div>

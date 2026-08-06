@@ -446,6 +446,28 @@ const TenantManagement: React.FC = () => {
   };
 
   const handleAddBranch = () => {
+    // When adding a branch, default the parent tenant to the main tenant
+    const mainTenant = tenants.find(t => !t.parentTenantId);
+    if (mainTenant) {
+      setSelectedParentTenant(mainTenant);
+      setSelectedTenant({
+        ...mainTenant,
+        id: undefined,
+        name: '',
+        email: '',
+        phone: '',
+        phoneNumbers: [''],
+        address: '',
+        password: 'admin123',
+        parentTenantId: mainTenant.id,
+        // Ensure branchName is a string for form validation
+        branchName: '',
+        isMainBranch: false,
+        status: 'Pending Move-In',
+        spaceAssignments: [],
+        agreements: []
+      });
+    }
     setIsTenantTypeDialogOpen(false);
     setIsParentTenantSelectOpen(true);
   };
@@ -462,6 +484,7 @@ const TenantManagement: React.FC = () => {
       address: '',
       password: 'admin123',
       parentTenantId: parent.id,
+      // Ensure branchName is a string for form validation
       branchName: '',
       isMainBranch: false,
       status: 'Pending Move-In',
@@ -482,6 +505,15 @@ const TenantManagement: React.FC = () => {
   const handleSaveTenant = async (tenantData: any) => {
     try {
       if ((!selectedTenant?.id || newTenantId) && canAdd) {
+        // Validate branch data when adding a new tenant that is a branch
+        if (!newTenantId && tenantData.parentTenantId && !tenantData.branchName) {
+          toast({
+            title: 'Error',
+            description: 'Branch name is required for a new branch',
+            variant: 'destructive'
+          });
+          return;
+        }
         // Add new tenant (including branches)
         if (!newTenantId) {
           // First save: personal info to tenants table

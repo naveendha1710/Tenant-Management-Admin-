@@ -14,6 +14,23 @@ import { PMTaskBoard } from '@/components/assets/PMTaskBoard';
 import { PMSchedule } from '@/components/assets/PMSchedule';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+const fetchInChunks = async <T,>(
+  items: string[],
+  chunkSize: number,
+  fetcher: (chunk: string[]) => Promise<T[]>
+): Promise<T[]> => {
+  if (!items || items.length === 0) return [];
+  const results: T[] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const data = await fetcher(chunk);
+    if (data && data.length > 0) {
+      results.push(...data);
+    }
+  }
+  return results;
+};
+
 export default function PreventiveMaintenanceList() {
   const { user } = useAuth();
   const [assets, setAssets] = useState<PMAsset[]>([]);
@@ -82,26 +99,32 @@ export default function PreventiveMaintenanceList() {
         return;
       }
 
-      const assetIds = pmSchedules.map(pm => pm.asset_id);
+      const assetIds = pmSchedules.map(pm => pm.asset_id).filter(Boolean);
       const pmMap = new Map(pmSchedules.map(pm => [pm.asset_id, pm.pm_next_date]));
 
-      const { data: assetsData } = await supabase
-        .from('assets')
-        .select(`
-          id,
-          asset_id,
-          asset_name,
-          status,
-          handover_to
-        `)
-        .in('id', assetIds);
+      const assetsData = await fetchInChunks(assetIds, 50, async (chunk) => {
+        const { data } = await supabase
+          .from('assets')
+          .select(`
+            id,
+            asset_id,
+            asset_name,
+            status,
+            handover_to
+          `)
+          .in('id', chunk);
+        return data || [];
+      });
 
-      if (assetsData) {
+      if (assetsData && assetsData.length > 0) {
         const tenantIds = [...new Set(assetsData.map(a => a.handover_to).filter(Boolean))];
-        const { data: tenantsData } = await supabase
-          .from('tenants')
-          .select('id, company, name')
-          .in('id', tenantIds);
+        const tenantsData = await fetchInChunks(tenantIds, 50, async (chunk) => {
+          const { data } = await supabase
+            .from('tenants')
+            .select('id, company, name')
+            .in('id', chunk);
+          return data || [];
+        });
 
         const tenantMap = new Map(tenantsData?.map(t => [t.id, t.company || t.name]) || []);
         const uniqueTenants = [...new Set(tenantsData?.map(t => t.company || t.name) || [])];
@@ -396,7 +419,11 @@ export default function PreventiveMaintenanceList() {
         </TabsList>
 
         <TabsContent value="schedule">
-          <PMSchedule onViewAsset={(assetId) => setSelectedAsset(assetId)} />
+          <PMSchedule 
+            onViewAsset={(assetId) => setSelectedAsset(assetId)}
+            paginatedAssets={paginatedAssets}
+            totalAssets={filteredAndSortedAssets.length}
+          />
         </TabsContent>
 
         <TabsContent value="taskboard">

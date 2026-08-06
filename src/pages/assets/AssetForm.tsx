@@ -17,13 +17,15 @@ export default function AssetForm() {
   const [loading, setLoading] = useState(false);
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
   const [assetTypes, setAssetTypes] = useState<string[]>([]);
-  const [formData, setFormData] = useState<Partial<Asset>>({
+  const [formData, setFormData] = useState<Partial<Asset> & { room_rack?: string }>({
     asset_name: '',
     asset_category: '',
     asset_status: 'Active',
     quantity: 1,
     bond_type: 'Non-Bonded',
     sez_status: 'DTA',
+    // Ensure room/rack field is always defined to avoid uncontrolled component warnings
+    room_rack: '',
   });
 
   useEffect(() => {
@@ -47,7 +49,10 @@ export default function AssetForm() {
   const loadAsset = async () => {
     try {
       const data = await AssetService.getAssetById(id!);
-      setFormData(data);
+      setFormData({
+        ...data,
+        room_rack: data.room_rack ?? '',
+      });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to load asset', variant: 'destructive' });
     }
@@ -57,11 +62,20 @@ export default function AssetForm() {
     e.preventDefault();
     setLoading(true);
     try {
+      // Clean form data: omit keys with empty string values to prevent empty fields
+      const cleanedData: Partial<Asset> = {} as Partial<Asset>;
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== undefined && value !== '' && value !== null) {
+          // @ts-ignore: dynamic key assignment
+          cleanedData[key as keyof Asset] = value as any;
+        }
+      });
+
       if (id) {
-        await AssetService.updateAsset(id, formData);
+        await AssetService.updateAsset(id, cleanedData);
         toast({ title: 'Success', description: 'Asset updated successfully' });
       } else {
-        await AssetService.createAsset(formData);
+        await AssetService.createAsset(cleanedData);
         toast({ title: 'Success', description: 'Asset created successfully' });
       }
       // Return to the asset list preserving the original page if we have it in route state

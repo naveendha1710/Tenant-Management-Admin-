@@ -32,26 +32,26 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
 
   const activeOptions = isAsset ? assetOptions : isHelpdesk ? helpdeskOptions : isMovement ? movementOptions : tenantOptions;
   const {
-    categories,
-    subCategories,
-    types,
-    statuses,
-    buildings,
-    floors,
-    rooms,
-    tenants,
-    movementTypes,
-    movementStatuses,
-    approvalStatuses,
-    vendors,
-    handoverToOptions,
+    categories = [],
+    subCategories = [],
+    types = [],
+    statuses = [],
+    buildings = [],
+    floors = [],
+    rooms = [],
+    tenants = [],
+    movementTypes = [],
+    movementStatuses = [],
+    approvalStatuses = [],
+    vendors = [],
+    handoverToOptions = [],
     companyGroups = [],
     tenantStatuses = [],
     agreementStatuses = [],
     priorities = [],
     assignedTo = [],
     safetyRisks = [],
-  } = activeOptions as any;
+  } = (activeOptions || {}) as any;
 
   const setSubCategories = isAsset && typeof assetOptions.setSubCategories === 'function'
     ? assetOptions.setSubCategories
@@ -614,7 +614,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Buildings</SelectItem>
-                    {buildings.map((b) => (
+                    {buildings?.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.name}
                       </SelectItem>
@@ -631,7 +631,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Floors</SelectItem>
-                    {floors.map((f) => (
+                    {(floors || []).map((f) => (
                       <SelectItem key={f.id} value={f.id}>
                         {f.name}
                       </SelectItem>
@@ -648,7 +648,7 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Rooms</SelectItem>
-                    {rooms.map((r) => (
+                    {(rooms || []).map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.name}
                       </SelectItem>

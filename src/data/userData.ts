@@ -80,7 +80,11 @@ const defaultPermissions: Record<Exclude<UserRole, 'Custom'>, Permission[]> = {
     { module: 'Settings', view: true, add: true, edit: true, delete: true },
     { module: 'Asset Form', view: true, add: true, edit: true, delete: true },
     { module: 'Tenant Form', view: true, add: true, edit: true, delete: true },
-    { module: 'Helpdesk', view: true, add: true, edit: true, delete: true }
+    { module: 'Helpdesk', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Movement Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Helpdesk Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Tenant Reports', view: true, add: true, edit: true, delete: true }
   ],
   'Admin': [
     { module: 'Overview', view: true, add: true, edit: true, delete: true },
@@ -104,7 +108,11 @@ const defaultPermissions: Record<Exclude<UserRole, 'Custom'>, Permission[]> = {
     { module: 'Settings', view: true, add: true, edit: true, delete: true },
     { module: 'Asset Form', view: true, add: true, edit: true, delete: true },
     { module: 'Tenant Form', view: true, add: true, edit: true, delete: true },
-    { module: 'Helpdesk', view: true, add: true, edit: true, delete: true }
+    { module: 'Helpdesk', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Asset Movement Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Helpdesk Reports', view: true, add: true, edit: true, delete: true },
+    { module: 'Tenant Reports', view: true, add: true, edit: true, delete: true }
   ],
   'Accountant': [
     { module: 'Rent Collection', view: true, add: true, edit: true, delete: false },

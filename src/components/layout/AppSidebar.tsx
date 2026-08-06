@@ -85,7 +85,12 @@ export function AppSidebar() {
           return hasAnyAssetPermission ? group : null;
         }
         if (group.title === 'Reports') {
-          return hasPermission(user?.appUser, 'Reports', 'view') ? group : null;
+          return (
+            hasPermission(user?.appUser, 'Asset Reports', 'view') ||
+            hasPermission(user?.appUser, 'Helpdesk Reports', 'view') ||
+            hasPermission(user?.appUser, 'Tenant Reports', 'view') ||
+            hasPermission(user?.appUser, 'Asset Movement', 'view')
+          ) ? group : null;
         }
         if (group.title === 'Companies') {
           return hasPermission(user?.appUser, 'Companies', 'view') ? group : null;
@@ -467,47 +472,65 @@ export function AppSidebar() {
                 )}
 
                 {/* Reports Expandable Section */}
-                {group.expandable && group.title === 'Reports' && hasPermission(user?.appUser, 'Reports', 'view') && (
-                  <SidebarMenu className="px-2">
-                    <SidebarMenuItem>
-                      <SidebarMenuButton 
-                        onClick={() => toggleGroup('Reports')}
-                        className="cursor-pointer hover:bg-sidebar-accent/50"
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="h-4 w-4" />
-                            {!collapsed && <span>Reports</span>}
+                {group.expandable && group.title === 'Reports' && (
+                  // Determine which report sub‑items the user may see
+                  (() => {
+                    const permMap: Record<string, string> = {
+                      'Asset Reports': 'Asset Reports',
+                      'Asset Movement': 'Asset Movement Reports',
+                      'Helpdesk Reports': 'Helpdesk Reports',
+                      'Tenant Reports': 'Tenant Reports',
+                    };
+                    const filtered = (group.subItems || []).filter(item => {
+                      const perm = permMap[item.title];
+                      if (!perm) return false;
+                      return hasPermission(user?.appUser, perm, 'view');
+                    });
+                    // If no sub‑items are visible, hide the whole group
+                    if (filtered.length === 0) return null;
+                    return (
+                      <SidebarMenu className="px-2">
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            onClick={() => toggleGroup('Reports')}
+                            className="cursor-pointer hover:bg-sidebar-accent/50"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <div className="flex items-center gap-2">
+                                <FileSpreadsheet className="h-4 w-4" />
+                                {!collapsed && <span>Reports</span>}
+                              </div>
+                              {!collapsed && (
+                                expandedGroups.has('Reports') ?
+                                <ChevronDown className="h-4 w-4" /> :
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </div>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+
+                        {!collapsed && (
+                          <div className={`ml-6 mt-1 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
+                            expandedGroups.has('Reports') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                          }`}>
+                            {filtered.map((item) => (
+                              <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton asChild>
+                                  <NavLink
+                                    to={item.url}
+                                    className={getNavClass(item.url)}
+                                  >
+                                    <item.icon className="h-4 w-4" />
+                                    <span className="text-sm">{item.title}</span>
+                                  </NavLink>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            ))}
                           </div>
-                          {!collapsed && (
-                            expandedGroups.has('Reports') ? 
-                            <ChevronDown className="h-4 w-4" /> : 
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    
-                    {!collapsed && group.subItems && (
-                      <div className={`ml-6 mt-1 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
-                        expandedGroups.has('Reports') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-                      }`}>
-                        {group.subItems.map((item) => (
-                          <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton asChild>
-                              <NavLink 
-                                to={item.url}
-                                className={getNavClass(item.url)}
-                              >
-                                <item.icon className="h-4 w-4" />
-                                <span className="text-sm">{item.title}</span>
-                              </NavLink>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                      </div>
-                    )}
-                  </SidebarMenu>
+                        )}
+                      </SidebarMenu>
+                    );
+                  })()
                 )}
 
                 {/* Companies Expandable Section */}

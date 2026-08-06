@@ -92,6 +92,7 @@ export const PermissionsEditor: React.FC<PermissionsEditorProps> = ({
     'Accounts': ['Rent Collection', 'Invoices', 'Expenses', 'Deposits', 'Financial Reports'],
     'Maintenance': ['Manage Tickets'],
     'Assets': ['Assets', 'Asset Master', 'Asset Movement', 'Inventory', 'Preventive Maintenance', 'Physical Audit', 'Configuration'],
+    'Reports': ['Asset Reports', 'Asset Movement Reports', 'Helpdesk Reports', 'Tenant Reports'],
     'User Management': ['Users'],
     'Master Settings': ['Settings', 'Asset Form', 'Tenant Form'],
     'Roles': ['Helpdesk']

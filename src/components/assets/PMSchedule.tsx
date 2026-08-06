@@ -16,24 +16,36 @@ import { Pagination } from '@/components/ui/pagination';
 import PMReportModal from '@/components/reports/PMReportModal';
 import { exportPMReport } from '@/services/pmExcelExportService';
 import type { PMReportType, PMReportResponse } from '@/types/pmReports';
+import type { PMAsset } from '@/types/pm.types';
+
+const fetchInChunks = async <T,>(
+  items: string[],
+  chunkSize: number,
+  fetcher: (chunk: string[]) => Promise<T[]>
+): Promise<T[]> => {
+  if (!items || items.length === 0) return [];
+  const results: T[] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const data = await fetcher(chunk);
+    if (data && data.length > 0) {
+      results.push(...data);
+    }
+  }
+  return results;
+};
 
 interface PMScheduleProps {
+  paginatedAssets: PMAsset[];
+  totalAssets: number;
   onViewAsset: (assetId: string) => void;
+  onRefresh?: () => void;
+  onExport?: () => void;
 }
 
-export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
+export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAssets, totalAssets, onRefresh, onExport }) => {
   const { user } = useAuth();
   const { toast } = useToast();
-
-  // Scheduled Assets State
-  const [scheduledAssets, setScheduledAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tenantFilter, setTenantFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
-  const [tenants, setTenants] = useState<any[]>([]);
 
   // Schedule PM State
   const [showSchedulePanel, setShowSchedulePanel] = useState(false);
@@ -43,20 +55,28 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [assetSelectionPage, setAssetSelectionPage] = useState(1);
   const [assetSelectionItemsPerPage] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // Filters
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterBuilding, setFilterBuilding] = useState('all');
   const [filterFloor, setFilterFloor] = useState('all');
+  const [tenantFilter, setTenantFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
   const [buildings, setBuildings] = useState<any[]>([]);
   const [floors, setFloors] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
 
   // PM Form
   const [pmStartDate, setPmStartDate] = useState('');
   const [pmEndDate, setPmEndDate] = useState('');
   const [pmFrequency, setPmFrequency] = useState('30');
+  const [loading, setLoading] = useState(false);
+  const [scheduledAssets, setScheduledAssets] = useState([]);
 
   useEffect(() => {
     loadScheduledAssets();
@@ -69,25 +89,28 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
     try {
       setLoading(true);
       
-      // Update task statuses based on date
+      // Update task statuses based on date (only update rows that are not already in target status)
       const today = new Date().toISOString().split('T')[0];
       await supabase
         .from('pm_task_instances')
         .update({ status: 'OVERDUE' })
         .lt('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'OVERDUE');
       
       await supabase
         .from('pm_task_instances')
         .update({ status: 'PENDING' })
         .eq('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'PENDING');
       
       await supabase
         .from('pm_task_instances')
         .update({ status: 'UPCOMING' })
         .gt('task_date', today)
-        .neq('status', 'COMPLETED');
+        .neq('status', 'COMPLETED')
+        .neq('status', 'UPCOMING');
       
       const { data: pmSchedules } = await supabase
         .from('preventive_maintenance')
@@ -101,42 +124,48 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
         return;
       }
 
-      const assetIds = pmSchedules.map(pm => pm.asset_id);
-      
-      // Fetch task instances for each asset's pm_next_date to get status
-      const pmNextDates = pmSchedules.map(pm => pm.pm_next_date);
-      const { data: taskInstances } = await supabase
-        .from('pm_task_instances')
-        .select('asset_id, status, task_date')
-        .in('asset_id', assetIds)
-        .in('task_date', pmNextDates);
-      
-      const taskStatusMap = new Map(taskInstances?.map(t => [t.asset_id, t.status]) || []);
-      
-      const { data: assetsData } = await supabase
-        .from('assets')
-        .select('id, asset_id, asset_name, status, handover_to, building, floor_id')
-        .in('id', assetIds);
+      const assetIds = pmSchedules.map(pm => pm.asset_id).filter(Boolean);
+      const pmNextDates = [...new Set(pmSchedules.map(pm => pm.pm_next_date).filter(Boolean))];
 
-      if (assetsData) {
+      // Chunk requests to avoid URL length limit on .in(...)
+      const taskInstances = await fetchInChunks(assetIds, 50, async (chunk) => {
+        const { data } = await supabase
+          .from('pm_task_instances')
+          .select('asset_id, status, task_date')
+          .in('asset_id', chunk)
+          .in('task_date', pmNextDates);
+        return data || [];
+      });
+      
+      const taskStatusMap = new Map(taskInstances.map(t => [t.asset_id, t.status]));
+      
+      const assetsData = await fetchInChunks(assetIds, 50, async (chunk) => {
+        const { data } = await supabase
+          .from('assets')
+          .select('id, asset_id, asset_name, status, handover_to, building, floor_id')
+          .in('id', chunk);
+        return data || [];
+      });
+
+      if (assetsData && assetsData.length > 0) {
         const tenantIds = [...new Set(assetsData.map(a => a.handover_to).filter(Boolean))];
         const buildingIds = [...new Set(assetsData.map(a => a.building).filter(Boolean))];
         const floorIds = [...new Set(assetsData.map(a => a.floor_id).filter(Boolean))];
         const userIds = [...new Set(pmSchedules.map(pm => pm.assigned_to).filter(Boolean))];
 
-        const [tenantsRes, buildingsRes, floorsRes, usersRes] = await Promise.all([
-          supabase.from('tenants').select('id, company').in('id', tenantIds),
-          supabase.from('buildings').select('id, name').in('id', buildingIds),
-          supabase.from('floors').select('id, floor_name, floor_number').in('id', floorIds),
-          supabase.from('users').select('id, name').in('id', userIds)
+        const [tenantsData, buildingsData, floorsData, usersData] = await Promise.all([
+          fetchInChunks(tenantIds, 50, async chunk => (await supabase.from('tenants').select('id, company').in('id', chunk)).data || []),
+          fetchInChunks(buildingIds, 50, async chunk => (await supabase.from('buildings').select('id, name').in('id', chunk)).data || []),
+          fetchInChunks(floorIds, 50, async chunk => (await supabase.from('floors').select('id, floor_name, floor_number').in('id', chunk)).data || []),
+          fetchInChunks(userIds, 50, async chunk => (await supabase.from('users').select('id, name').in('id', chunk)).data || [])
         ]);
 
-        const tenantMap = new Map(tenantsRes.data?.map(t => [t.id, t.company]) || []);
-        const buildingMap = new Map(buildingsRes.data?.map(b => [b.id, b.name]) || []);
-        const floorMap = new Map(floorsRes.data?.map(f => [f.id, f.floor_name || f.floor_number]) || []);
-        const userMap = new Map(usersRes.data?.map(u => [u.id, u.name]) || []);
+        const tenantMap = new Map(tenantsData.map(t => [t.id, t.company]));
+        const buildingMap = new Map(buildingsData.map(b => [b.id, b.name]));
+        const floorMap = new Map(floorsData.map(f => [f.id, f.floor_name || f.floor_number]));
+        const userMap = new Map(usersData.map(u => [u.id, u.name]));
 
-        setTenants(tenantsRes.data || []);
+        setTenants(tenantsData);
 
         const pmMap = new Map(pmSchedules.map(pm => [pm.asset_id, pm]));
 
@@ -208,13 +237,13 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
       const buildingIds = [...new Set(assets.map(a => a.building).filter(Boolean))];
       const floorIds = [...new Set(assets.map(a => a.floor_id).filter(Boolean))];
 
-      const [buildingsRes, floorsRes] = await Promise.all([
-        supabase.from('buildings').select('id, name').in('id', buildingIds),
-        supabase.from('floors').select('id, floor_name, floor_number').in('id', floorIds)
+      const [buildingsData, floorsData] = await Promise.all([
+        fetchInChunks(buildingIds, 50, async chunk => (await supabase.from('buildings').select('id, name').in('id', chunk)).data || []),
+        fetchInChunks(floorIds, 50, async chunk => (await supabase.from('floors').select('id, floor_name, floor_number').in('id', chunk)).data || [])
       ]);
 
-      const buildingMap = new Map(buildingsRes.data?.map(b => [b.id, b.name]) || []);
-      const floorMap = new Map(floorsRes.data?.map(f => [f.id, f.floor_name || f.floor_number]) || []);
+      const buildingMap = new Map(buildingsData.map(b => [b.id, b.name]));
+      const floorMap = new Map(floorsData.map(f => [f.id, f.floor_name || f.floor_number]));
 
       const formatted = assets.map(asset => ({
         ...asset,
@@ -297,7 +326,7 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
   });
 
   const totalPages = Math.ceil(filteredScheduledAssets.length / itemsPerPage);
-  const paginatedAssets = filteredScheduledAssets.slice(
+  const paginatedScheduledAssets = filteredScheduledAssets.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -675,14 +704,14 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
       {!showSchedulePanel && (
         <Card>
           <CardHeader>
-            <CardTitle>Scheduled Assets ({filteredScheduledAssets.length})</CardTitle>
+            <CardTitle>Scheduled Assets ({totalAssets})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
-            ) : paginatedAssets.length === 0 ? (
+            ) : paginatedScheduledAssets.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 No PM schedules found
               </div>
@@ -702,7 +731,7 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedAssets.map(asset => (
+                      {paginatedScheduledAssets.map(asset => (
                         <tr key={asset.id} className="border-b hover:bg-muted/50">
                           <td className="p-3 text-sm font-mono">{asset.asset_id}</td>
                           <td className="p-3 text-sm font-medium">{asset.asset_name}</td>
@@ -731,8 +760,8 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset }) => {
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
                     <div className="text-sm text-muted-foreground">
                       Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
-                      {Math.min(currentPage * itemsPerPage, filteredScheduledAssets.length)} of{' '}
-                      {filteredScheduledAssets.length} assets
+                      {Math.min(currentPage * itemsPerPage, totalAssets)} of{' '}
+                      {totalAssets} assets
                     </div>
                     <Pagination
                       currentPage={currentPage}

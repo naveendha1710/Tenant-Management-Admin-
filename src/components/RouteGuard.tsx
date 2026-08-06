@@ -19,9 +19,10 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/admin/settings': 'Settings',
   '/admin/helpdesk': 'Manage Tickets',
   '/admin/technician': 'Technician',
-  '/reports/assets': 'Reports',
-  '/reports/helpdesk': 'Reports',
-  '/reports/tenant': 'Reports'
+  '/reports/assets': 'Asset Reports',
+  '/reports/movement': 'Asset Movement Reports',
+  '/reports/helpdesk': 'Helpdesk Reports',
+  '/reports/tenant': 'Tenant Reports'
 };
 
 export const RouteGuard = ({ children, role }: { children: JSX.Element; role: string }) => {
@@ -51,9 +52,10 @@ export const PermissionGuard = ({ children, path }: { children: JSX.Element; pat
     return children;
   }
 
-  const hasPermission = user?.appUser?.permissions?.find(
-    (p: any) => p.module === moduleName && p.view === true
-  );
+  const hasSpecific = user?.appUser?.permissions?.some((p: any) => p.module === moduleName);
+  const hasPermission = hasSpecific
+    ? user?.appUser?.permissions?.some((p: any) => p.module === moduleName && p.view === true)
+    : user?.appUser?.permissions?.some((p: any) => (p.module === 'Reports' || p.module === moduleName) && p.view === true);
 
   if (!hasPermission) {
     return <Navigate to="/not-authorized" replace />;

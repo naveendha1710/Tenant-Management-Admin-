@@ -108,15 +108,15 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
       ? movementOptions
       : assetOptions;
   const {
-    categories,
-    subCategories,
-    types,
-    priorities,
-    statuses,
-    buildings,
-    floors,
-    rooms,
-    tenants,
+    categories = [],
+    subCategories = [],
+    types = [],
+    priorities = [],
+    statuses = [],
+    buildings = [],
+    floors = [],
+    rooms = [],
+    tenants = [],
     companyGroups = [],
     tenantStatuses = [],
     agreementStatuses = [],
@@ -126,8 +126,8 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
     loadRoomsForFloor,
     loadSubCategoriesForCategory,
     loadTypesForSubCategory,
-    assignedTo: assignedToOptions,
-  } = filterOptions;
+    assignedTo: assignedToOptions = [],
+  } = filterOptions || {};
 
   const normalizeAssetCategorySelection = (value: any): string[] => {
     if (Array.isArray(value)) {
@@ -713,7 +713,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Buildings</SelectItem>
-                  {buildings.map((b) => (
+                  {(buildings || []).map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
                     </SelectItem>
@@ -730,7 +730,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Floors</SelectItem>
-                  {floors.map((f) => (
+                  {(floors || []).map((f) => (
                     <SelectItem key={f.id} value={f.id}>
                       {f.name}
                     </SelectItem>
@@ -747,7 +747,7 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Rooms</SelectItem>
-                  {rooms.map((r) => (
+                  {(rooms || []).map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {r.name}
                     </SelectItem>

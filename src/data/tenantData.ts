@@ -226,36 +226,89 @@ export const tenantDataService = {
     return data;
   },
 
-  // Add new tenant
-  async addTenant(tenant: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>): Promise<Tenant | null> {
-    const { data, error } = await supabase
-      .from('tenants')
-      .insert([tenant])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error adding tenant:', error);
-      throw new Error(error.message || 'Failed to create tenant record');
-    }
-    
-    return data;
-  },
-
   // Update tenant
-  async updateTenant(id: string, updates: Partial<Tenant>): Promise<Tenant | null> {
+  async updateTenant(id: string, tenant: Partial<Tenant>): Promise<Tenant | null> {
+    // Map camelCase keys to snake_case expected by Supabase schema
+    const tenantToUpdate = {
+      ...tenant,
+      branch_name: tenant.branchName,
+      parent_tenant_id: tenant.parentTenantId,
+      is_main_branch: tenant.isMainBranch,
+      companygroup: tenant.companyGroup,
+      phone_numbers: tenant.phoneNumbers,
+      gst_number: tenant.gstNumber,
+      tan_number: tenant.tanNumber,
+      pan_number: tenant.panNumber,
+      cin_number: tenant.cinNumber,
+      idproof: tenant.idProof,
+      is_gst_company: tenant.isGstCompany,
+      // Remove camelCase keys that don't exist in the DB
+      branchName: undefined,
+      parentTenantId: undefined,
+      isMainBranch: undefined,
+      companyGroup: undefined,
+      phoneNumbers: undefined,
+      gstNumber: undefined,
+      tanNumber: undefined,
+      panNumber: undefined,
+      cinNumber: undefined,
+      idProof: undefined,
+      isGstCompany: undefined
+    };
+    
     const { data, error } = await supabase
       .from('tenants')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(tenantToUpdate)
       .eq('id', id)
       .select()
       .single();
     
     if (error) {
       console.error('Error updating tenant:', error);
-      return null;
+      throw new Error(error.message || 'Failed to update tenant record');
     }
     
+    return data;
+  },
+
+  // Add tenant
+  async addTenant(tenant: Tenant): Promise<Tenant | null> {
+    // Map camelCase keys to snake_case expected by Supabase schema
+    const tenantToInsert = {
+      // Map camelCase to snake_case
+      branch_name: tenant.branchName,
+      parent_tenant_id: tenant.parentTenantId,
+      is_main_branch: tenant.isMainBranch,
+      companygroup: tenant.companyGroup,
+      phone_numbers: tenant.phoneNumbers,
+      gst_number: tenant.gstNumber,
+      tan_number: tenant.tanNumber,
+      pan_number: tenant.panNumber,
+      cin_number: tenant.cinNumber,
+      idproof: tenant.idProof,
+      is_gst_company: tenant.isGstCompany,
+      // Include other fields that already match the DB schema
+      name: tenant.name,
+      company: tenant.company,
+      email: tenant.email,
+      phone: tenant.phone,
+      password: tenant.password,
+      status: tenant.status,
+      address: tenant.address,
+      // Exclude camelCase keys to avoid schema mismatch
+    };
+
+    const { data, error } = await supabase
+      .from('tenants')
+      .insert([tenantToInsert])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding tenant:', error);
+      throw new Error(error.message || 'Failed to create tenant record');
+    }
+
     return data;
   },
 
