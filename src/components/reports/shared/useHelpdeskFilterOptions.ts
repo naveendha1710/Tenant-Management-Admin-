@@ -87,12 +87,21 @@ export function useHelpdeskFilterOptions(enabled = true) {
         })));
       }
 
-      // Load tenants
+      // Load tenants with company name as primary label
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
-        .select('id, name');
+        .select('id, name, company');
       if (tenantError) throw tenantError;
-      if (tenantData) setTenants(tenantData);
+      if (tenantData) {
+        setTenants(
+          tenantData.map((t: any) => ({
+            id: t.id,
+            name: t.company || t.name,
+            company: t.company || t.name,
+            contact_name: t.name,
+          }))
+        );
+      }
 
       // Load technicians from users where selectedRoles includes 'Technician'
       const { data: userData, error: userError } = await supabase
@@ -103,113 +112,50 @@ export function useHelpdeskFilterOptions(enabled = true) {
       if (userData) {
         const technicians = userData
           .filter((u: any) => 
-            (u.selected_roles || []).includes('Technician') &&
-            u.is_active !== false
+            u.is_active && 
+            u.selected_roles && 
+            Array.isArray(u.selected_roles) && 
+            u.selected_roles.includes('Technician')
           )
           .map((u: any) => ({
             id: u.id,
-            name: u.name || u.email || 'Unknown',
-            contact: u.phone || u.email || '',
-            specialization: u.technicianCategory || u.department || 'General'
+            name: u.name,
+            email: u.email,
+            phone: u.phone
           }));
         setAssignedTo(technicians);
       }
+
+      // Hardcoded safety risks options
+      setSafetyRisks(['Yes', 'No']);
     } catch (error) {
       console.error('Error loading resources for filters:', error);
     }
   }, []);
 
-  // Load safety risks from tickets
-  const loadSafetyRisks = useCallback(async () => {
-    try {
-      if (tickets.length === 0) return;
-      
-      const uniqueSafetyRisks = getUnique(tickets.map((t: any) => t.safety_risk));
-      setSafetyRisks(uniqueSafetyRisks);
-    } catch (error) {
-      console.error('Error loading safety risks:', error);
+  // Filter floors based on selected building
+  const getFilteredFloors = useCallback((buildingId?: string) => {
+    if (!buildingId || buildingId === 'all') return floors;
+    return floors.filter(f => f.building_id === buildingId);
+  }, [floors]);
+
+  // Filter rooms based on selected floor or building
+  const getFilteredRooms = useCallback((floorId?: string, buildingId?: string) => {
+    if (floorId && floorId !== 'all') {
+      return rooms.filter(r => r.floor_id === floorId);
     }
-  }, [tickets]);
+    if (buildingId && buildingId !== 'all') {
+      return rooms.filter(r => r.building_id === buildingId);
+    }
+    return rooms;
+  }, [rooms]);
 
   useEffect(() => {
-    if (!enabled) return;
-    loadTickets();
-  }, [enabled, loadTickets]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    loadResources();
-  }, [enabled, loadResources]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    loadSafetyRisks();
-  }, [enabled, loadSafetyRisks]);
-
-  const loadFloorsForBuilding = useCallback(async (buildingId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('floors')
-        .select('id, floor_number, floor_name')
-        .eq('building_id', buildingId)
-        .order('floor_number');
-      
-      if (error) throw error;
-      // Map to standard format for compatibility with UI components and update state
-      const mappedFloors = (data || []).map(f => ({
-        id: f.id,
-        name: f.floor_name || `Floor ${f.floor_number}`,
-        floor_number: f.floor_number,
-        floor_name: f.floor_name
-      }));
-      setFloors(mappedFloors);
-      return mappedFloors;
-    } catch (error) {
-      console.error('Error loading floors:', error);
-      setFloors([]);
-      return [];
+    if (enabled) {
+      loadTickets();
+      loadResources();
     }
-  }, [setFloors]);
-
-  const loadRoomsForFloor = useCallback(async (floorId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('id, room_number')
-        .eq('floor_id', floorId)
-        .order('room_number');
-      
-      if (error) throw error;
-      // Map to standard format for compatibility with UI components and update state
-      const mappedRooms = (data || []).map(r => ({
-        id: r.id,
-        name: r.room_number,
-        room_number: r.room_number
-      }));
-      setRooms(mappedRooms);
-      return mappedRooms;
-    } catch (error) {
-      console.error('Error loading rooms:', error);
-      setRooms([]);
-      return [];
-    }
-  }, [setRooms]);
-
-  const loadSubCategoriesForCategory = useCallback(async (category: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('maintenance_tickets')
-        .select('distinct sub_category')
-        .eq('category', category)
-        .order('sub_category');
-      
-      if (error) throw error;
-      return data ? getUnique(data.map((d: any) => d.sub_category)) : [];
-    } catch (error) {
-      console.error('Error loading sub-categories:', error);
-      return [];
-    }
-  }, []);
+  }, [enabled, loadTickets, loadResources]);
 
   return {
     categories,
@@ -222,17 +168,13 @@ export function useHelpdeskFilterOptions(enabled = true) {
     assignedTo,
     tenants,
     safetyRisks,
-    setSubCategories,
-    setPriorities,
-    setStatuses,
-    setBuildings,
+    tickets,
+    getFilteredFloors,
+    getFilteredRooms,
+    // Add setters for custom floor/room filtering
     setFloors,
     setRooms,
-    setAssignedTo,
-    setTenants,
-    setSafetyRisks,
-    loadFloorsForBuilding,
-    loadRoomsForFloor,
-    loadSubCategoriesForCategory,
+    loadFloorsForBuilding: getFilteredFloors,
+    loadRoomsForFloor: getFilteredRooms,
   };
 }

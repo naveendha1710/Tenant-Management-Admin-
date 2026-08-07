@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -42,8 +42,9 @@ export function FieldSelector({
     'depreciation_percentage',
     'labor_cost',
     'material_cost_without_gst',
-    'total_gst',
-    'material_cost_with_gst',
+    'material_rate',
+    'material_amount',
+    'ticket_total_amount',
     'work_hours',
     'total_hours',
     'num_labourers',
@@ -60,7 +61,6 @@ export function FieldSelector({
     'maintenance_charges',
     'general_charges',
     'service_charge',
-    'escalations',
     // add more numeric keys as needed
   ];
 
@@ -87,6 +87,30 @@ export function FieldSelector({
     }
     return getFieldsByCategory();
   }, [reportType, tenantFieldsByCategory]);
+
+  const [escalationExpanded, setEscalationExpanded] = useState(false);
+
+  const ESCALATION_SUBFIELDS = [
+    { key: 'escalation_date', label: 'Escalation Date' },
+    { key: 'escalation_percent', label: 'Escalation %' },
+    { key: 'escalation_new_rent', label: 'New Rent Amount' },
+    { key: 'escalation_floor', label: 'Escalation Floor / Space' },
+  ];
+
+  const MATERIAL_SUBFIELDS = [
+    { key: 'material_name', label: 'Name' },
+    { key: 'material_qty', label: 'Qty' },
+    { key: 'material_unit', label: 'Unit' },
+    { key: 'material_rate', label: 'Rate' },
+    { key: 'material_gst_percent', label: 'GST %' },
+    { key: 'material_amount', label: 'Amount' },
+  ];
+
+  const isEscalationSubfield = (key: string) =>
+    ['escalation_date', 'escalation_percent', 'escalation_new_rent', 'escalation_floor'].includes(key);
+
+  const isMaterialSubfield = (key: string) =>
+    ['material_name', 'material_qty', 'material_unit', 'material_rate', 'material_gst_percent', 'material_amount'].includes(key);
 
   const toggleField = (fieldKey: string, checked: boolean) => {
     if (checked) {
@@ -151,18 +175,116 @@ export function FieldSelector({
               </Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {fields.map((field) => (
-                <div key={field.key} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`field-${field.key}`}
-                    checked={selectedFields.includes(field.key)}
-                    onCheckedChange={(checked) => toggleField(field.key, !!checked)}
-                  />
-                  <Label htmlFor={`field-${field.key}`} className="text-sm font-normal">
-                    {field.label}
-                  </Label>
-                </div>
-              ))}
+              {fields.map((field) => {
+                if (isEscalationSubfield(field.key) || isMaterialSubfield(field.key)) {
+                  return null;
+                }
+
+                if (field.key === 'escalations') {
+                  const subKeys = ESCALATION_SUBFIELDS.map((s) => s.key);
+                  const isParentChecked = selectedFields.includes('escalations') || subKeys.some((k) => selectedFields.includes(k));
+
+                  return (
+                    <div key="field-escalations-wrapper" className="col-span-full space-y-2 py-1">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="field-escalations"
+                          checked={isParentChecked}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              const cleaned = selectedFields.filter((f) => f !== 'escalations');
+                              const merged = new Set([...cleaned, ...subKeys]);
+                              onChange(Array.from(merged));
+                            } else {
+                              onChange(selectedFields.filter((f) => f !== 'escalations' && !subKeys.includes(f)));
+                            }
+                          }}
+                        />
+                        <Label htmlFor="field-escalations" className="text-sm font-normal cursor-pointer">
+                          Escalations
+                        </Label>
+                      </div>
+
+                      {isParentChecked && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-6 pt-1 border-l-2 border-primary/20 ml-2">
+                          {ESCALATION_SUBFIELDS.map((sub) => (
+                            <div key={sub.key} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`field-${sub.key}`}
+                                checked={selectedFields.includes(sub.key)}
+                                onCheckedChange={(checked) => toggleField(sub.key, !!checked)}
+                              />
+                              <Label htmlFor={`field-${sub.key}`} className="text-sm font-normal cursor-pointer">
+                                {sub.label}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.key === 'materials_used' || field.key === 'materials' || field.key === 'material_used') {
+                  const subKeys = MATERIAL_SUBFIELDS.map((s) => s.key);
+                  const isParentChecked =
+                    selectedFields.includes(field.key) ||
+                    subKeys.some((k) => selectedFields.includes(k));
+
+                  return (
+                    <div key={`field-${field.key}-wrapper`} className="col-span-full space-y-2 py-1">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`field-${field.key}`}
+                          checked={isParentChecked}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              const cleaned = selectedFields.filter((f) => f !== field.key);
+                              const merged = new Set([...cleaned, ...subKeys]);
+                              onChange(Array.from(merged));
+                            } else {
+                              onChange(selectedFields.filter((f) => f !== field.key && !subKeys.includes(f)));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`field-${field.key}`} className="text-sm font-normal cursor-pointer">
+                          Materials Used
+                        </Label>
+                      </div>
+
+                      {isParentChecked && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-6 pt-1 border-l-2 border-primary/20 ml-2">
+                          {MATERIAL_SUBFIELDS.map((sub) => (
+                            <div key={sub.key} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`field-${sub.key}`}
+                                checked={selectedFields.includes(sub.key)}
+                                onCheckedChange={(checked) => toggleField(sub.key, !!checked)}
+                              />
+                              <Label htmlFor={`field-${sub.key}`} className="text-sm font-normal cursor-pointer">
+                                {sub.label}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={field.key} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`field-${field.key}`}
+                      checked={selectedFields.includes(field.key)}
+                      onCheckedChange={(checked) => toggleField(field.key, !!checked)}
+                    />
+                    <Label htmlFor={`field-${field.key}`} className="text-sm font-normal">
+                      {field.label}
+                    </Label>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}

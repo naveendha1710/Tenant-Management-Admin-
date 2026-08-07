@@ -198,6 +198,46 @@ export function SheetFilters({ filters = {}, onChange, reportType }: SheetFilter
   }, [reportType, tenants, companyGroup]);
 
   useEffect(() => {
+    setCategory(filters.category || 'all');
+    setAssetCategories(normalizeAssetCategorySelection(filters.category));
+    setSubCategory(filters.subCategory || 'all');
+    setAssetType(filters.assetType || 'all');
+    setStatus(filters.status || 'all');
+    setBuilding(filters.building || 'all');
+    setFloor(filters.floor || 'all');
+    setRoom(filters.room || 'all');
+    setTenant(filters.tenant || 'all');
+    setDateField(filters.dateField || 'all');
+    setDataField(filters.dataField || 'all');
+    setDateFrom(filters.dateFrom || '');
+    setDateTo(filters.dateTo || '');
+    setPriority(filters.priority || 'all');
+    setAssignedToUser(filters.assignedTo || 'all');
+    setCompanyGroup(filters.companyGroup || 'all');
+    setTenantStatus(filters.tenantStatus || 'all');
+    setAgreementStatus(filters.agreementStatus || 'all');
+    setGstCompany(
+      filters.isGstCompany === true ? 'yes' : filters.isGstCompany === false ? 'no' : filters.isGstCompany || 'all'
+    );
+    setMainBranch(
+      filters.isMainBranch === true ? 'main' : filters.isMainBranch === false ? 'branch' : filters.isMainBranch || 'all'
+    );
+    setSafetyRisk(
+      filters.safetyRisk === true ? 'yes' : filters.safetyRisk === false ? 'no' : filters.safetyRisk || 'all'
+    );
+    setPreviousOccurrence(
+      filters.previousOccurrence === true ? 'yes' : filters.previousOccurrence === false ? 'no' : filters.previousOccurrence || 'all'
+    );
+    setMovementType(filters.movementType || 'all');
+    setMovementStatus(filters.movementStatus || 'all');
+    setApprovalStatus(filters.approvalStatus || 'all');
+    setVendor(filters.vendor || 'all');
+    setHandoverTo(filters.handoverTo || 'all');
+    setFromTenant(filters.fromTenant || 'all');
+    setToTenant(filters.toTenant || 'all');
+  }, [filters]);
+
+  useEffect(() => {
     if (reportType !== 'tenant') return;
     if (tenant === 'all') return;
     const currentTenant = tenants.find((item: any) => item.id === tenant);

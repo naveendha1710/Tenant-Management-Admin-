@@ -505,8 +505,15 @@ const resolveHelpdeskFieldValue = (
       return estimation?.material_cost_without_gst ?? ticket.material_cost_without_gst ?? null;
     case 'total_gst':
       return estimation?.total_gst ?? ticket.total_gst ?? null;
-    case 'material_cost_with_gst':
-      return estimation?.material_cost_with_gst ?? ticket.material_cost_with_gst ?? null;
+    case 'ticket_total_amount': {
+      const laborCost = Number(estimation?.labor_cost ?? ticket.labor_cost ?? 0);
+      const materialCost = Number(estimation?.material_cost_without_gst ?? ticket.material_cost_without_gst ?? 0);
+      const totalGst = Number(estimation?.total_gst ?? ticket.total_gst ?? 0);
+      const totalCost = Number(estimation?.total_cost ?? ticket.total_cost ?? ticket.total_amount ?? 0);
+      if (totalCost > 0) return totalCost;
+      const sum = laborCost + materialCost + totalGst;
+      return sum > 0 ? sum : null;
+    }
     case 'root_cause':
       return estimation?.root_cause ?? ticket.root_cause ?? null;
     case 'findings':
@@ -770,11 +777,11 @@ const resolveFloorNameFromLookup = (floor: any, floorLookup: Record<string, stri
   const rawFloorId = floor?.floorId ?? floor?.floor_id ?? floor?.id ?? floor?.floor;
   if (rawFloorId !== null && rawFloorId !== undefined && rawFloorId !== '') {
     const resolvedById = floorLookup[String(rawFloorId)];
-    if (resolvedById) return resolvedById;
+    if (resolvedById) return String(resolvedById).replace(/^Floor\s+Floor\s+/i, 'Floor ');
   }
 
   const floorName = floor?.floorName || floor?.floor_name || floor?.name;
-  if (floorName) return String(floorName);
+  if (floorName) return String(floorName).replace(/^Floor\s+Floor\s+/i, 'Floor ');
 
   const floorNumber = floor?.floorNumber ?? floor?.floor_number;
   if (floorNumber !== null && floorNumber !== undefined && floorNumber !== '') {
@@ -785,24 +792,32 @@ const resolveFloorNameFromLookup = (floor: any, floorLookup: Record<string, stri
 };
 
 const formatEscalations = (escalations: any[], floorLookup: Record<string, string> = {}) => {
-  if (!Array.isArray(escalations) || escalations.length === 0) return '';
+  if (!Array.isArray(escalations) || escalations.length === 0) return '-';
 
   return escalations
     .flatMap((esc) => {
-      const date = esc?.date || esc?.effectiveDate || 'N/A';
-      const percentage = formatTenantNumber(esc?.percentage ?? 0);
-      const baseRent = formatTenantNumber(esc?.newRent ?? esc?.calculatedRent ?? 0);
+      const rawDate = esc?.date || esc?.effectiveDate;
+      let dateStr = 'N/A';
+      if (rawDate) {
+        const parsedDate = toTenantDate(rawDate);
+        if (parsedDate) dateStr = format(parsedDate, 'dd-MMM-yyyy');
+        else dateStr = String(rawDate);
+      }
+      const percentage = esc?.percentage !== undefined && esc?.percentage !== null ? `${esc.percentage}%` : 'N/A';
+      const baseRentVal = esc?.newRent ?? esc?.calculatedRent;
+      const baseRent = baseRentVal ? formatTenantNumber(baseRentVal) : 'N/A';
       const floorEntries = Array.isArray(esc?.floorWiseEscalations) && esc.floorWiseEscalations.length > 0
         ? esc.floorWiseEscalations
         : [esc];
 
       return floorEntries.map((floorEntry: any) => {
-        const rent = formatTenantNumber(
-          floorEntry?.newRent ?? floorEntry?.calculatedRent ?? esc?.newRent ?? esc?.calculatedRent ?? 0
-        ) || baseRent;
+        const rentVal = floorEntry?.newRent ?? floorEntry?.calculatedRent ?? baseRentVal;
+        const rent = rentVal ? `₹${formatTenantNumber(rentVal)}` : baseRent !== 'N/A' ? `₹${baseRent}` : 'N/A';
         const floor = resolveFloorNameFromLookup(floorEntry, floorLookup);
-        const floorPercentage = formatTenantNumber(floorEntry?.percentage ?? esc?.percentage ?? 0);
-        return `Date: ${date} | ${floorPercentage}% | New Rent: ${rent} | Floor: ${floor}`;
+        const floorPercentage = floorEntry?.percentage ?? esc?.percentage;
+        const pct = floorPercentage !== undefined && floorPercentage !== null ? `${floorPercentage}%` : percentage;
+        
+        return `• Date: ${dateStr} | Escalation: ${pct} | New Rent: ${rent} | Floor: ${floor}`;
       });
     })
     .filter(Boolean)
@@ -845,6 +860,49 @@ const formatMaintenance = (maint: any) => {
   const included = maint.isIncludedInRent ? 'Yes' : 'No';
 
   return `${floorName} | ${sqft} sqft | Rate: ${rate} | Included: ${included}`;
+};
+
+const formatSpaceAssignments = (assignments: any[], refs: TenantLookupMaps) => {
+  if (!Array.isArray(assignments) || assignments.length === 0) return '-';
+
+  return assignments
+    .map((assignment: any) => {
+      const bldg = getSpaceAssignmentValue(assignment, 'building', refs.buildings);
+      const flr = getSpaceAssignmentValue(assignment, 'floor', refs.floors);
+      const rm = getSpaceAssignmentValue(assignment, 'room', refs.rooms);
+      const sqft = Number(assignment?.sqft ?? assignment?.assignedSqft ?? 0);
+      const rate = Number(assignment?.ratePerSqft ?? assignment?.rate ?? 0);
+      const amount = Number(assignment?.amount ?? 0);
+
+      const locParts = [bldg, flr, rm].filter(Boolean).join(' → ');
+      let details = locParts || 'Unassigned Unit';
+      
+      if (sqft > 0 && rate > 0) {
+        details += ` (${formatTenantNumber(sqft, 0)} sq.ft @ ₹${formatTenantNumber(rate)}/sq.ft = ₹${formatTenantNumber(sqft * rate)})`;
+      } else if (sqft > 0) {
+        details += ` (${formatTenantNumber(sqft, 0)} sq.ft)`;
+      } else if (amount > 0) {
+        details += ` (₹${formatTenantNumber(amount)})`;
+      }
+      return `• ${details}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const formatTenantDocuments = (documents: any[]) => {
+  if (!Array.isArray(documents) || documents.length === 0) return '-';
+
+  return documents
+    .map((doc: any) => {
+      if (typeof doc === 'string') return `• ${doc}`;
+      const name = doc?.name || doc?.title || doc?.document_type || doc?.fileName || 'Document';
+      const rawDate = doc?.date || doc?.created_at;
+      const docDate = rawDate ? format(toTenantDate(rawDate) || new Date(), 'dd-MMM-yyyy') : '';
+      return `• ${name}${docDate ? ` (${docDate})` : ''}`;
+    })
+    .filter(Boolean)
+    .join('\n');
 };
 
 const formatTenantNumber = (value: any, precision = 2) => {
@@ -910,6 +968,199 @@ const formatTenantDuration = (fromDate: any, toDate: any) => {
   return parts.join(' ');
 };
 
+export type ParsedMaterialItem = {
+  name: string;
+  qty: number;
+  unit: string;
+  rate: number;
+  gstPercent: number;
+};
+
+export const parseMaterialsString = (raw: any): ParsedMaterialItem[] => {
+  if (!raw) return [];
+
+  let str = '';
+  if (typeof raw === 'string') {
+    str = raw;
+  } else if (Array.isArray(raw)) {
+    return raw.flatMap((item) => {
+      if (typeof item === 'object' && item !== null) {
+        return [{
+          name: String(item.name || item.material_name || item.item || '').trim(),
+          qty: Number(item.qty || item.quantity || item.material_qty || 1),
+          unit: String(item.unit || item.material_unit || 'NOS').trim(),
+          rate: Number(item.rate || item.unit_price || item.material_rate || 0),
+          gstPercent: Number(item.gst || item.gstPercent || item.gst_percent || 0),
+        }];
+      }
+      return parseMaterialsString(String(item));
+    });
+  } else {
+    str = String(raw);
+  }
+
+  const regex = /([^|]+?)\s*\|\s*Qty:\s*([\d.]+)\s*\|\s*Unit:\s*([^|]+?)\s*\|\s*Rate:\s*([\d.]+)\s*\|\s*GST:\s*([\d.]+)\s*%/gi;
+  const materials: ParsedMaterialItem[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(str)) !== null) {
+    materials.push({
+      name: match[1].trim(),
+      qty: parseFloat(match[2]) || 0,
+      unit: match[3].trim(),
+      rate: parseFloat(match[4]) || 0,
+      gstPercent: parseFloat(match[5]) || 0,
+    });
+  }
+
+  if (materials.length === 0 && str.trim()) {
+    materials.push({
+      name: str.replace(/\r?\n/g, ', ').trim(),
+      qty: 1,
+      unit: 'NOS',
+      rate: 0,
+      gstPercent: 0,
+    });
+  }
+
+  return materials;
+};
+
+export type ParsedAgreementItem = {
+  agreement_name: string;
+  agreement_status: string;
+  payment_cycle: string;
+  lease_agreement_date: string;
+  operation_date: string;
+  rent_commencement_date: string;
+  lease_end_date: string;
+  lock_in_period: string;
+  lease_tenure: string;
+  agreement_created_at: string;
+  agreement_updated_at: string;
+  lease_remaining_days: string;
+  agreement_age: string;
+  end_of_lock_in: string;
+  next_due_in: string;
+  next_escalation_date: string;
+  next_escalation_percentage: string;
+  escalation_count: string;
+  current_escalated_rent: string;
+};
+
+export const parseAgreementItem = (
+  agreement: any,
+  tenant: any,
+  refs: TenantLookupMaps,
+  dynamicFields: TenantDynamicChargeFieldDefinition[] = []
+): ParsedAgreementItem => {
+  return {
+    agreement_name: formatExportValue(resolveTenantFieldValue('agreement_name', tenant, agreement, refs, dynamicFields)),
+    agreement_status: formatExportValue(resolveTenantFieldValue('agreement_status', tenant, agreement, refs, dynamicFields)),
+    payment_cycle: formatExportValue(resolveTenantFieldValue('payment_cycle', tenant, agreement, refs, dynamicFields)),
+    lease_agreement_date: formatExportValue(resolveTenantFieldValue('lease_agreement_date', tenant, agreement, refs, dynamicFields)),
+    operation_date: formatExportValue(resolveTenantFieldValue('operation_date', tenant, agreement, refs, dynamicFields)),
+    rent_commencement_date: formatExportValue(resolveTenantFieldValue('rent_commencement_date', tenant, agreement, refs, dynamicFields)),
+    lease_end_date: formatExportValue(resolveTenantFieldValue('lease_end_date', tenant, agreement, refs, dynamicFields)),
+    lock_in_period: formatExportValue(resolveTenantFieldValue('lock_in_period', tenant, agreement, refs, dynamicFields)),
+    lease_tenure: formatExportValue(resolveTenantFieldValue('lease_tenure', tenant, agreement, refs, dynamicFields)),
+    agreement_created_at: formatExportValue(resolveTenantFieldValue('agreement_created_at', tenant, agreement, refs, dynamicFields)),
+    agreement_updated_at: formatExportValue(resolveTenantFieldValue('agreement_updated_at', tenant, agreement, refs, dynamicFields)),
+    lease_remaining_days: formatExportValue(resolveTenantFieldValue('lease_remaining_days', tenant, agreement, refs, dynamicFields)),
+    agreement_age: formatExportValue(resolveTenantFieldValue('agreement_age', tenant, agreement, refs, dynamicFields)),
+    end_of_lock_in: formatExportValue(resolveTenantFieldValue('end_of_lock_in', tenant, agreement, refs, dynamicFields)),
+    next_due_in: formatExportValue(resolveTenantFieldValue('next_due_in', tenant, agreement, refs, dynamicFields)),
+    next_escalation_date: formatExportValue(resolveTenantFieldValue('next_escalation_date', tenant, agreement, refs, dynamicFields)),
+    next_escalation_percentage: formatExportValue(resolveTenantFieldValue('next_escalation_percentage', tenant, agreement, refs, dynamicFields)),
+    escalation_count: formatExportValue(resolveTenantFieldValue('escalation_count', tenant, agreement, refs, dynamicFields)),
+    current_escalated_rent: formatExportValue(resolveTenantFieldValue('current_escalated_rent', tenant, agreement, refs, dynamicFields)),
+  };
+};
+
+export type ParsedTenantAgreementBlock = {
+  agreement: ParsedAgreementItem;
+  spaces: ParsedSpaceAssignmentItem[];
+  escalations: ParsedEscalationItem[];
+};
+
+export type ParsedEscalationItem = {
+  date: string;
+  percent: number;
+  newRent: number;
+  floor: string;
+};
+
+export const parseTenantEscalationsDirect = (
+  agreement: any,
+  tenant: any,
+  refs: TenantLookupMaps
+): ParsedEscalationItem[] => {
+  const escList = (Array.isArray(agreement?.escalations) && agreement.escalations.length > 0)
+    ? agreement.escalations
+    : (Array.isArray(tenant?.escalations) && tenant.escalations.length > 0)
+      ? tenant.escalations
+      : [];
+
+  if (!Array.isArray(escList) || escList.length === 0) return [];
+
+  return escList.flatMap((esc: any) => {
+    const rawDate = esc?.effectiveDate ?? esc?.effective_date ?? esc?.date;
+    let dateStr = '';
+    if (rawDate) {
+      const parsedDate = toTenantDate(rawDate);
+      if (parsedDate) dateStr = format(parsedDate, 'dd-MMM-yyyy');
+      else dateStr = String(rawDate);
+    }
+
+    const basePercentage = Number(esc?.percentage ?? esc?.percent ?? 0);
+    const baseRentVal = Number(esc?.newRent ?? esc?.calculatedRent ?? esc?.rent ?? 0);
+
+    const floorEntries = Array.isArray(esc?.floorWiseEscalations) && esc.floorWiseEscalations.length > 0
+      ? esc.floorWiseEscalations
+      : [esc];
+
+    return floorEntries.map((floorEntry: any) => {
+      const pct = Number(floorEntry?.percentage ?? esc?.percentage ?? basePercentage);
+      const rentVal = Number(floorEntry?.newRent ?? floorEntry?.calculatedRent ?? baseRentVal);
+      const floorStr = resolveFloorNameFromLookup(floorEntry, refs.floors);
+
+      return {
+        date: dateStr,
+        percent: pct,
+        newRent: rentVal,
+        floor: floorStr !== 'Unknown Floor' ? floorStr : '',
+      };
+    });
+  });
+};
+
+export const parseEscalationsString = (raw: any): ParsedEscalationItem[] => {
+  if (!raw) return [];
+  const str = String(raw);
+  if (!str.trim() || str === '-') return [];
+
+  const lines = str.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const items: ParsedEscalationItem[] = [];
+
+  for (const line of lines) {
+    const dateMatch = line.match(/Date:\s*([^|]+)/i);
+    const pctMatch = line.match(/Escalation:\s*([\d.]+)\s*%/i);
+    const rentMatch = line.match(/New Rent:\s*[₹\s]*([\d.,]+)/i);
+    const floorMatch = line.match(/Floor:\s*([^|\n\r]+)/i);
+
+    if (dateMatch || pctMatch || rentMatch) {
+      items.push({
+        date: dateMatch ? dateMatch[1].trim() : '',
+        percent: pctMatch ? parseFloat(pctMatch[1]) || 0 : 0,
+        newRent: rentMatch ? parseFloat(rentMatch[1].replace(/,/g, '')) || 0 : 0,
+        floor: floorMatch ? floorMatch[1].trim() : '',
+      });
+    }
+  }
+
+  return items;
+};
+
 const getAgreementDaysDifference = (fromDate: any, toDate: any) => {
   const start = toTenantDate(fromDate);
   const end = toTenantDate(toDate);
@@ -931,6 +1182,38 @@ const getAssignmentRate = (assignment: any) => {
   }
 
   return 0;
+};
+
+const getDirectRentPerSqft = (tenant: any, agreement: any) => {
+  // 1. Direct DB column check on agreement or tenant
+  const directCol = agreement?.rent_per_sqft ?? agreement?.rate_per_sqft ?? tenant?.rent_per_sqft ?? tenant?.rate_per_sqft;
+  if (directCol !== undefined && directCol !== null && directCol !== '') {
+    const val = Number(directCol);
+    if (!Number.isNaN(val) && val > 0) return val;
+  }
+
+  // 2. Direct rate check inside space_assignments JSONB array in DB
+  const assignments = (Array.isArray(agreement?.space_assignments) && agreement.space_assignments.length > 0)
+    ? agreement.space_assignments
+    : (Array.isArray(tenant?.space_assignments) && tenant.space_assignments.length > 0)
+      ? tenant.space_assignments
+      : [];
+
+  if (assignments.length > 0) {
+    const explicitRates = assignments
+      .map((a: any) => Number(a?.ratePerSqft ?? a?.rate_per_sqft ?? a?.rate ?? a?.rentPerSqft ?? a?.rent_per_sqft ?? 0))
+      .filter((r: number) => !Number.isNaN(r) && r > 0);
+
+    if (explicitRates.length > 0) {
+      if (explicitRates.every((r: number) => r === explicitRates[0])) {
+        return explicitRates[0];
+      }
+      const sum = explicitRates.reduce((acc: number, r: number) => acc + r, 0);
+      return sum / explicitRates.length;
+    }
+  }
+
+  return null;
 };
 
 const getAssignmentLabel = (assignment: any) =>
@@ -962,6 +1245,57 @@ const getAssignmentSummary = (agreement: any) => {
     assignmentType: assignmentTypes.join('\n'),
     spaceType: spaceTypes.join('\n'),
   };
+};
+
+export type ParsedSpaceAssignmentItem = {
+  building: string;
+  floor: string;
+  room: string;
+  spaceCount: number;
+  assignedUnits: string;
+  assignedSqft: number;
+  ratePerSqft: number;
+  assignmentType: string;
+  spaceType: string;
+};
+
+export const parseSpaceAssignments = (
+  agreement: any,
+  tenant: any,
+  refs: TenantLookupMaps
+): ParsedSpaceAssignmentItem[] => {
+  const assignments = (Array.isArray(agreement?.space_assignments) && agreement.space_assignments.length > 0)
+    ? agreement.space_assignments
+    : (Array.isArray(tenant?.space_assignments) && tenant.space_assignments.length > 0)
+      ? tenant.space_assignments
+      : [];
+
+  if (!Array.isArray(assignments) || assignments.length === 0) return [];
+
+  return assignments.map((assignment: any) => {
+    const building = getSpaceAssignmentValue(assignment, 'building', refs.buildings);
+    const rawFloor = getSpaceAssignmentValue(assignment, 'floor', refs.floors);
+    const floor = String(rawFloor).replace(/^Floor\s+Floor\s+/i, 'Floor ');
+    const room = getSpaceAssignmentValue(assignment, 'room', refs.rooms);
+    const spaceCount = 1;
+    const assignedUnits = String(assignment?.assignedunits || assignment?.unit || assignment?.name || '').trim();
+    const assignedSqft = getAssignmentSqft(assignment);
+    const ratePerSqft = getAssignmentRate(assignment);
+    const assignmentType = getAssignmentLabel(assignment);
+    const spaceType = getSpaceTypeLabel(assignment);
+
+    return {
+      building,
+      floor,
+      room,
+      spaceCount,
+      assignedUnits,
+      assignedSqft,
+      ratePerSqft,
+      assignmentType,
+      spaceType,
+    };
+  });
 };
 
 const getDynamicChargeMatchTokens = (field: TenantDynamicChargeFieldDefinition) => {
@@ -1036,8 +1370,12 @@ const resolveDynamicChargeFieldByKey = (agreement: any, fieldKey: string) => {
   return getDynamicChargeFieldValue(agreement, pseudoField);
 };
 
-const getTenantEscalationMetrics = (agreement: any) => {
-  const escalations = Array.isArray(agreement?.escalations) ? agreement.escalations : [];
+const getTenantEscalationMetrics = (tenant: any, agreement: any) => {
+  const escalations = (Array.isArray(agreement?.escalations) && agreement.escalations.length > 0)
+    ? agreement.escalations
+    : (Array.isArray(tenant?.escalations) && tenant.escalations.length > 0)
+      ? tenant.escalations
+      : [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -1072,15 +1410,24 @@ const getTenantEscalationMetrics = (agreement: any) => {
   };
 };
 
-const calculateCurrentEscalatedRent = (agreement: any) => {
-  const baseRent = Number(agreement?.rent_amount || 0);
-  const spaceAssignments = Array.isArray(agreement?.space_assignments) ? agreement.space_assignments : [];
+const calculateCurrentEscalatedRent = (tenant: any, agreement: any) => {
+  const baseRent = Number(agreement?.rent_amount || tenant?.rent_amount || 0);
+  const spaceAssignments = Array.isArray(agreement?.space_assignments)
+    ? agreement.space_assignments
+    : Array.isArray(tenant?.space_assignments)
+      ? tenant.space_assignments
+      : [];
   const {
     latestAppliedEscalation,
     latestEscalation,
-  } = getTenantEscalationMetrics(agreement);
-  const sortedAppliedEscalations = Array.isArray(agreement?.escalations)
-    ? [...agreement.escalations]
+  } = getTenantEscalationMetrics(tenant, agreement);
+  const rawEscalations = (Array.isArray(agreement?.escalations) && agreement.escalations.length > 0)
+    ? agreement.escalations
+    : (Array.isArray(tenant?.escalations) && tenant.escalations.length > 0)
+      ? tenant.escalations
+      : [];
+  const sortedAppliedEscalations = Array.isArray(rawEscalations)
+    ? [...rawEscalations]
         .map((escalation: any) => ({
           escalation,
           escalationDate: toTenantDate(escalation?.date ?? escalation?.effectiveDate),
@@ -1161,8 +1508,8 @@ const resolveTenantFieldValue = (
   const assignments = Array.isArray(agreement?.space_assignments) ? agreement.space_assignments : [];
   const documentCount = Array.isArray(agreement?.documents) ? agreement.documents.length : 0;
   const assignmentSummary = getAssignmentSummary(agreement);
-  const escalationMetrics = getTenantEscalationMetrics(agreement);
-  const currentEscalatedRent = calculateCurrentEscalatedRent(agreement);
+  const escalationMetrics = getTenantEscalationMetrics(tenant, agreement);
+  const currentEscalatedRent = calculateCurrentEscalatedRent(tenant, agreement);
   const lockInMonths = Number.parseInt(String(agreement?.lock_in_period ?? '').match(/\d+/)?.[0] || '', 10);
   const rentCommencementDate = toTenantDate(agreement?.rent_commencement_date);
   const nextDueDate = toTenantDate(tenant?.nextduedate);
@@ -1220,11 +1567,10 @@ const resolveTenantFieldValue = (
     case 'annual_rent':
       return formatTenantNumber(Number(agreement?.rent_amount || 0) * 12);
     case 'rent_per_sqft':
-      return formatTenantNumber(
-        assignmentSummary.totalSqft > 0
-        ? Number(agreement?.rent_amount || 0) / assignmentSummary.totalSqft
-        : 0
-      );
+    case 'rate_per_sqft': {
+      const directRate = getDirectRentPerSqft(tenant, agreement);
+      return directRate !== null ? formatTenantNumber(directRate) : '';
+    }
     case 'deposit_per_sqft':
       return formatTenantNumber(
         assignmentSummary.totalSqft > 0
@@ -1241,8 +1587,6 @@ const resolveTenantFieldValue = (
       return formatTenantNumber(totals.totalMonthlyCost);
     case 'assigned_sqft':
       return formatTenantNumber(assignmentSummary.totalSqft);
-    case 'rate_per_sqft':
-      return formatTenantNumber(assignmentSummary.ratePerSqft);
     case 'assignment_type':
       return assignmentSummary.assignmentType;
     case 'space_type':
@@ -1293,30 +1637,59 @@ const resolveTenantFieldValue = (
       return formatTenantNumber(escalationMetrics.escalations.length, 0);
     case 'current_escalated_rent':
       return formatTenantNumber(currentEscalatedRent);
-    case 'escalations':
-      return formatEscalations(agreement?.escalations, refs.floors);
-    case 'building':
-      return Array.from(new Set(assignments.map((assignment: any) => getSpaceAssignmentValue(assignment, 'building', refs.buildings)).filter(Boolean))).join('\n');
+    case 'escalations': {
+      const escList = (Array.isArray(agreement?.escalations) && agreement.escalations.length > 0)
+        ? agreement.escalations
+        : (Array.isArray(tenant?.escalations) && tenant.escalations.length > 0)
+          ? tenant.escalations
+          : [];
+      return formatEscalations(escList, refs.floors);
+    }
+    case 'building': {
+      const bldgNames = Array.from(new Set(assignments.map((assignment: any) => getSpaceAssignmentValue(assignment, 'building', refs.buildings)).filter(Boolean)));
+      if (bldgNames.length > 0) return bldgNames.join('\n');
+      return tenant?.space || '';
+    }
     case 'floor':
       return Array.from(new Set(assignments.map((assignment: any) => getSpaceAssignmentValue(assignment, 'floor', refs.floors)).filter(Boolean))).join('\n');
     case 'room':
       return Array.from(new Set(assignments.map((assignment: any) => getSpaceAssignmentValue(assignment, 'room', refs.rooms)).filter(Boolean))).join('\n');
     case 'space_summary':
       return buildSpaceSummary(agreement, refs);
-    case 'space_count':
-      return formatTenantNumber(assignments.length, 0);
-    case 'assignedunits':
-      return tenant.assignedunits || [];
-    case 'space_assignments':
-      return agreement?.space_assignments || [];
+    case 'space_count': {
+      const count = assignments.length > 0
+        ? assignments.length
+        : (Array.isArray(tenant?.assignedunits) && tenant.assignedunits.length > 0)
+          ? tenant.assignedunits.length
+          : tenant?.space ? 1 : 0;
+      return formatTenantNumber(count, 0);
+    }
+    case 'assignedunits': {
+      const units = Array.isArray(tenant?.assignedunits) ? tenant.assignedunits : [];
+      return units.join(', ') || '-';
+    }
+    case 'space_assignments': {
+      const spaceAssig = (Array.isArray(agreement?.space_assignments) && agreement.space_assignments.length > 0)
+        ? agreement.space_assignments
+        : (Array.isArray(tenant?.space_assignments) && tenant.space_assignments.length > 0)
+          ? tenant.space_assignments
+          : [];
+      return formatSpaceAssignments(spaceAssig, refs);
+    }
     case 'gst_number':
     case 'pan_number':
     case 'tan_number':
     case 'cin_number':
     case 'idproof':
       return tenant[normalizedField];
-    case 'documents':
-      return agreement?.documents || [];
+    case 'documents': {
+      const docList = (Array.isArray(agreement?.documents) && agreement.documents.length > 0)
+        ? agreement.documents
+        : (Array.isArray(tenant?.documents) && tenant.documents.length > 0)
+          ? tenant.documents
+          : [];
+      return formatTenantDocuments(docList);
+    }
     case 'document_count':
       return formatTenantNumber(documentCount, 0);
     case 'idproof_available':
@@ -1400,22 +1773,64 @@ const fetchTenantSheetData = async (
 
   tenants.forEach((tenant) => {
     const tenantAgreements = agreementsByTenant[tenant.id] || [null];
+    const matchingAgreements = tenantAgreements.filter((agr) =>
+      matchesTenantFilters(tenant, agr || {}, mergedFilters, refs)
+    );
 
-    tenantAgreements.forEach((agreement) => {
-      const agreementRecord = agreement || {};
-      if (!matchesTenantFilters(tenant, agreementRecord, mergedFilters, refs)) {
-        return;
-      }
+    if (matchingAgreements.length === 0) return;
 
-      const row = normalizedFields.reduce<Record<string, any>>((acc, field) => {
-        const raw = resolveTenantFieldValue(field, tenant, agreementRecord, refs, dynamicFields);
-        acc[field] = formatExportValue(raw);
-        return acc;
-      }, {});
-      row.__sortValue = resolveTenantFieldValue(sortField, tenant, agreementRecord, refs, dynamicFields);
+    const primaryAgreement = matchingAgreements[0] || {};
+    const agreementBlocks: ParsedTenantAgreementBlock[] = matchingAgreements.map((agr) => ({
+      agreement: parseAgreementItem(agr, tenant, refs, dynamicFields),
+      spaces: parseSpaceAssignments(agr, tenant, refs),
+      escalations: parseTenantEscalationsDirect(agr, tenant, refs),
+    }));
 
-      rows.push(row);
-    });
+    const allAgreements = agreementBlocks.map((b) => b.agreement);
+    const allSpaceAssignments = agreementBlocks.flatMap((b) => b.spaces);
+    const allEscalations = agreementBlocks.flatMap((b) => b.escalations);
+
+    const row = (sheet.fields || []).reduce<Record<string, any>>((acc, originalField) => {
+      const normalizedField = normalizeTenantFieldKey(originalField);
+      const raw = resolveTenantFieldValue(normalizedField, tenant, primaryAgreement, refs, dynamicFields);
+      const formatted = formatExportValue(raw);
+      acc[originalField] = formatted;
+      acc[normalizedField] = formatted;
+      return acc;
+    }, {});
+    row.__sortValue = resolveTenantFieldValue(sortField, tenant, primaryAgreement, refs, dynamicFields);
+
+    if (allAgreements.length > 0) {
+      const firstAgr = allAgreements[0];
+      Object.assign(row, firstAgr);
+    }
+    row.__parsedAgreements = allAgreements;
+    row.__parsedAgreementBlocks = agreementBlocks;
+
+    if (allEscalations.length > 0) {
+      const lastEsc = allEscalations[allEscalations.length - 1];
+      row['escalation_date'] = lastEsc.date;
+      row['escalation_percent'] = lastEsc.percent;
+      row['escalation_new_rent'] = lastEsc.newRent;
+      row['escalation_floor'] = lastEsc.floor;
+    }
+    row.__parsedEscalations = allEscalations;
+
+    if (allSpaceAssignments.length > 0) {
+      const sp = allSpaceAssignments[0];
+      row['building'] = sp.building;
+      row['floor'] = sp.floor;
+      row['room'] = sp.room;
+      row['space_count'] = sp.spaceCount;
+      row['assignedunits'] = sp.assignedUnits;
+      row['assigned_sqft'] = sp.assignedSqft;
+      row['rate_per_sqft'] = sp.ratePerSqft;
+      row['assignment_type'] = sp.assignmentType;
+      row['space_type'] = sp.spaceType;
+    }
+    row.__parsedSpaceAssignments = allSpaceAssignments;
+
+    rows.push(row);
   });
 
   const sortedRows = sortTenantRows(rows, '__sortValue', sortDirection).map((row) => {
@@ -1426,7 +1841,7 @@ const fetchTenantSheetData = async (
   return {
     name: sheet.name || 'Sheet',
     data: sortedRows,
-    fields: normalizedFields,
+    fields: sheet.fields || normalizedFields,
   };
 };
 
@@ -1520,16 +1935,34 @@ const fetchHelpdeskSheetData = async (
     const filteredRows = data.filter((ticket) => matchesHelpdeskFilters(ticket, mergedFilters, refs));
 
       rows.push(
-        ...filteredRows.map((ticket) =>
-        normalizedFields.reduce<Record<string, any>>((acc, field) => {
+        ...filteredRows.map((ticket) => {
           const estimation = estimationMap[ticket.id];
-          const raw = resolveHelpdeskFieldValue(field, ticket, estimation, refs);
-          acc[field] = formatExportValue(raw);
+          const rawMaterials = estimation?.materials || estimation?.selected_materials || ticket.materials;
+          const parsedMaterials = parseMaterialsString(rawMaterials);
 
-          return acc;
-        }, {})
-      )
-    );
+          const rowData: Record<string, any> = {};
+          (sheet.fields || normalizedFields).forEach((originalField) => {
+            const normalizedField = normalizeHelpdeskFieldKey(originalField);
+            const raw = resolveHelpdeskFieldValue(normalizedField, ticket, estimation, refs);
+            const formatted = formatExportValue(raw);
+            rowData[originalField] = formatted;
+            rowData[normalizedField] = formatted;
+          });
+
+          if (parsedMaterials.length > 0) {
+            const firstMat = parsedMaterials[0];
+            rowData['material_name'] = firstMat.name;
+            rowData['material_qty'] = firstMat.qty;
+            rowData['material_unit'] = firstMat.unit;
+            rowData['material_rate'] = firstMat.rate;
+            rowData['material_gst_percent'] = firstMat.gstPercent;
+            rowData['material_amount'] = firstMat.qty * firstMat.rate * (1 + firstMat.gstPercent / 100);
+          }
+
+          rowData.__parsedMaterials = parsedMaterials;
+          return rowData;
+        })
+      );
 
     const newLastValue = data[data.length - 1]?.[sortField];
     if (!newLastValue || data.length < PAGE_SIZE) {
@@ -1542,7 +1975,7 @@ const fetchHelpdeskSheetData = async (
   return {
     name: sheet.name || 'Sheet',
     data: rows,
-    fields: normalizedFields,
+    fields: sheet.fields || normalizedFields,
   };
 };
 
@@ -1928,16 +2361,7 @@ const fetchSheetData = async (
   };
 };
 
-const autoSizeColumns = (worksheet: ExcelJS.Worksheet) => {
-  worksheet.columns?.forEach((column) => {
-    let maxLength = 10;
-    column.eachCell({ includeEmpty: true }, (cell) => {
-      const cellValue = cell.value ? String(cell.value) : '';
-      maxLength = Math.max(maxLength, cellValue.length + 2);
-    });
-    column.width = Math.min(Math.max(maxLength, 12), 40);
-  });
-};
+
 
 export async function generateFlexibleReport({
   globalFilters,
@@ -1949,7 +2373,10 @@ export async function generateFlexibleReport({
   const workbook = new ExcelJS.Workbook();
   let totalRows = 0;
   const tenantDynamicFields = reportType === 'tenant'
-    ? await loadTenantDynamicChargeFields()
+    ? await loadTenantDynamicChargeFields().catch((err) => {
+        console.warn('Network error loading tenant dynamic fields:', err);
+        return [];
+      })
     : [];
 
   for (let index = 0; index < sheets.length; index += 1) {
@@ -1963,16 +2390,111 @@ export async function generateFlexibleReport({
           : await fetchSheetData(sheet, globalFilters);
     totalRows += exportSheet.data.length;
 
+    // Filter out completely empty fields BEFORE setting worksheet.columns and adding rows
+    // so headers and data row cells remain 100% physically aligned in every column
+    const validFields = exportSheet.fields.filter((field) => {
+      const normalizedKey = reportType === 'helpdesk'
+        ? normalizeHelpdeskFieldKey(field)
+        : reportType === 'tenant'
+          ? normalizeTenantFieldKey(field)
+          : field;
+
+      if (reportType === 'helpdesk') {
+        const materialKeys = new Set([
+          'material_name',
+          'material_qty',
+          'material_unit',
+          'material_rate',
+          'material_gst_percent',
+          'material_amount',
+        ]);
+        if (materialKeys.has(normalizedKey)) {
+          const hasMaterials = exportSheet.data.some(
+            (row) => Array.isArray(row.__parsedMaterials) && row.__parsedMaterials.length > 0
+          );
+          if (hasMaterials) return true;
+        }
+      }
+
+      if (reportType === 'tenant') {
+        const agreementKeys = new Set([
+          'agreement_name',
+          'agreement_status',
+          'payment_cycle',
+          'lease_agreement_date',
+          'operation_date',
+          'rent_commencement_date',
+          'lease_end_date',
+          'lock_in_period',
+          'lease_tenure',
+          'agreement_created_at',
+          'agreement_updated_at',
+          'lease_remaining_days',
+          'agreement_age',
+          'end_of_lock_in',
+          'next_due_in',
+          'next_escalation_date',
+          'next_escalation_percentage',
+          'escalation_count',
+          'current_escalated_rent',
+        ]);
+        if (agreementKeys.has(normalizedKey)) {
+          const hasAgreements = exportSheet.data.some(
+            (row) => Array.isArray(row.__parsedAgreements) && row.__parsedAgreements.length > 0
+          );
+          if (hasAgreements) return true;
+        }
+
+        const escalationKeys = new Set([
+          'escalation_date',
+          'escalation_percent',
+          'escalation_new_rent',
+          'escalation_floor',
+        ]);
+        if (escalationKeys.has(normalizedKey)) {
+          const hasEscalations = exportSheet.data.some(
+            (row) => Array.isArray(row.__parsedEscalations) && row.__parsedEscalations.length > 0
+          );
+          if (hasEscalations) return true;
+        }
+
+        const spaceKeys = new Set([
+          'building',
+          'floor',
+          'room',
+          'space_count',
+          'assignedunits',
+          'assigned_sqft',
+          'rate_per_sqft',
+          'assignment_type',
+          'space_type',
+        ]);
+        if (spaceKeys.has(normalizedKey)) {
+          const hasSpaces = exportSheet.data.some(
+            (row) => Array.isArray(row.__parsedSpaceAssignments) && row.__parsedSpaceAssignments.length > 0
+          );
+          if (hasSpaces) return true;
+        }
+      }
+
+      return exportSheet.data.some((row) => {
+        const cell = row[field] ?? row[normalizedKey];
+        return cell !== null && cell !== undefined && cell !== '';
+      });
+    });
+
+    const finalFields = validFields.length > 0 ? validFields : exportSheet.fields;
+
     const worksheet = workbook.addWorksheet(exportSheet.name || `Sheet ${index + 1}`);
-      worksheet.columns = exportSheet.fields.map((field) => ({
-        header: reportType === 'helpdesk'
-          ? getHelpdeskFieldLabel(field)
-          : reportType === 'tenant'
-          ? getTenantFieldLabel(field, tenantDynamicFields)
-          : getFieldLabel(field),
-        key: field,
-        width: 20,
-      }));
+    worksheet.columns = finalFields.map((field) => ({
+      header: reportType === 'helpdesk'
+        ? getHelpdeskFieldLabel(field)
+        : reportType === 'tenant'
+        ? getTenantFieldLabel(field, tenantDynamicFields)
+        : getFieldLabel(field),
+      key: field,
+      width: 20,
+    }));
 
     // ---------------------------------------------------------------------
     // Row population and running totals calculation
@@ -2011,19 +2533,385 @@ export async function generateFlexibleReport({
 
     const cleanedData = exportSheet.data.map(cleanRow);
 
-    cleanedData.forEach((row) => {
-      worksheet.addRow(row);
-      // Accumulate totals for the requested fields while iterating rows
-      if (sheet.totalsFor && sheet.totalsFor.length > 0) {
-        sheet.totalsFor.forEach((key) => {
-          const raw = row[key];
-          const num = typeof raw === 'number' ? raw : parseFloat(raw as any);
-          if (!isNaN(num)) {
-            runningTotals[key] = (runningTotals[key] ?? 0) + num;
+    if (reportType === 'helpdesk') {
+      worksheet.properties.outlineProperties = {
+        summaryBelow: true,
+        summaryRight: true,
+      };
+
+      const getColLetter = (index: number): string => {
+        let temp = '';
+        let letter = '';
+        let colIndex = index;
+        while (colIndex > 0) {
+          temp = (colIndex - 1) % 26;
+          letter = String.fromCharCode(65 + temp) + letter;
+          colIndex = Math.floor((colIndex - temp - 1) / 26);
+        }
+        return letter;
+      };
+
+      const findColIdx = (key: string) => {
+        const normKey = normalizeHelpdeskFieldKey(key);
+        const idx = finalFields.findIndex((f) => normalizeHelpdeskFieldKey(f) === normKey);
+        return idx >= 0 ? idx + 1 : -1;
+      };
+
+      const qtyColIdx = findColIdx('material_qty');
+      const rateColIdx = findColIdx('material_rate');
+      const gstColIdx = findColIdx('material_gst_percent');
+      const amountColIdx = findColIdx('material_amount');
+
+      const qtyColLetter = qtyColIdx > 0 ? getColLetter(qtyColIdx) : '';
+      const rateColLetter = rateColIdx > 0 ? getColLetter(rateColIdx) : '';
+      const gstColLetter = gstColIdx > 0 ? getColLetter(gstColIdx) : '';
+      const amountColLetter = amountColIdx > 0 ? getColLetter(amountColIdx) : '';
+
+      let currentExcelRow = 2; // Row 1 is header
+
+      cleanedData.forEach((ticketRow) => {
+        const materials = (ticketRow.__parsedMaterials || []) as ParsedMaterialItem[];
+
+        if (materials.length <= 1) {
+          // 0 or 1 material: Write 1 row as today
+          const mat = materials[0];
+          const singleRowData: Record<string, any> = { ...ticketRow };
+
+          if (mat) {
+            singleRowData['material_name'] = mat.name;
+            singleRowData['material_qty'] = mat.qty;
+            singleRowData['material_unit'] = mat.unit;
+            singleRowData['material_rate'] = mat.rate;
+            singleRowData['material_gst_percent'] = mat.gstPercent;
           }
-        });
-      }
-    });
+
+          const addedRow = worksheet.addRow(singleRowData);
+          addedRow.outlineLevel = 0;
+
+          if (mat && amountColIdx > 0 && qtyColIdx > 0 && rateColIdx > 0 && gstColIdx > 0) {
+            const formulaStr = `${qtyColLetter}${currentExcelRow}*${rateColLetter}${currentExcelRow}*(1+${gstColLetter}${currentExcelRow}/100)`;
+            const calcAmount = mat.qty * mat.rate * (1 + mat.gstPercent / 100);
+            addedRow.getCell(amountColIdx).value = { formula: formulaStr, result: calcAmount };
+
+            if (sheet.totalsFor && sheet.totalsFor.includes('material_amount')) {
+              runningTotals['material_amount'] = (runningTotals['material_amount'] ?? 0) + calcAmount;
+            }
+          }
+
+          currentExcelRow += 1;
+        } else {
+          // 2+ materials: Write detail rows FIRST, followed by ONE summary row AFTER (below)
+          const startDetailRow = currentExcelRow;
+
+          materials.forEach((mat) => {
+            const detailRowData: Record<string, any> = {};
+            finalFields.forEach((f) => {
+              detailRowData[f] = '';
+            });
+            detailRowData['material_name'] = mat.name;
+            detailRowData['material_qty'] = mat.qty;
+            detailRowData['material_unit'] = mat.unit;
+            detailRowData['material_rate'] = mat.rate;
+            detailRowData['material_gst_percent'] = mat.gstPercent;
+
+            const detailRow = worksheet.addRow(detailRowData);
+            detailRow.outlineLevel = 1;
+            detailRow.hidden = true; // Collapsed by default
+
+            if (amountColIdx > 0 && qtyColIdx > 0 && rateColIdx > 0 && gstColIdx > 0) {
+              const formulaStr = `${qtyColLetter}${currentExcelRow}*${rateColLetter}${currentExcelRow}*(1+${gstColLetter}${currentExcelRow}/100)`;
+              const calcAmount = mat.qty * mat.rate * (1 + mat.gstPercent / 100);
+              detailRow.getCell(amountColIdx).value = { formula: formulaStr, result: calcAmount };
+            }
+
+            currentExcelRow += 1;
+          });
+
+          const endDetailRow = currentExcelRow - 1;
+
+          // Summary row AFTER (below) detail rows
+          const summaryRowData: Record<string, any> = { ...ticketRow };
+          summaryRowData['material_name'] = `${materials.length} materials`;
+          summaryRowData['material_qty'] = '';
+          summaryRowData['material_unit'] = '';
+          summaryRowData['material_rate'] = '';
+          summaryRowData['material_gst_percent'] = '';
+
+          const summaryRow = worksheet.addRow(summaryRowData);
+          summaryRow.outlineLevel = 0;
+
+          if (amountColIdx > 0) {
+            const sumFormula = `SUM(${amountColLetter}${startDetailRow}:${amountColLetter}${endDetailRow})`;
+            const totalMaterialAmount = materials.reduce((sum, m) => sum + (m.qty * m.rate * (1 + m.gstPercent / 100)), 0);
+            summaryRow.getCell(amountColIdx).value = { formula: sumFormula, result: totalMaterialAmount };
+
+            if (sheet.totalsFor && sheet.totalsFor.includes('material_amount')) {
+              runningTotals['material_amount'] = (runningTotals['material_amount'] ?? 0) + totalMaterialAmount;
+            }
+          }
+
+          currentExcelRow += 1;
+        }
+
+        // Accumulate running totals for non-material totals requested in sheet.totalsFor
+        if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+          sheet.totalsFor.forEach((key) => {
+            if (key === 'material_amount') return;
+            const raw = ticketRow[key];
+            let num = typeof raw === 'number' ? raw : parseFloat(raw as any);
+            if (isNaN(num) && typeof raw === 'string') {
+              const numbers = raw.match(/[\d,.]+/g);
+              if (numbers && numbers.length > 0) {
+                for (let i = numbers.length - 1; i >= 0; i--) {
+                  const cleaned = numbers[i].replace(/,/g, '');
+                  const val = parseFloat(cleaned);
+                  if (!isNaN(val)) {
+                    num = val;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!isNaN(num)) {
+              runningTotals[key] = (runningTotals[key] ?? 0) + num;
+            }
+          });
+        }
+      });
+    } else if (reportType === 'tenant') {
+      worksheet.properties.outlineProperties = {
+        summaryBelow: true,
+        summaryRight: true,
+      };
+
+      cleanedData.forEach((tenantRow) => {
+        const blocks = (tenantRow.__parsedAgreementBlocks || []) as ParsedTenantAgreementBlock[];
+        const totalAgreements = blocks.length;
+        const totalSpaces = blocks.reduce((sum, b) => sum + b.spaces.length, 0);
+        const totalEscalations = blocks.reduce((sum, b) => sum + b.escalations.length, 0);
+
+        const isMultiBreakdown = totalAgreements >= 2 || totalSpaces >= 2 || totalEscalations >= 2;
+
+        if (isMultiBreakdown) {
+          // Loop through each agreement block for this tenant:
+          // Agreement 1 -> its spaces -> its escalations
+          // Agreement 2 -> its spaces -> its escalations...
+          blocks.forEach((block) => {
+            const agr = block.agreement;
+
+            // 1. Write Agreement header / detail row
+            if (totalAgreements >= 2 || agr.agreement_name) {
+              const detailRowData: Record<string, any> = {};
+              finalFields.forEach((f) => {
+                detailRowData[f] = '';
+              });
+
+              detailRowData['agreement_name'] = agr.agreement_name;
+              detailRowData['agreement_status'] = agr.agreement_status;
+              detailRowData['payment_cycle'] = agr.payment_cycle;
+              detailRowData['lease_agreement_date'] = agr.lease_agreement_date;
+              detailRowData['operation_date'] = agr.operation_date;
+              detailRowData['rent_commencement_date'] = agr.rent_commencement_date;
+              detailRowData['lease_end_date'] = agr.lease_end_date;
+              detailRowData['lock_in_period'] = agr.lock_in_period;
+              detailRowData['lease_tenure'] = agr.lease_tenure;
+              detailRowData['agreement_created_at'] = agr.agreement_created_at;
+              detailRowData['agreement_updated_at'] = agr.agreement_updated_at;
+              detailRowData['lease_remaining_days'] = agr.lease_remaining_days;
+              detailRowData['agreement_age'] = agr.agreement_age;
+              detailRowData['end_of_lock_in'] = agr.end_of_lock_in;
+              detailRowData['next_due_in'] = agr.next_due_in;
+              detailRowData['next_escalation_date'] = agr.next_escalation_date;
+              detailRowData['next_escalation_percentage'] = agr.next_escalation_percentage;
+              detailRowData['escalation_count'] = agr.escalation_count;
+              detailRowData['current_escalated_rent'] = agr.current_escalated_rent;
+
+              const agrRow = worksheet.addRow(detailRowData);
+              agrRow.outlineLevel = 1;
+              agrRow.hidden = true; // Collapsed by default
+            }
+
+            // 2. Write Space detail rows for THIS agreement
+            block.spaces.forEach((sp) => {
+              const detailRowData: Record<string, any> = {};
+              finalFields.forEach((f) => {
+                detailRowData[f] = '';
+              });
+
+              detailRowData['building'] = sp.building;
+              detailRowData['floor'] = sp.floor;
+              detailRowData['room'] = sp.room;
+              detailRowData['space_count'] = sp.spaceCount;
+              detailRowData['assignedunits'] = sp.assignedUnits;
+              detailRowData['assigned_sqft'] = sp.assignedSqft;
+              detailRowData['rate_per_sqft'] = sp.ratePerSqft;
+              detailRowData['assignment_type'] = sp.assignmentType;
+              detailRowData['space_type'] = sp.spaceType;
+
+              const spaceRow = worksheet.addRow(detailRowData);
+              spaceRow.outlineLevel = 1;
+              spaceRow.hidden = true; // Collapsed by default
+            });
+
+            // 3. Write Escalation detail rows for THIS agreement
+            block.escalations.forEach((esc) => {
+              const detailRowData: Record<string, any> = {};
+              finalFields.forEach((f) => {
+                detailRowData[f] = '';
+              });
+
+              detailRowData['escalation_date'] = esc.date;
+              detailRowData['escalation_percent'] = esc.percent;
+              detailRowData['escalation_new_rent'] = esc.newRent;
+              detailRowData['escalation_floor'] = esc.floor;
+
+              const escRow = worksheet.addRow(detailRowData);
+              escRow.outlineLevel = 1;
+              escRow.hidden = true; // Collapsed by default
+            });
+          });
+
+          // 4. Write ONE Master Summary Row AFTER (below) all agreement blocks
+          const summaryRowData: Record<string, any> = { ...tenantRow };
+
+          if (totalAgreements >= 2) {
+            summaryRowData['agreement_name'] = `${totalAgreements} agreements`;
+            summaryRowData['agreement_status'] = 'Multiple';
+          }
+
+          if (totalSpaces >= 2) {
+            const allSpaces = blocks.flatMap((b) => b.spaces);
+            const totalSqft = allSpaces.reduce((sum, s) => sum + s.assignedSqft, 0);
+            const rateWeighted = allSpaces.reduce((sum, s) => sum + (s.assignedSqft * s.ratePerSqft), 0);
+            const avgRate = totalSqft > 0 ? rateWeighted / totalSqft : 0;
+            const buildingsJoined = Array.from(new Set(allSpaces.map((s) => s.building).filter(Boolean))).join(', ');
+            const typesJoined = Array.from(new Set(allSpaces.map((s) => s.assignmentType).filter(Boolean))).join(', ');
+            const spaceTypesJoined = Array.from(new Set(allSpaces.map((s) => s.spaceType).filter(Boolean))).join(', ');
+
+            summaryRowData['building'] = buildingsJoined || `${totalSpaces} spaces`;
+            summaryRowData['space_count'] = totalSpaces;
+            summaryRowData['assigned_sqft'] = totalSqft;
+            if (avgRate > 0) summaryRowData['rate_per_sqft'] = avgRate;
+            summaryRowData['assignment_type'] = typesJoined;
+            summaryRowData['space_type'] = spaceTypesJoined;
+          }
+
+          if (totalEscalations >= 2) {
+            const allEscs = blocks.flatMap((b) => b.escalations);
+            summaryRowData['escalation_date'] = `${totalEscalations} escalations`;
+            summaryRowData['escalation_percent'] = '';
+            const latestRent = allEscs[allEscs.length - 1]?.newRent || '';
+            summaryRowData['escalation_new_rent'] = latestRent;
+            summaryRowData['escalation_floor'] = '';
+          }
+
+          const summaryRow = worksheet.addRow(summaryRowData);
+          summaryRow.outlineLevel = 0;
+        } else {
+          // Standard single row
+          const firstBlock = blocks[0];
+          const agr = firstBlock?.agreement;
+          const sp = firstBlock?.spaces[0];
+          const esc = firstBlock?.escalations[0];
+          const singleRowData: Record<string, any> = { ...tenantRow };
+
+          if (agr) {
+            singleRowData['agreement_name'] = agr.agreement_name;
+            singleRowData['agreement_status'] = agr.agreement_status;
+            singleRowData['payment_cycle'] = agr.payment_cycle;
+            singleRowData['lease_agreement_date'] = agr.lease_agreement_date;
+            singleRowData['operation_date'] = agr.operation_date;
+            singleRowData['rent_commencement_date'] = agr.rent_commencement_date;
+            singleRowData['lease_end_date'] = agr.lease_end_date;
+            singleRowData['lock_in_period'] = agr.lock_in_period;
+            singleRowData['lease_tenure'] = agr.lease_tenure;
+            singleRowData['agreement_created_at'] = agr.agreement_created_at;
+            singleRowData['agreement_updated_at'] = agr.agreement_updated_at;
+            singleRowData['lease_remaining_days'] = agr.lease_remaining_days;
+            singleRowData['agreement_age'] = agr.agreement_age;
+            singleRowData['end_of_lock_in'] = agr.end_of_lock_in;
+            singleRowData['next_due_in'] = agr.next_due_in;
+            singleRowData['next_escalation_date'] = agr.next_escalation_date;
+            singleRowData['next_escalation_percentage'] = agr.next_escalation_percentage;
+            singleRowData['escalation_count'] = agr.escalation_count;
+            singleRowData['current_escalated_rent'] = agr.current_escalated_rent;
+          }
+
+          if (sp) {
+            singleRowData['building'] = sp.building;
+            singleRowData['floor'] = sp.floor;
+            singleRowData['room'] = sp.room;
+            singleRowData['space_count'] = sp.spaceCount;
+            singleRowData['assignedunits'] = sp.assignedUnits;
+            singleRowData['assigned_sqft'] = sp.assignedSqft;
+            singleRowData['rate_per_sqft'] = sp.ratePerSqft;
+            singleRowData['assignment_type'] = sp.assignmentType;
+            singleRowData['space_type'] = sp.spaceType;
+          }
+
+          if (esc) {
+            singleRowData['escalation_date'] = esc.date;
+            singleRowData['escalation_percent'] = esc.percent;
+            singleRowData['escalation_new_rent'] = esc.newRent;
+            singleRowData['escalation_floor'] = esc.floor;
+          }
+
+          const addedRow = worksheet.addRow(singleRowData);
+          addedRow.outlineLevel = 0;
+        }
+
+        // Accumulate totals for requested fields while iterating rows
+        if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+          sheet.totalsFor.forEach((key) => {
+            const raw = tenantRow[key];
+            let num = typeof raw === 'number' ? raw : parseFloat(raw as any);
+            if (isNaN(num) && typeof raw === 'string') {
+              const numbers = raw.match(/[\d,.]+/g);
+              if (numbers && numbers.length > 0) {
+                for (let i = numbers.length - 1; i >= 0; i--) {
+                  const cleaned = numbers[i].replace(/,/g, '');
+                  const val = parseFloat(cleaned);
+                  if (!isNaN(val)) {
+                    num = val;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!isNaN(num)) {
+              runningTotals[key] = (runningTotals[key] ?? 0) + num;
+            }
+          });
+        }
+      });
+    } else {
+      cleanedData.forEach((row) => {
+        worksheet.addRow(row);
+        // Accumulate totals for the requested fields while iterating rows
+        if (sheet.totalsFor && sheet.totalsFor.length > 0) {
+          sheet.totalsFor.forEach((key) => {
+            const raw = row[key];
+            let num = typeof raw === 'number' ? raw : parseFloat(raw as any);
+            if (isNaN(num) && typeof raw === 'string') {
+              const numbers = raw.match(/[\d,.]+/g);
+              if (numbers && numbers.length > 0) {
+                for (let i = numbers.length - 1; i >= 0; i--) {
+                  const cleaned = numbers[i].replace(/,/g, '');
+                  const val = parseFloat(cleaned);
+                  if (!isNaN(val)) {
+                    num = val;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!isNaN(num)) {
+              runningTotals[key] = (runningTotals[key] ?? 0) + num;
+            }
+          });
+        }
+      });
+    }
 
     // ---------------------------------------------------------------------
     // Totals row handling – per‑sheet totals defined in `sheet.totalsFor`
@@ -2031,11 +2919,11 @@ export async function generateFlexibleReport({
     if (sheet.totalsFor && sheet.totalsFor.length > 0) {
       // Initialise a totals object with empty strings for all columns
       const totalsRowData: Record<string, any> = {};
-      exportSheet.fields.forEach((field) => {
+      finalFields.forEach((field) => {
         totalsRowData[field] = '';
       });
       // Place the label "Total" in the first column (or first field)
-      const firstField = exportSheet.fields[0];
+      const firstField = finalFields[0];
       if (firstField) totalsRowData[firstField] = 'Total';
 
       // Populate the computed running totals
@@ -2049,7 +2937,81 @@ export async function generateFlexibleReport({
     }
 
     // ---------------------------------------------------------------------
-    // Post‑processing: data cleanup, dynamic column removal, and styling
+    // Custom Footer / Signature Row handling – defined in `sheet.footerConfig`
+    // ---------------------------------------------------------------------
+    let signatureRowNumber: number | null = null;
+    if (sheet.footerConfig?.enabled) {
+      const { leftText, leftCentreText, rightCentreText, rightText } = sheet.footerConfig;
+      const hasAnyText = Boolean(
+        (leftText && leftText.trim()) ||
+        (leftCentreText && leftCentreText.trim()) ||
+        (rightCentreText && rightCentreText.trim()) ||
+        (rightText && rightText.trim())
+      );
+
+      if (hasAnyText) {
+        // Add 2 blank rows for spacing / signature gap
+        worksheet.addRow([]);
+        worksheet.addRow([]);
+
+        const footerRowData: Record<string, any> = {};
+        finalFields.forEach((f) => {
+          footerRowData[f] = '';
+        });
+
+        const N = finalFields.length;
+        const c1 = 1;
+        const c2 = Math.max(1, Math.floor(N / 4));
+        const c3 = c2 + 1;
+        const c4 = Math.max(c3, Math.floor(N / 2));
+        const c5 = c4 + 1;
+        const c6 = Math.max(c5, Math.floor((3 * N) / 4));
+        const c7 = c6 + 1;
+        const c8 = N;
+
+        if (leftText && leftText.trim() && finalFields[c1 - 1]) {
+          footerRowData[finalFields[c1 - 1]] = leftText.trim();
+        }
+        if (leftCentreText && leftCentreText.trim() && finalFields[c3 - 1]) {
+          footerRowData[finalFields[c3 - 1]] = leftCentreText.trim();
+        }
+        if (rightCentreText && rightCentreText.trim() && finalFields[c5 - 1]) {
+          footerRowData[finalFields[c5 - 1]] = rightCentreText.trim();
+        }
+        if (rightText && rightText.trim() && finalFields[c7 - 1]) {
+          footerRowData[finalFields[c7 - 1]] = rightText.trim();
+        }
+
+        const fRow = worksheet.addRow(footerRowData);
+        signatureRowNumber = fRow.number;
+        fRow.height = 26;
+
+        if (c2 > c1) worksheet.mergeCells(fRow.number, c1, fRow.number, c2);
+        if (c4 > c3) worksheet.mergeCells(fRow.number, c3, fRow.number, c4);
+        if (c6 > c5) worksheet.mergeCells(fRow.number, c5, fRow.number, c6);
+        if (c8 > c7) worksheet.mergeCells(fRow.number, c7, fRow.number, c8);
+
+        // Styling the merged signature cells
+        const leftCell = fRow.getCell(c1);
+        leftCell.font = { bold: true, size: 11, name: 'Calibri' };
+        leftCell.alignment = { horizontal: 'left', vertical: 'middle' };
+
+        const leftCentreCell = fRow.getCell(c3);
+        leftCentreCell.font = { bold: true, size: 11, name: 'Calibri' };
+        leftCentreCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const rightCentreCell = fRow.getCell(c5);
+        rightCentreCell.font = { bold: true, size: 11, name: 'Calibri' };
+        rightCentreCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const rightCell = fRow.getCell(c7);
+        rightCell.font = { bold: true, size: 11, name: 'Calibri' };
+        rightCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Post‑processing: data cleanup and styling
     // ---------------------------------------------------------------------
 
     const headerRow = worksheet.getRow(1);
@@ -2059,37 +3021,39 @@ export async function generateFlexibleReport({
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 
-    // 2️⃣ Dynamically drop columns that are completely empty across all rows.
-    const columnsToKeep = worksheet.columns.filter((col) => {
-      const key = col.key as string;
-      // Check if any row has a non‑empty value for this key.
-      return exportSheet.data.some((row) => {
-        const cell = row[key];
-        return cell !== null && cell !== undefined && cell !== '';
-      });
-    });
-    worksheet.columns = columnsToKeep;
-
-    // 3️⃣ Uniform styling for all cells.
+    // 3️⃣ Uniform styling with strict fixed row height and disabled wrapText
     worksheet.eachRow((row, rowNumber) => {
-      row.height = 15; // uniform row height
+      if (rowNumber === 1) {
+        row.height = 22;
+        return;
+      }
+      if (rowNumber === signatureRowNumber) {
+        row.height = 26;
+        return;
+      }
+      // Strictly enforce fixed row height for every data row
+      row.height = 20;
+
       row.eachCell({ includeEmpty: true }, (cell) => {
-        // Apply border to every cell.
+        if (signatureRowNumber && rowNumber >= signatureRowNumber - 2 && rowNumber <= signatureRowNumber) {
+          if (rowNumber === signatureRowNumber) {
+            cell.alignment = { vertical: 'middle', wrapText: false };
+          }
+          return;
+        }
+
         cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' },
+          top: { style: 'thin', color: { argb: 'D3D3D3' } },
+          left: { style: 'thin', color: { argb: 'D3D3D3' } },
+          bottom: { style: 'thin', color: { argb: 'D3D3D3' } },
+          right: { style: 'thin', color: { argb: 'D3D3D3' } },
         };
-        // Set a default column width if not already set.
-        const col = worksheet.getColumn(cell.col);
-        if (!col.width) col.width = 25;
+        // Set wrapText to false to prevent Excel auto-fit from stretching row heights
+        cell.alignment = { vertical: 'middle', wrapText: false };
       });
     });
 
     worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-    // Auto‑size columns after potential removal and width overrides.
-    autoSizeColumns(worksheet);
   }
 
   const buffer = await workbook.xlsx.writeBuffer();

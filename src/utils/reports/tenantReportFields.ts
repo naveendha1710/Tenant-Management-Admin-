@@ -21,7 +21,7 @@ const TENANT_DYNAMIC_CHARGE_PREFIXES: Record<TenantDynamicChargeFormType, string
 };
 
 const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
-  // Removed `tenant_id` from the selectable General fields as per request.
+  // General
   { key: 'name', label: 'Contact Name', category: 'General', type: 'text' },
   { key: 'company', label: 'Company Name', category: 'General', type: 'text' },
   { key: 'email', label: 'Email', category: 'General', type: 'text' },
@@ -34,11 +34,13 @@ const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
   { key: 'is_main_branch', label: 'Main Branch', category: 'General', type: 'status' },
   { key: 'is_gst_company', label: 'GST Company', category: 'General', type: 'status' },
   { key: 'address', label: 'Address', category: 'General', type: 'text' },
-  { key: 'space', label: 'Space', category: 'General', type: 'text' },
+
+  // Dates
   { key: 'nextduedate', label: 'Next Due Date', category: 'Dates', type: 'date' },
   { key: 'created_at', label: 'Tenant Created At', category: 'Dates', type: 'date' },
   { key: 'updated_at', label: 'Tenant Updated At', category: 'Dates', type: 'date' },
 
+  // Agreement
   { key: 'agreement_name', label: 'Agreement Name', category: 'Agreement', type: 'text' },
   { key: 'agreement_status', label: 'Agreement Status', category: 'Agreement', type: 'status' },
   { key: 'payment_cycle', label: 'Payment Cycle', category: 'Agreement', type: 'text' },
@@ -50,7 +52,16 @@ const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
   { key: 'lease_tenure', label: 'Lease Tenure', category: 'Agreement', type: 'text' },
   { key: 'agreement_created_at', label: 'Agreement Created At', category: 'Agreement', type: 'date' },
   { key: 'agreement_updated_at', label: 'Agreement Updated At', category: 'Agreement', type: 'date' },
+  { key: 'lease_remaining_days', label: 'Lease Remaining Days', category: 'Agreement', type: 'number' },
+  { key: 'agreement_age', label: 'Agreement Age', category: 'Agreement', type: 'text' },
+  { key: 'end_of_lock_in', label: 'End Of Lock In', category: 'Agreement', type: 'date' },
+  { key: 'next_due_in', label: 'Next Due In', category: 'Agreement', type: 'number' },
+  { key: 'next_escalation_date', label: 'Next Escalation Date', category: 'Agreement', type: 'date' },
+  { key: 'next_escalation_percentage', label: 'Next Escalation %', category: 'Agreement', type: 'number' },
+  { key: 'escalation_count', label: 'Escalation Count', category: 'Agreement', type: 'number' },
+  { key: 'current_escalated_rent', label: 'Current Escalated Rent', category: 'Agreement', type: 'currency' },
 
+  // Financial
   { key: 'rent_amount', label: 'Rent Amount', category: 'Financial', type: 'currency' },
   { key: 'security_deposit', label: 'Security Deposit', category: 'Financial', type: 'currency' },
   { key: 'annual_rent', label: 'Annual Rent', category: 'Financial', type: 'currency' },
@@ -64,28 +75,23 @@ const TENANT_STATIC_REPORT_FIELDS: ReportFieldDefinition[] = [
   { key: 'general_charges', label: 'General Charges', category: 'Financial', type: 'text' },
   { key: 'service_charge', label: 'Service Charge', category: 'Financial', type: 'text' },
   { key: 'escalations', label: 'Escalations', category: 'Financial', type: 'text' },
+  { key: 'escalation_date', label: 'Escalation Date', category: 'Financial', type: 'date' },
+  { key: 'escalation_percent', label: 'Escalation %', category: 'Financial', type: 'number' },
+  { key: 'escalation_new_rent', label: 'New Rent Amount', category: 'Financial', type: 'currency' },
+  { key: 'escalation_floor', label: 'Escalation Floor / Space', category: 'Financial', type: 'text' },
 
+  // Space
   { key: 'building', label: 'Building', category: 'Space', type: 'text' },
   { key: 'floor', label: 'Floor', category: 'Space', type: 'text' },
   { key: 'room', label: 'Room', category: 'Space', type: 'text' },
-  { key: 'space_summary', label: 'Space Summary', category: 'Space', type: 'text' },
   { key: 'space_count', label: 'Space Count', category: 'Space', type: 'number' },
   { key: 'assignedunits', label: 'Assigned Units', category: 'Space', type: 'text' },
-  { key: 'space_assignments', label: 'Space Assignments', category: 'Space', type: 'text' },
   { key: 'assigned_sqft', label: 'Assigned Sq.Ft', category: 'Space', type: 'number' },
   { key: 'rate_per_sqft', label: 'Rate Per Sq.Ft', category: 'Space', type: 'currency' },
   { key: 'assignment_type', label: 'Assignment Type', category: 'Space', type: 'text' },
   { key: 'space_type', label: 'Space Type', category: 'Space', type: 'text' },
 
-  { key: 'lease_remaining_days', label: 'Lease Remaining Days', category: 'Agreement', type: 'number' },
-  { key: 'agreement_age', label: 'Agreement Age', category: 'Agreement', type: 'text' },
-  { key: 'end_of_lock_in', label: 'End Of Lock In', category: 'Agreement', type: 'date' },
-  { key: 'next_due_in', label: 'Next Due In', category: 'Agreement', type: 'number' },
-  { key: 'next_escalation_date', label: 'Next Escalation Date', category: 'Agreement', type: 'date' },
-  { key: 'next_escalation_percentage', label: 'Next Escalation %', category: 'Agreement', type: 'number' },
-  { key: 'escalation_count', label: 'Escalation Count', category: 'Agreement', type: 'number' },
-  { key: 'current_escalated_rent', label: 'Current Escalated Rent', category: 'Agreement', type: 'currency' },
-
+  // Compliance
   { key: 'gst_number', label: 'GST Number', category: 'Compliance', type: 'text' },
   { key: 'pan_number', label: 'PAN Number', category: 'Compliance', type: 'text' },
   { key: 'tan_number', label: 'TAN Number', category: 'Compliance', type: 'text' },
@@ -222,48 +228,56 @@ export const getTenantSortableFields = (
 };
 
 export const loadTenantDynamicChargeFields = async (): Promise<TenantDynamicChargeFieldDefinition[]> => {
-  const { data, error } = await supabase
-    .from('form_dropdowns')
-    .select('id, name, form_type, short_code')
-    .in('form_type', TENANT_DYNAMIC_CHARGE_FORM_TYPES)
-    .order('name');
+  try {
+    const { data, error } = await supabase
+      .from('form_dropdowns')
+      .select('id, name, form_type, short_code')
+      .in('form_type', TENANT_DYNAMIC_CHARGE_FORM_TYPES)
+      .order('name');
 
-  if (error) throw error;
+    if (error) {
+      console.warn('Unable to load tenant dynamic charge fields from form_dropdowns:', error);
+      return [];
+    }
 
-  const seenKeys = new Set<string>();
+    const seenKeys = new Set<string>();
 
-  return (data || [])
-    .filter((row) => row?.name)
-    .map((row) => {
-      const formType = row.form_type as TenantDynamicChargeFormType;
-      const chargeName = String(row.name).trim();
-      const chargeKeyBase = buildTenantDynamicChargeFieldKey(formType, chargeName);
-      let chargeKey = chargeKeyBase;
-      let suffix = 2;
+    return (data || [])
+      .filter((row) => row?.name)
+      .map((row) => {
+        const formType = row.form_type as TenantDynamicChargeFormType;
+        const chargeName = String(row.name).trim();
+        const chargeKeyBase = buildTenantDynamicChargeFieldKey(formType, chargeName);
+        let chargeKey = chargeKeyBase;
+        let suffix = 2;
 
-      while (seenKeys.has(chargeKey)) {
-        chargeKey = `${chargeKeyBase}__${suffix}`;
-        suffix += 1;
-      }
+        while (seenKeys.has(chargeKey)) {
+          chargeKey = `${chargeKeyBase}__${suffix}`;
+          suffix += 1;
+        }
 
-      seenKeys.add(chargeKey);
+        seenKeys.add(chargeKey);
 
-      return {
-        key: chargeKey,
-        label: chargeName,
-        category: 'Financial',
-        type: 'currency' as const,
-        formType,
-        chargeName,
-        chargeKey,
-        aliases: [
+        return {
+          key: chargeKey,
+          label: chargeName,
+          category: 'Financial',
+          type: 'currency' as const,
+          formType,
           chargeName,
-          slugifyTenantFieldSegment(chargeName),
-          row.short_code ? String(row.short_code).trim() : '',
-          row.short_code ? slugifyTenantFieldSegment(String(row.short_code)) : '',
-        ].filter(Boolean),
-      };
-    });
+          chargeKey,
+          aliases: [
+            chargeName,
+            slugifyTenantFieldSegment(chargeName),
+            row.short_code ? String(row.short_code).trim() : '',
+            row.short_code ? slugifyTenantFieldSegment(String(row.short_code)) : '',
+          ].filter(Boolean),
+        };
+      });
+  } catch (err) {
+    console.warn('Network connection error loading tenant dynamic charge fields:', err);
+    return [];
+  }
 };
 
 export const normalizeTenantFieldKey = (key: string) => {
@@ -305,6 +319,14 @@ export const normalizeTenantFieldKey = (key: string) => {
     nextEscalationPercentage: 'next_escalation_percentage',
     escalationCount: 'escalation_count',
     currentEscalatedRent: 'current_escalated_rent',
+    escalation_date: 'escalation_date',
+    escalationDate: 'escalation_date',
+    escalation_percent: 'escalation_percent',
+    escalationPercent: 'escalation_percent',
+    escalation_new_rent: 'escalation_new_rent',
+    escalationNewRent: 'escalation_new_rent',
+    escalation_floor: 'escalation_floor',
+    escalationFloor: 'escalation_floor',
     spaceSummary: 'space_summary',
     spaceCount: 'space_count',
     maintenanceCharges: 'maintenance_charges',
@@ -314,6 +336,29 @@ export const normalizeTenantFieldKey = (key: string) => {
   };
 
   return aliases[key] || key;
+};
+
+export const normalizeTenantFields = (fields: string[] = []) => {
+  const result: string[] = [];
+  (fields || []).forEach((f) => {
+    const norm = normalizeTenantFieldKey(f);
+    if (norm === 'escalations') {
+      result.push('escalation_date', 'escalation_percent', 'escalation_new_rent', 'escalation_floor');
+    } else {
+      result.push(norm);
+    }
+  });
+
+  const unique = Array.from(new Set(result));
+  const hasSplitEscalationFields = unique.some((k) =>
+    ['escalation_date', 'escalation_percent', 'escalation_new_rent', 'escalation_floor'].includes(k)
+  );
+
+  if (hasSplitEscalationFields) {
+    return unique.filter((k) => k !== 'escalations');
+  }
+
+  return unique;
 };
 
 export const getTenantFieldLabel = (

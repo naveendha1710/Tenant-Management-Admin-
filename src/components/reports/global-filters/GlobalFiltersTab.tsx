@@ -127,6 +127,47 @@ export function GlobalFiltersTab({ onApply, reportType }: GlobalFiltersTabProps)
   }, [reportType, tenants, companyGroup]);
 
   useEffect(() => {
+    setCategory(filters.category || 'all');
+    setSubCategory(filters.subCategory || 'all');
+    setAssetType(filters.assetType || 'all');
+    setStatus(filters.status || 'all');
+    setMovementType(filters.movementType || 'all');
+    setMovementStatus(filters.movementStatus || 'all');
+    setApprovalStatus(filters.approvalStatus || 'all');
+    setVendor(filters.vendor || 'all');
+    setHandoverTo(filters.handoverTo || 'all');
+    setFromTenant(filters.fromTenant || 'all');
+    setToTenant(filters.toTenant || 'all');
+    setBuilding(filters.building || 'all');
+    setFloor(filters.floor || 'all');
+    setRoom(filters.room || 'all');
+    setTenant(filters.tenant || 'all');
+    setSortOrder(filters.sortOrder || 'asc');
+    setCompanyGroup(filters.companyGroup || 'all');
+    setTenantStatus(filters.tenantStatus || 'all');
+    setAgreementStatus(filters.agreementStatus || 'all');
+    setIsGstCompany(
+      filters.isGstCompany === true ? 'yes' : filters.isGstCompany === false ? 'no' : filters.isGstCompany || 'all'
+    );
+    setIsMainBranch(
+      filters.isMainBranch === true ? 'main' : filters.isMainBranch === false ? 'branch' : filters.isMainBranch || 'all'
+    );
+    setDateField(filters.dateField || 'all');
+    setDateFrom(filters.dateFrom || '');
+    setDateTo(filters.dateTo || '');
+    setDataField(filters.dataField || 'all');
+    setTicketCategory(filters.ticketCategory || 'all');
+    setTicketSubCategory(filters.ticketSubCategory || 'all');
+    setPriority(filters.priority || 'all');
+    setAssignedToUser(filters.assignedTo || 'all');
+    setSafetyRisk(filters.safetyRisk || 'all');
+    setPreviousOccurrence(filters.previousOccurrence === true ? true : filters.previousOccurrence === false ? false : null);
+    setCreatedDateRange([filters.createdDateRange?.[0] || '', filters.createdDateRange?.[1] || '']);
+    setTargetDateRange([filters.targetDateRange?.[0] || '', filters.targetDateRange?.[1] || '']);
+    setResolvedDateRange([filters.resolvedDateRange?.[0] || '', filters.resolvedDateRange?.[1] || '']);
+  }, [filters]);
+
+  useEffect(() => {
     if (reportType !== 'tenant') return;
     if (tenant === 'all') return;
     const currentTenant = tenants.find((item: any) => item.id === tenant);

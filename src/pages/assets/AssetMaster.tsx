@@ -620,9 +620,6 @@ export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterP
   const loadFloors = async (buildingId: string) => {
     const data = await buildingService.getFloorsByBuilding(buildingId);
     setFloors(data);
-    // Clear rooms when building changes
-    setRooms([]);
-    updateField('room_id', '');
   };
 
   const loadRooms = async (floorId: string) => {
@@ -1032,7 +1029,44 @@ export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterP
     setShowForm(true);
   };
 
-  const handleEdit = (asset: Asset) => {
+  const handleEdit = async (asset: Asset) => {
+    // Pre-load location data for edit mode to prevent race condition & state wipe
+    try {
+      if (asset.building) {
+        const floorsData = await buildingService.getFloorsByBuilding(asset.building);
+        setFloors(floorsData);
+      } else {
+        setFloors([]);
+      }
+
+      if (asset.floor_id) {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select(`
+            id,
+            room_number,
+            form_dropdowns!rooms_category_id_fkey(name)
+          `)
+          .eq('floor_id', asset.floor_id)
+          .order('room_number');
+
+        if (!error && data) {
+          const roomsWithCategory = data.map(room => ({
+            ...room,
+            category_name: room.form_dropdowns?.name || 'Uncategorized',
+            display_name: `${room.room_number} | ${room.form_dropdowns?.name || 'Uncategorized'}`
+          }));
+          setRooms(roomsWithCategory);
+        } else {
+          setRooms([]);
+        }
+      } else {
+        setRooms([]);
+      }
+    } catch (error) {
+      console.error('Failed to pre-load location data for edit:', error);
+    }
+
     setFormData(asset);
     setEditingAsset(asset);
     setViewMode(false);
@@ -2847,7 +2881,17 @@ export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterP
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Building</label>
-                              <Select value={formData.building || ''} onValueChange={(v) => updateField('building', v)} disabled={viewMode}>
+                              <Select 
+                                value={formData.building || ''} 
+                                onValueChange={(v) => {
+                                  updateField('building', v);
+                                  updateField('floor_id', '');
+                                  updateField('room_id', '');
+                                  setFloors([]);
+                                  setRooms([]);
+                                }} 
+                                disabled={viewMode}
+                              >
                                 <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
                                   <SelectValue placeholder="Select building" />
                                 </SelectTrigger>
@@ -2858,7 +2902,15 @@ export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterP
                             </div>
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Floor</label>
-                              <Select value={formData.floor_id || ''} onValueChange={(v) => updateField('floor_id', v)} disabled={viewMode || !formData.building}>
+                              <Select 
+                                value={formData.floor_id || ''} 
+                                onValueChange={(v) => {
+                                  updateField('floor_id', v);
+                                  updateField('room_id', '');
+                                  setRooms([]);
+                                }} 
+                                disabled={viewMode || !formData.building}
+                              >
                                 <SelectTrigger className="h-11 border-gray-300 focus:border-primary focus:ring-primary/20">
                                   <SelectValue placeholder="Select floor" />
                                 </SelectTrigger>

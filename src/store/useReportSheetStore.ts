@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type SheetFooterConfig = {
+  enabled?: boolean;
+  leftText?: string;
+  leftCentreText?: string;
+  rightCentreText?: string;
+  rightText?: string;
+};
+
 export type SheetConfig = {
   id: string;
   name?: string;
@@ -13,6 +21,7 @@ export type SheetConfig = {
     field: string;
     direction: 'asc' | 'desc';
   };
+  footerConfig?: SheetFooterConfig;
   // Legacy aliases for older saved templates and persisted state.
   filters?: Record<string, any>;
   sort?: {

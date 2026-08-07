@@ -2,10 +2,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { SheetConfig } from '@/store/useReportSheetStore';
 import { FieldSelector } from './FieldSelector';
 import { SheetFilters } from './SheetFilters';
 import { SortSelector } from './SortSelector';
+import { FooterConfigSection } from './FooterConfigSection';
 import { ReportType } from '@/types/report';
 
 interface ReportBuilderSheetAccordionProps {
@@ -92,6 +94,104 @@ export function ReportBuilderSheetAccordion({
               onChange={(sortOrder) => onUpdateSheet(sheet.id, { sortOrder })}
               reportType={reportType}
             />
+
+            <div className="space-y-4 rounded-lg border p-4 bg-card/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold">Custom Footer / Signature Row</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Add custom signature text labels across the bottom width of the exported Excel table.
+                  </p>
+                </div>
+                <Switch
+                  checked={sheet.footerConfig?.enabled ?? false}
+                  onCheckedChange={(checked) =>
+                    onUpdateSheet(sheet.id, {
+                      footerConfig: {
+                        ...(sheet.footerConfig || {}),
+                        enabled: checked,
+                        leftText: sheet.footerConfig?.leftText ?? 'Maintenance Incharge',
+                        leftCentreText: sheet.footerConfig?.leftCentreText ?? 'CISO',
+                        rightCentreText: sheet.footerConfig?.rightCentreText ?? 'Deputy General Manager',
+                        rightText: sheet.footerConfig?.rightText ?? 'Client',
+                      },
+                    })
+                  }
+                />
+              </div>
+
+              {(sheet.footerConfig?.enabled ?? false) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Left Text</label>
+                    <Input
+                      value={sheet.footerConfig?.leftText ?? ''}
+                      onChange={(e) =>
+                        onUpdateSheet(sheet.id, {
+                          footerConfig: {
+                            ...(sheet.footerConfig || {}),
+                            leftText: (e.target as HTMLInputElement).value,
+                          },
+                        })
+                      }
+                      placeholder="e.g. Maintenance Incharge"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Left Centre Text</label>
+                    <Input
+                      value={sheet.footerConfig?.leftCentreText ?? ''}
+                      onChange={(e) =>
+                        onUpdateSheet(sheet.id, {
+                          footerConfig: {
+                            ...(sheet.footerConfig || {}),
+                            leftCentreText: (e.target as HTMLInputElement).value,
+                          },
+                        })
+                      }
+                      placeholder="e.g. CISO"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Right Centre Text</label>
+                    <Input
+                      value={sheet.footerConfig?.rightCentreText ?? ''}
+                      onChange={(e) =>
+                        onUpdateSheet(sheet.id, {
+                          footerConfig: {
+                            ...(sheet.footerConfig || {}),
+                            rightCentreText: (e.target as HTMLInputElement).value,
+                          },
+                        })
+                      }
+                      placeholder="e.g. Deputy General Manager"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Right Text</label>
+                    <Input
+                      value={sheet.footerConfig?.rightText ?? ''}
+                      onChange={(e) =>
+                        onUpdateSheet(sheet.id, {
+                          footerConfig: {
+                            ...(sheet.footerConfig || {}),
+                            rightText: (e.target as HTMLInputElement).value,
+                          },
+                        })
+                      }
+                      placeholder="e.g. Client"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex justify-end">
               <Button variant="outline" onClick={() => onRemoveSheet(sheet.id)}>
