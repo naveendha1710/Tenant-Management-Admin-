@@ -1930,7 +1930,7 @@ export default function AssetMaster({ readOnly = false, tenantId }: AssetMasterP
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.totalAssets || 0}</div>
-                {(filterCategory || filterSubCategory || filterType || filterStatus || filterBuilding || filterFloor || filterTenant || filterColor || filterMaterial || filterSize) && (
+                {[filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterTenant, filterColor, filterMaterial, filterSize].some(val => val && val !== 'all') && (
                   <p className="text-xs text-muted-foreground mt-1">total (unfiltered)</p>
                 )}
               </CardContent>

@@ -976,226 +976,265 @@ export const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, user, onSav
             {/* Tab: Other Access */}
             {activeTab === 'otherAccess' && (
               <div className="space-y-6">
-                {/* Section 1: Special Role-Based Access Flags */}
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Special Role-Based Access Flags</h3>
-                    <p className="text-xs text-muted-foreground">Operational approval & responsibility privileges</p>
-                  </div>
-
-                  <div className="space-y-3 border rounded-lg p-3">
-                    {/* 1. Account Status */}
-                    <div className="flex items-center justify-between py-2">
-                      <div>
-                        <Label htmlFor="isActive" className="text-sm font-medium">Account Status</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Enable or disable user access</p>
-                      </div>
-                      <Switch
-                        id="isActive"
-                        checked={formData.isActive}
-                        onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-                      />
+                {(isTenantUserForm || isOtherUserForm || user?.role === 'Tenant') ? (
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">General Settings</h3>
+                      <p className="text-xs text-muted-foreground">Manage account status and notification preferences</p>
                     </div>
 
-                    {/* 2. Approver Status */}
-                    {(() => {
-                      const isAllowed = user?.role !== 'Tenant';
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <div>
-                            <Label htmlFor="isApprover" className="text-sm font-medium">Approver Status</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Can approve financial transactions {!isAllowed && '(Not available for Tenant users)'}
-                            </p>
-                          </div>
-                          <Switch
-                            id="isApprover"
-                            checked={formData.isApprover}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, isApprover: checked })}
-                          />
+                    <div className="space-y-3 border rounded-lg p-3">
+                      {/* 1. Account Status */}
+                      <div className="flex items-center justify-between py-2">
+                        <div>
+                          <Label htmlFor="isActive" className="text-sm font-medium">Account Status</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">Enable or disable user access</p>
                         </div>
-                      );
-                    })()}
-
-                    {/* 3. Asset Movement Approver */}
-                    {(() => {
-                      const isAllowed = permissions.some(p => p.module === 'Asset Movement' && p.view);
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <div>
-                            <Label htmlFor="assetMovementApprover" className="text-sm font-medium">Asset Movement Approver</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Can approve/reject asset movements {!isAllowed && '(Requires View permission for Asset Movement)'}
-                            </p>
-                          </div>
-                          <Switch
-                            id="assetMovementApprover"
-                            checked={formData.assetMovementApprover}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, assetMovementApprover: checked })}
-                          />
-                        </div>
-                      );
-                    })()}
-
-                    {/* 4. Asset Incharge */}
-                    {(() => {
-                      const isAllowed = permissions.some(p => p.module === 'Asset Master' && p.view) || formData.selectedRoles.includes('Asset Manager');
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <div>
-                            <Label htmlFor="assetIncharge" className="text-sm font-medium">Asset Incharge</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Responsible for asset management {!isAllowed && '(Requires Asset Master view access or Asset Manager role)'}
-                            </p>
-                          </div>
-                          <Switch
-                            id="assetIncharge"
-                            checked={formData.assetIncharge}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, assetIncharge: checked })}
-                          />
-                        </div>
-                      );
-                    })()}
-
-                    {/* 5. Asset Auditor */}
-                    {(() => {
-                      const isAllowed = permissions.some(p => p.module === 'Physical Audit' && p.view) || permissions.some(p => p.module === 'Preventive Maintenance' && p.view);
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <div>
-                            <Label htmlFor="assetAuditor" className="text-sm font-medium">Asset Auditor</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Can be assigned PM audits {!isAllowed && '(Requires Physical Audit or PM view access)'}
-                            </p>
-                          </div>
-                          <Switch
-                            id="assetAuditor"
-                            checked={formData.assetAuditor}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, assetAuditor: checked })}
-                          />
-                        </div>
-                      );
-                    })()}
-
-                    {/* 6. Can Approve/Reject Tickets */}
-                    {(() => {
-                      const isAllowed = permissions.some(p => p.module === 'Manage Tickets' && p.view);
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <div>
-                            <Label htmlFor="canApproveTickets" className="text-sm font-medium">Can Approve/Reject Tickets</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Enable approval/rejection buttons in Manage Tickets page {!isAllowed && '(Requires Manage Tickets view access)'}
-                            </p>
-                          </div>
-                          <Switch
-                            id="canApproveTickets"
-                            checked={formData.canApproveTickets}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, canApproveTickets: checked })}
-                          />
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Section 2: Notifications & Sub-Access Toggles */}
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Notification & Sub-Access Settings</h3>
-                    <p className="text-xs text-muted-foreground">Notification preferences & user management tab access</p>
-                  </div>
-
-                  <div className="space-y-3 border rounded-lg p-3">
-                    {/* 1. Notifications */}
-                    <div className="flex items-center justify-between py-2">
-                      <div>
-                        <Label htmlFor="notificationsEnabled" className="text-sm font-medium">Notifications</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Enable or disable system notifications</p>
+                        <Switch
+                          id="isActive"
+                          checked={formData.isActive}
+                          onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                        />
                       </div>
-                      <Switch
-                        id="notificationsEnabled"
-                        checked={formData.notificationsEnabled}
-                        onCheckedChange={(checked) => setFormData({ ...formData, notificationsEnabled: checked })}
-                      />
+
+                      {/* 2. Notifications */}
+                      <div className="flex items-center justify-between py-2 border-t">
+                        <div>
+                          <Label htmlFor="notificationsEnabled" className="text-sm font-medium">Notifications</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">Enable or disable system notifications</p>
+                        </div>
+                        <Switch
+                          id="notificationsEnabled"
+                          checked={formData.notificationsEnabled}
+                          onCheckedChange={(checked) => setFormData({ ...formData, notificationsEnabled: checked })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Section 1: Special Role-Based Access Flags */}
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold">Special Role-Based Access Flags</h3>
+                        <p className="text-xs text-muted-foreground">Operational approval & responsibility privileges</p>
+                      </div>
+
+                      <div className="space-y-3 border rounded-lg p-3">
+                        {/* 1. Account Status */}
+                        <div className="flex items-center justify-between py-2">
+                          <div>
+                            <Label htmlFor="isActive" className="text-sm font-medium">Account Status</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Enable or disable user access</p>
+                          </div>
+                          <Switch
+                            id="isActive"
+                            checked={formData.isActive}
+                            onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                          />
+                        </div>
+
+                        {/* 2. Approver Status */}
+                        {(() => {
+                          const isAllowed = user?.role !== 'Tenant';
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="isApprover" className="text-sm font-medium">Approver Status</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Can approve financial transactions {!isAllowed && '(Not available for Tenant users)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="isApprover"
+                                checked={formData.isApprover}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, isApprover: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+
+                        {/* 3. Asset Movement Approver */}
+                        {(() => {
+                          const isAllowed = permissions.some(p => p.module === 'Asset Movement' && p.view);
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="assetMovementApprover" className="text-sm font-medium">Asset Movement Approver</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Can approve/reject asset movements {!isAllowed && '(Requires View permission for Asset Movement)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="assetMovementApprover"
+                                checked={formData.assetMovementApprover}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, assetMovementApprover: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+
+                        {/* 4. Asset Incharge */}
+                        {(() => {
+                          const isAllowed = permissions.some(p => p.module === 'Asset Master' && p.view) || formData.selectedRoles.includes('Asset Manager');
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="assetIncharge" className="text-sm font-medium">Asset Incharge</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Responsible for asset management {!isAllowed && '(Requires Asset Master view access or Asset Manager role)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="assetIncharge"
+                                checked={formData.assetIncharge}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, assetIncharge: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+
+                        {/* 5. Asset Auditor */}
+                        {(() => {
+                          const isAllowed = permissions.some(p => p.module === 'Physical Audit' && p.view) || permissions.some(p => p.module === 'Preventive Maintenance' && p.view);
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="assetAuditor" className="text-sm font-medium">Asset Auditor</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Can be assigned PM audits {!isAllowed && '(Requires Physical Audit or PM view access)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="assetAuditor"
+                                checked={formData.assetAuditor}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, assetAuditor: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+
+                        {/* 6. Can Approve/Reject Tickets */}
+                        {(() => {
+                          const isAllowed = permissions.some(p => p.module === 'Manage Tickets' && p.view);
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="canApproveTickets" className="text-sm font-medium">Can Approve/Reject Tickets</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Enable approval/rejection buttons in Manage Tickets page {!isAllowed && '(Requires Manage Tickets view access)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="canApproveTickets"
+                                checked={formData.canApproveTickets}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, canApproveTickets: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
 
-                    {/* 2. Ticket Email Notifications */}
-                    {(() => {
-                      const isAllowed = formData.selectedRoles.includes('Manage Tickets') || formData.selectedRoles.includes('Tenant') || user?.role === 'Tenant';
-                      return (
-                        <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                    {/* Section 2: Notifications & Sub-Access Toggles */}
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold">Notification & Sub-Access Settings</h3>
+                        <p className="text-xs text-muted-foreground">Notification preferences & user management tab access</p>
+                      </div>
+
+                      <div className="space-y-3 border rounded-lg p-3">
+                        {/* 1. Notifications */}
+                        <div className="flex items-center justify-between py-2">
                           <div>
-                            <Label htmlFor="receiveTicketNotifications" className="text-sm font-medium">Ticket Email Notifications</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Receive email notifications for ticket events {!isAllowed && '(Requires Manage Tickets or Tenant role)'}
-                            </p>
+                            <Label htmlFor="notificationsEnabled" className="text-sm font-medium">Notifications</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Enable or disable system notifications</p>
                           </div>
                           <Switch
-                            id="receiveTicketNotifications"
-                            checked={formData.receiveTicketNotifications}
-                            disabled={!isAllowed}
-                            onCheckedChange={(checked) => setFormData({ ...formData, receiveTicketNotifications: checked })}
+                            id="notificationsEnabled"
+                            checked={formData.notificationsEnabled}
+                            onCheckedChange={(checked) => setFormData({ ...formData, notificationsEnabled: checked })}
                           />
                         </div>
-                      );
-                    })()}
 
-                    {/* 3-5. User Management Sub-Access */}
-                    {(() => {
-                      const isAllowed = permissions.some(p => p.module === 'Users' && p.view);
-                      return (
-                        <div className={`space-y-2 border-t pt-3 ${!isAllowed ? 'opacity-50' : ''}`}>
-                          <Label className="text-sm font-medium">User Management Access</Label>
-                          <p className="text-xs text-muted-foreground mb-2">
-                            Control access to user management tabs {!isAllowed && '(Requires View permission for Users module)'}
-                          </p>
-                          <div className="flex items-center justify-between py-1.5">
-                            <Label htmlFor="access-users" className="text-sm">Users Tab</Label>
-                            <Switch
-                              id="access-users"
-                              checked={formData.userManagementAccess.users}
-                              disabled={!isAllowed}
-                              onCheckedChange={(checked) => setFormData({ 
-                                ...formData, 
-                                userManagementAccess: { ...formData.userManagementAccess, users: checked }
-                              })}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between py-1.5">
-                            <Label htmlFor="access-tenant-users" className="text-sm">Tenant Users Tab</Label>
-                            <Switch
-                              id="access-tenant-users"
-                              checked={formData.userManagementAccess.tenantUsers}
-                              disabled={!isAllowed}
-                              onCheckedChange={(checked) => setFormData({ 
-                                ...formData, 
-                                userManagementAccess: { ...formData.userManagementAccess, tenantUsers: checked }
-                              })}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between py-1.5">
-                            <Label htmlFor="access-other-users" className="text-sm">Other Users Tab</Label>
-                            <Switch
-                              id="access-other-users"
-                              checked={formData.userManagementAccess.otherUsers}
-                              disabled={!isAllowed}
-                              onCheckedChange={(checked) => setFormData({ 
-                                ...formData, 
-                                userManagementAccess: { ...formData.userManagementAccess, otherUsers: checked }
-                              })}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+                        {/* 2. Ticket Email Notifications */}
+                        {(() => {
+                          const isAllowed = formData.selectedRoles.includes('Manage Tickets') || formData.selectedRoles.includes('Tenant') || user?.role === 'Tenant';
+                          return (
+                            <div className={`flex items-center justify-between py-2 border-t ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <div>
+                                <Label htmlFor="receiveTicketNotifications" className="text-sm font-medium">Ticket Email Notifications</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Receive email notifications for ticket events {!isAllowed && '(Requires Manage Tickets or Tenant role)'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="receiveTicketNotifications"
+                                checked={formData.receiveTicketNotifications}
+                                disabled={!isAllowed}
+                                onCheckedChange={(checked) => setFormData({ ...formData, receiveTicketNotifications: checked })}
+                              />
+                            </div>
+                          );
+                        })()}
+
+                        {/* 3-5. User Management Sub-Access */}
+                        {(() => {
+                          const isAllowed = permissions.some(p => p.module === 'Users' && p.view);
+                          return (
+                            <div className={`space-y-2 border-t pt-3 ${!isAllowed ? 'opacity-50' : ''}`}>
+                              <Label className="text-sm font-medium">User Management Access</Label>
+                              <p className="text-xs text-muted-foreground mb-2">
+                                Control access to user management tabs {!isAllowed && '(Requires View permission for Users module)'}
+                              </p>
+                              <div className="flex items-center justify-between py-1.5">
+                                <Label htmlFor="access-users" className="text-sm">Users Tab</Label>
+                                <Switch
+                                  id="access-users"
+                                  checked={formData.userManagementAccess.users}
+                                  disabled={!isAllowed}
+                                  onCheckedChange={(checked) => setFormData({ 
+                                    ...formData, 
+                                    userManagementAccess: { ...formData.userManagementAccess, users: checked }
+                                  })}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between py-1.5">
+                                <Label htmlFor="access-tenant-users" className="text-sm">Tenant Users Tab</Label>
+                                <Switch
+                                  id="access-tenant-users"
+                                  checked={formData.userManagementAccess.tenantUsers}
+                                  disabled={!isAllowed}
+                                  onCheckedChange={(checked) => setFormData({ 
+                                    ...formData, 
+                                    userManagementAccess: { ...formData.userManagementAccess, tenantUsers: checked }
+                                  })}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between py-1.5">
+                                <Label htmlFor="access-other-users" className="text-sm">Other Users Tab</Label>
+                                <Switch
+                                  id="access-other-users"
+                                  checked={formData.userManagementAccess.otherUsers}
+                                  disabled={!isAllowed}
+                                  onCheckedChange={(checked) => setFormData({ 
+                                    ...formData, 
+                                    userManagementAccess: { ...formData.userManagementAccess, otherUsers: checked }
+                                  })}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

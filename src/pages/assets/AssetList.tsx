@@ -418,9 +418,33 @@ export default function AssetList({ onCreateNew, onEdit, onView, onDelete, readO
   };
 
   const getBuildingName = (buildingId?: string) => {
-    if (!buildingId) return 'N/A';
+    if (!buildingId || buildingId === 'all') return 'N/A';
     const building = buildings.find(b => b.id === buildingId);
     return building?.name || buildingId;
+  };
+
+  const getFloorDisplayName = (floorId?: string) => {
+    if (!floorId || floorId === 'all') return '';
+    const fOpt = filterFloorOptions.find(f => f.id === floorId);
+    if (fOpt) return fOpt.floor_name || (fOpt.floor_number ? `Floor ${fOpt.floor_number}` : floorId);
+    if (floors[floorId]) return floors[floorId];
+    return floorId;
+  };
+
+  const getRoomDisplayName = (roomId?: string) => {
+    if (!roomId || roomId === 'all') return '';
+    const rOpt = filterRoomOptions.find(r => r.id === roomId);
+    if (rOpt?.room_number) return rOpt.room_number;
+    if (rooms[roomId]) return rooms[roomId];
+    return roomId;
+  };
+
+  const getTenantDisplayName = (tenantId?: string) => {
+    if (!tenantId || tenantId === 'all') return '';
+    const tOpt = tenantOptions.find(t => t.id === tenantId);
+    if (tOpt) return tOpt.company || tOpt.name || tenantId;
+    if (tenants[tenantId]) return tenants[tenantId];
+    return tenantId;
   };
 
   const handleDelete = async (id: string) => {
@@ -1140,9 +1164,9 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
           )}
         </div>
 
-        {(filterCategory || filterSubCategory || filterType || filterStatus || filterBuilding || filterFloor || filterRoom || filterTenant || filterColor || filterMaterial || filterSize) && (
+        {[filterCategory, filterSubCategory, filterType, filterStatus, filterBuilding, filterFloor, filterRoom, filterTenant, filterColor, filterMaterial, filterSize].some(val => val && val !== 'all') && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {filterCategory && (
+            {filterCategory && filterCategory !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterCategory}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterCategory?.('')}>
@@ -1150,7 +1174,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterSubCategory && (
+            {filterSubCategory && filterSubCategory !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterSubCategory}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterSubCategory?.('')}>
@@ -1158,7 +1182,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterType && (
+            {filterType && filterType !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterType}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterType?.('')}>
@@ -1166,7 +1190,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterStatus && (
+            {filterStatus && filterStatus !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterStatus}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterStatus?.('')}>
@@ -1174,39 +1198,39 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterBuilding && (
+            {filterBuilding && filterBuilding !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <span>{filterBuilding}</span>
+                <span>{getBuildingName(filterBuilding)}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterBuilding?.('')}>
                   <X className="h-3 w-3" />
                 </Button>
               </Badge>
             )}
-            {filterFloor && (
+            {filterFloor && filterFloor !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <span>{filterFloor}</span>
+                <span>{getFloorDisplayName(filterFloor)}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterFloor?.('')}>
                   <X className="h-3 w-3" />
                 </Button>
               </Badge>
             )}
-            {filterRoom && (
+            {filterRoom && filterRoom !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <span>{filterRoom}</span>
+                <span>{getRoomDisplayName(filterRoom)}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterRoom?.('')}>
                   <X className="h-3 w-3" />
                 </Button>
               </Badge>
             )}
-            {filterTenant && (
+            {filterTenant && filterTenant !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <span>{filterTenant}</span>
+                <span>{getTenantDisplayName(filterTenant)}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterTenant?.('')}>
                   <X className="h-3 w-3" />
                 </Button>
               </Badge>
             )}
-            {filterColor && (
+            {filterColor && filterColor !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterColor}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterColor?.('')}>
@@ -1214,7 +1238,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterMaterial && (
+            {filterMaterial && filterMaterial !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterMaterial}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterMaterial?.('')}>
@@ -1222,7 +1246,7 @@ const buildExportData = (toExport: typeof filteredAssets) => toExport.map(a => (
                 </Button>
               </Badge>
             )}
-            {filterSize && (
+            {filterSize && filterSize !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <span>{filterSize}</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilterSize?.('')}>

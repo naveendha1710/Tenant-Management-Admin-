@@ -883,8 +883,10 @@ export default function ManageTicketsPage() {
                               unitNumber.toLowerCase().includes(searchQuery.toLowerCase());
     
     let matchesStatus = true;
-    if (statusFilter === 'all_tickets') {
+    if (statusFilter === 'all_tickets' || statusFilter === 'all') {
       matchesStatus = true;
+    } else if (statusFilter === 'pending' || statusFilter === 'open') {
+      matchesStatus = ['pending', 'reopened', 'open'].includes(ticket.status);
     } else if (statusFilter === 'pending_estimation') {
       matchesStatus = ['assigned', 'rca_added'].includes(ticket.status);
     } else if (statusFilter === 'overdue') {
@@ -909,7 +911,9 @@ export default function ManageTicketsPage() {
       matchesStatus = ['approved', 'work_started', 'in_progress', 'work_completed'].includes(ticket.status);
     } else if (statusFilter === 'completed') {
       matchesStatus = ['resolved', 'closed'].includes(ticket.status);
-    } else if (statusFilter !== 'all') {
+    } else if (statusFilter === 'rejected') {
+      matchesStatus = ['rejected', 'tenant_rejected'].includes(ticket.status);
+    } else {
       matchesStatus = ticket.status === statusFilter;
     }
     
@@ -2747,7 +2751,7 @@ export default function ManageTicketsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Ticket #</TableHead>
-                    <TableHead>Created By</TableHead>
+                    <TableHead>Tenant</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Priority</TableHead>
@@ -2761,11 +2765,13 @@ export default function ManageTicketsPage() {
                   ) : paginatedTickets.length === 0 ? (
                     <TableRow><TableCell colSpan={7} className="text-center py-8">No tickets found</TableCell></TableRow>
                   ) : (
-                    paginatedTickets.map((ticket) => (
-                      <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onDoubleClick={() => { setSelectedTicket(ticket); setIsDetailOpen(true); }}>
-                        <TableCell className="font-medium">{ticket.ticket_number || ticket.id.slice(-6)}</TableCell>
-                          <TableCell>{ticket.created_by_name || (ticket.created_by_user_id && usersMap[ticket.created_by_user_id]?.name) || 'N/A'}</TableCell>
-                        <TableCell>{ticket.title}</TableCell>
+                    paginatedTickets.map((ticket) => {
+                      const tenantCompanyName = ticket.tenant?.company_name || ticket.tenant_name || (ticket.tenant_id && tenants.find(t => t.id === ticket.tenant_id)?.company_name) || (ticket.on_behalf_tenant_id && tenants.find(t => t.id === ticket.on_behalf_tenant_id)?.company_name) || ticket.created_by_name || (ticket.created_by_user_id && usersMap[ticket.created_by_user_id]?.name) || 'N/A';
+                      return (
+                        <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onDoubleClick={() => { setSelectedTicket(ticket); setIsDetailOpen(true); }}>
+                          <TableCell className="font-medium">{ticket.ticket_number || ticket.id.slice(-6)}</TableCell>
+                          <TableCell>{tenantCompanyName}</TableCell>
+                          <TableCell>{ticket.title}</TableCell>
                         <TableCell><Badge className={getStatusColor(ticket.status)}>{getStatusLabel(ticket.status)}</Badge></TableCell>
                         <TableCell><Badge className={getPriorityColor(ticket.priority)}>{ticket.priority}</Badge></TableCell>
                         <TableCell>{new Date(ticket.created_at).toLocaleDateString()}</TableCell>
@@ -2941,8 +2947,9 @@ export default function ManageTicketsPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
+                    );
+                  })
+                )}
                 </TableBody>
               </Table>
             </div>
