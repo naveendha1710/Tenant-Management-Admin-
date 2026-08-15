@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { Calendar, Search, Filter, Plus, Eye, RefreshCw, X, FileText, Download } from 'lucide-react';
-import { PMStatusBadge } from '@/pages/preventive-maintenance/components/PMStatusBadge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Pagination } from '@/components/ui/pagination';
 import PMReportModal from '@/components/reports/PMReportModal';
 import { exportPMReport } from '@/services/pmExcelExportService';
@@ -61,15 +61,27 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
 
   // Filters
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterSubCategory, setFilterSubCategory] = useState('all');
+  const [filterSubCategories, setFilterSubCategories] = useState<string[]>([]);
+  const [filterType, setFilterType] = useState('all');
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [assetStatuses, setAssetStatuses] = useState<string[]>([]);
   const [filterBuilding, setFilterBuilding] = useState('all');
+  const [buildings, setBuildings] = useState<any[]>([]);
   const [filterFloor, setFilterFloor] = useState('all');
+  const [floors, setFloors] = useState<any[]>([]);
+  const [filterRoom, setFilterRoom] = useState('all');
+  const [rooms, setRooms] = useState<any[]>([]);
   const [tenantFilter, setTenantFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [filterColor, setFilterColor] = useState('all');
+  const [filterMaterial, setFilterMaterial] = useState('all');
+  const [filterSize, setFilterSize] = useState('all');
+  const [filterCombinations, setFilterCombinations] = useState<any[]>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [assetCategories, setAssetCategories] = useState<string[]>([]);
-  const [buildings, setBuildings] = useState<any[]>([]);
-  const [floors, setFloors] = useState<any[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
 
   // PM Form
   const [pmStartDate, setPmStartDate] = useState('');
@@ -89,7 +101,6 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
     try {
       setLoading(true);
       
-      // Update task statuses based on date (only update rows that are not already in target status)
       const today = new Date().toISOString().split('T')[0];
       await supabase
         .from('pm_task_instances')
@@ -127,7 +138,6 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
       const assetIds = pmSchedules.map(pm => pm.asset_id).filter(Boolean);
       const pmNextDates = [...new Set(pmSchedules.map(pm => pm.pm_next_date).filter(Boolean))];
 
-      // Chunk requests to avoid URL length limit on .in(...)
       const taskInstances = await fetchInChunks(assetIds, 50, async (chunk) => {
         const { data } = await supabase
           .from('pm_task_instances')
@@ -151,45 +161,41 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
         const tenantIds = [...new Set(assetsData.map(a => a.handover_to).filter(Boolean))];
         const buildingIds = [...new Set(assetsData.map(a => a.building).filter(Boolean))];
         const floorIds = [...new Set(assetsData.map(a => a.floor_id).filter(Boolean))];
-        const userIds = [...new Set(pmSchedules.map(pm => pm.assigned_to).filter(Boolean))];
+        const assignedUserIds = [...new Set(pmSchedules.map(pm => pm.assigned_to).filter(Boolean))];
 
         const [tenantsData, buildingsData, floorsData, usersData] = await Promise.all([
-          fetchInChunks(tenantIds, 50, async chunk => (await supabase.from('tenants').select('id, company').in('id', chunk)).data || []),
+          fetchInChunks(tenantIds, 50, async chunk => (await supabase.from('tenants').select('id, company, name').in('id', chunk)).data || []),
           fetchInChunks(buildingIds, 50, async chunk => (await supabase.from('buildings').select('id, name').in('id', chunk)).data || []),
           fetchInChunks(floorIds, 50, async chunk => (await supabase.from('floors').select('id, floor_name, floor_number').in('id', chunk)).data || []),
-          fetchInChunks(userIds, 50, async chunk => (await supabase.from('users').select('id, name').in('id', chunk)).data || [])
+          fetchInChunks(assignedUserIds, 50, async chunk => (await supabase.from('users').select('id, name').in('id', chunk)).data || [])
         ]);
 
-        const tenantMap = new Map(tenantsData.map(t => [t.id, t.company]));
+        const tenantMap = new Map(tenantsData.map(t => [t.id, t.company || t.name]));
         const buildingMap = new Map(buildingsData.map(b => [b.id, b.name]));
         const floorMap = new Map(floorsData.map(f => [f.id, f.floor_name || f.floor_number]));
         const userMap = new Map(usersData.map(u => [u.id, u.name]));
 
-        setTenants(tenantsData);
+        const uniqueTenants = tenantsData.map(t => ({ id: t.id, company: t.company || t.name }));
+        setTenants(uniqueTenants);
 
         const pmMap = new Map(pmSchedules.map(pm => [pm.asset_id, pm]));
 
         const formatted = assetsData.map(asset => {
           const pm = pmMap.get(asset.id);
           const pmDate = pm?.pm_next_date || '';
-          const taskStatus = taskStatusMap.get(asset.id);
           
-          let pmStatus: 'overdue' | 'due' | 'upcoming';
-          
-          // Use status from pm_task_instances if available
-          if (taskStatus === 'COMPLETED') {
-            pmStatus = 'upcoming';
-          } else if (taskStatus === 'OVERDUE') {
+          let pmStatus: 'overdue' | 'due' | 'upcoming' = 'upcoming';
+          const taskInstanceStatus = taskStatusMap.get(asset.id);
+          if (taskInstanceStatus === 'OVERDUE') {
             pmStatus = 'overdue';
-          } else if (taskStatus === 'PENDING') {
+          } else if (taskInstanceStatus === 'PENDING') {
             pmStatus = 'due';
-          } else if (taskStatus === 'UPCOMING') {
+          } else if (taskInstanceStatus === 'UPCOMING') {
             pmStatus = 'upcoming';
-          } else {
-            const todayDate = new Date();
-            const nextPM = new Date(pmDate);
-            const diffDays = Math.ceil((nextPM.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
-            
+          } else if (pmDate) {
+            const today = new Date();
+            const pm = new Date(pmDate);
+            const diffDays = Math.ceil((pm.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
             if (diffDays < 0) pmStatus = 'overdue';
             else if (diffDays <= 7) pmStatus = 'due';
             else pmStatus = 'upcoming';
@@ -229,7 +235,7 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
     try {
       const { data: assets } = await supabase
         .from('assets')
-        .select('id, asset_id, asset_name, asset_category, building, floor_id')
+        .select('id, asset_id, asset_name, asset_category, asset_sub_category, asset_type, asset_status, status, building, floor_id, room_id, handover_to, asset_combination')
         .order('asset_name');
 
       if (!assets) return;
@@ -245,11 +251,24 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
       const buildingMap = new Map(buildingsData.map(b => [b.id, b.name]));
       const floorMap = new Map(floorsData.map(f => [f.id, f.floor_name || f.floor_number]));
 
-      const formatted = assets.map(asset => ({
-        ...asset,
-        building_name: buildingMap.get(asset.building) || 'N/A',
-        floor_name: floorMap.get(asset.floor_id) || 'N/A'
-      }));
+      const formatted = assets.map(asset => {
+        let color = '';
+        let material = '';
+        let size = '';
+        if (asset.asset_combination && typeof asset.asset_combination === 'object') {
+          color = asset.asset_combination.color || '';
+          material = asset.asset_combination.material || '';
+          size = asset.asset_combination.size || '';
+        }
+        return {
+          ...asset,
+          color,
+          material,
+          size,
+          building_name: buildingMap.get(asset.building) || 'N/A',
+          floor_name: floorMap.get(asset.floor_id) || 'N/A'
+        };
+      });
 
       setAllAssets(formatted);
     } catch (error) {
@@ -259,15 +278,59 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
 
   const loadFilterData = async () => {
     try {
-      const [categoriesRes, buildingsRes] = await Promise.all([
-        supabase.from('form_dropdowns').select('name').eq('form_type', 'asset').order('name'),
-        supabase.from('buildings').select('id, name').order('name')
+      const [catsRes, subsRes, subSubsRes, buildingsRes, tenantsRes, statusesRes] = await Promise.all([
+        supabase.from('form_dropdowns').select('*').eq('form_type', 'asset').order('name'),
+        supabase.from('form_subcategories').select('*').eq('form_type', 'asset'),
+        supabase.from('form_sub_subcategories').select('*').eq('form_type', 'asset'),
+        supabase.from('buildings').select('id, name').order('name'),
+        supabase.from('tenants').select('id, company, name').order('company'),
+        supabase.from('form_dropdowns').select('name').eq('form_type', 'asset_status').order('name')
       ]);
 
-      setAssetCategories(categoriesRes.data?.map(c => c.name) || []);
+      const configData = catsRes.data?.map(cat => ({
+        name: cat.name,
+        subTypes: subsRes.data?.filter(s => s.category_id === cat.id).map(s => ({
+          name: s.name,
+          subTypes: subSubsRes.data?.filter(ss => ss.subcategory_id === s.id).map(ss => ({
+            name: ss.name
+          })) || []
+        })) || []
+      })) || [];
+
+      (window as any).assetDropdownConfig = configData;
+      setAssetCategories(configData.map((c: any) => c.name));
       setBuildings(buildingsRes.data || []);
+      setTenants(tenantsRes.data?.map(t => ({ id: t.id, company: t.company || t.name })) || []);
+      setAssetStatuses(statusesRes.data?.map(s => s.name) || ['Working', 'Not Working', 'Under Maintenance', 'Scrapped', 'In Storage']);
     } catch (error) {
       console.error('Failed to load filter data:', error);
+    }
+  };
+
+  const loadFilterCombinations = async (assetType: string) => {
+    try {
+      const { data: subSubCategory } = await supabase
+        .from('form_sub_subcategories')
+        .select('id')
+        .eq('name', assetType)
+        .eq('form_type', 'asset')
+        .maybeSingle();
+      
+      if (!subSubCategory) {
+        setFilterCombinations([]);
+        return;
+      }
+      
+      const { data: combinations } = await supabase
+        .from('sub_subcategory_combinations')
+        .select('*')
+        .eq('sub_subcategory_id', subSubCategory.id)
+        .eq('is_active', true);
+        
+      setFilterCombinations(combinations || []);
+    } catch (error) {
+      console.error('Failed to load filter combinations:', error);
+      setFilterCombinations([]);
     }
   };
 
@@ -296,17 +359,124 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
     } else {
       setFloors([]);
       setFilterFloor('all');
+      setRooms([]);
+      setFilterRoom('all');
     }
   }, [filterBuilding]);
 
-  const filteredAssets = allAssets.filter(a => {
-    const matchesSearch = a.asset_name.toLowerCase().includes(assetSearch.toLowerCase()) ||
-      a.asset_id.toLowerCase().includes(assetSearch.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || a.asset_category === filterCategory;
-    const matchesBuilding = filterBuilding === 'all' || a.building === filterBuilding;
-    const matchesFloor = filterFloor === 'all' || a.floor_id === filterFloor;
+  useEffect(() => {
+    if (filterFloor && filterFloor !== 'all') {
+      supabase
+        .from('rooms')
+        .select('id, room_number')
+        .eq('floor_id', filterFloor)
+        .order('room_number')
+        .then(({ data }) => setRooms(data || []));
+    } else {
+      setRooms([]);
+      setFilterRoom('all');
+    }
+  }, [filterFloor]);
 
-    return matchesSearch && matchesCategory && matchesBuilding && matchesFloor;
+  useEffect(() => {
+    if (filterCategory && filterCategory !== 'all') {
+      const config = (window as any).assetDropdownConfig || [];
+      const category = config.find((c: any) => c.name === filterCategory);
+      const subTypes = category?.subTypes?.map((st: any) => st.name) || [];
+      setFilterSubCategories(subTypes);
+    } else {
+      setFilterSubCategories([]);
+      setFilterSubCategory('all');
+      setFilterTypes([]);
+      setFilterType('all');
+      setFilterCombinations([]);
+      setFilterColor('all');
+      setFilterMaterial('all');
+      setFilterSize('all');
+    }
+  }, [filterCategory]);
+
+  useEffect(() => {
+    if (filterSubCategory && filterSubCategory !== 'all') {
+      const config = (window as any).assetDropdownConfig || [];
+      const category = config.find((c: any) => c.name === filterCategory);
+      const subCategory = category?.subTypes?.find((st: any) => st.name === filterSubCategory);
+      const subSubTypes = subCategory?.subTypes?.map((sst: any) => sst.name) || [];
+      setFilterTypes(subSubTypes);
+    } else {
+      setFilterTypes([]);
+      setFilterType('all');
+      setFilterCombinations([]);
+      setFilterColor('all');
+      setFilterMaterial('all');
+      setFilterSize('all');
+    }
+  }, [filterSubCategory]);
+
+  useEffect(() => {
+    if (filterType && filterType !== 'all') {
+      loadFilterCombinations(filterType);
+    } else {
+      setFilterCombinations([]);
+      setFilterColor('all');
+      setFilterMaterial('all');
+      setFilterSize('all');
+    }
+  }, [filterType]);
+
+  const clearAllFilters = () => {
+    setFilterCategory('all');
+    setFilterSubCategory('all');
+    setFilterType('all');
+    setFilterStatus('all');
+    setFilterBuilding('all');
+    setFilterFloor('all');
+    setFilterRoom('all');
+    setTenantFilter('all');
+    setFilterColor('all');
+    setFilterMaterial('all');
+    setFilterSize('all');
+    setAssetSearch('');
+    setFilterSubCategories([]);
+    setFilterTypes([]);
+    setFloors([]);
+    setRooms([]);
+    setFilterCombinations([]);
+  };
+
+  const activeFilterCount = [
+    filterCategory !== 'all',
+    filterSubCategory !== 'all',
+    filterType !== 'all',
+    filterStatus !== 'all',
+    filterBuilding !== 'all',
+    filterFloor !== 'all',
+    filterRoom !== 'all',
+    tenantFilter !== 'all',
+    filterColor !== 'all',
+    filterMaterial !== 'all',
+    filterSize !== 'all',
+    assetSearch !== ''
+  ].filter(Boolean).length;
+
+  const filteredAssets = allAssets.filter(a => {
+    const matchesSearch = !assetSearch || 
+      a.asset_name?.toLowerCase().includes(assetSearch.toLowerCase()) ||
+      a.asset_id?.toLowerCase().includes(assetSearch.toLowerCase());
+      
+    const matchesCategory = !filterCategory || filterCategory === 'all' || a.asset_category === filterCategory;
+    const matchesSubCategory = !filterSubCategory || filterSubCategory === 'all' || a.asset_sub_category === filterSubCategory;
+    const matchesType = !filterType || filterType === 'all' || a.asset_type === filterType;
+    const matchesStatus = !filterStatus || filterStatus === 'all' || a.asset_status === filterStatus || a.status === filterStatus;
+    const matchesBuilding = !filterBuilding || filterBuilding === 'all' || a.building === filterBuilding;
+    const matchesFloor = !filterFloor || filterFloor === 'all' || a.floor_id === filterFloor;
+    const matchesRoom = !filterRoom || filterRoom === 'all' || a.room_id === filterRoom;
+    const matchesTenant = !tenantFilter || tenantFilter === 'all' || a.handover_to === tenantFilter;
+    const matchesColor = !filterColor || filterColor === 'all' || a.color === filterColor;
+    const matchesMaterial = !filterMaterial || filterMaterial === 'all' || a.material === filterMaterial;
+    const matchesSize = !filterSize || filterSize === 'all' || a.size === filterSize;
+
+    return matchesSearch && matchesCategory && matchesSubCategory && matchesType && matchesStatus && matchesBuilding && matchesFloor && matchesRoom && matchesTenant && matchesColor && matchesMaterial && matchesSize;
   });
 
   const assetSelectionTotalPages = Math.ceil(filteredAssets.length / assetSelectionItemsPerPage);
@@ -564,62 +734,260 @@ export const PMSchedule: React.FC<PMScheduleProps> = ({ onViewAsset, paginatedAs
               </div>
             )}
 
-            {/* Filters */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <Label>Category</Label>
-                <Select value={filterCategory} onValueChange={setFilterCategory}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {assetCategories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Search Bar & Popover Filters Button */}
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search asset name or ID..."
+                  value={assetSearch}
+                  onChange={(e) => setAssetSearch(e.target.value)}
+                  className="pl-9 text-xs sm:text-sm h-9"
+                />
               </div>
-              <div>
-                <Label>Building</Label>
-                <Select value={filterBuilding} onValueChange={setFilterBuilding}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Buildings</SelectItem>
-                    {buildings.map(b => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Floor</Label>
-                <Select value={filterFloor} onValueChange={setFilterFloor} disabled={filterBuilding === 'all'}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Floors</SelectItem>
-                    {floors.map(f => (
-                      <SelectItem key={f.id} value={f.id}>{f.floor_name || f.floor_number}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Search</Label>
-                <div className="relative mt-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Asset name or ID..."
-                    value={assetSearch}
-                    onChange={(e) => setAssetSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 relative gap-2 shrink-0">
+                    <Filter className="h-4 w-4" />
+                    Filters
+                    {activeFilterCount > 0 && (
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-semibold">
+                        {activeFilterCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[42rem] max-w-[calc(100vw-2rem)] rounded-lg p-4" align="end">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <Filter className="h-3.5 w-3.5" />
+                        Asset Filters
+                      </span>
+                      {activeFilterCount > 0 && (
+                        <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-7 text-xs text-muted-foreground hover:text-foreground">
+                          <X className="h-3 w-3 mr-1" />
+                          Clear All Filters
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {/* Asset Type */}
+                      <div>
+                        <Label className="text-xs font-medium">Asset Type</Label>
+                        <Select value={filterCategory} onValueChange={setFilterCategory}>
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Asset Types" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Asset Types</SelectItem>
+                            {assetCategories.map(cat => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        <Label className="text-xs font-medium">Category</Label>
+                        <Select 
+                          value={filterSubCategory} 
+                          onValueChange={setFilterSubCategory} 
+                          disabled={!filterCategory || filterCategory === 'all'}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Categories</SelectItem>
+                            {filterSubCategories.map(sc => (
+                              <SelectItem key={sc} value={sc}>{sc}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Sub Category */}
+                      <div>
+                        <Label className="text-xs font-medium">Sub Category</Label>
+                        <Select 
+                          value={filterType} 
+                          onValueChange={setFilterType} 
+                          disabled={!filterSubCategory || filterSubCategory === 'all'}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Sub Categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Sub Categories</SelectItem>
+                            {filterTypes.map(t => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        <Label className="text-xs font-medium">Status</Label>
+                        <Select value={filterStatus} onValueChange={setFilterStatus}>
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Statuses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Statuses</SelectItem>
+                            {assetStatuses.map(s => (
+                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Building */}
+                      <div>
+                        <Label className="text-xs font-medium">Building</Label>
+                        <Select value={filterBuilding} onValueChange={setFilterBuilding}>
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Buildings" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Buildings</SelectItem>
+                            {buildings.map(b => (
+                              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Floor */}
+                      <div>
+                        <Label className="text-xs font-medium">Floor</Label>
+                        <Select 
+                          value={filterFloor} 
+                          onValueChange={setFilterFloor} 
+                          disabled={!filterBuilding || filterBuilding === 'all'}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Floors" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Floors</SelectItem>
+                            {floors.map(f => (
+                              <SelectItem key={f.id} value={f.id}>{f.floor_name || f.floor_number}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Room */}
+                      <div>
+                        <Label className="text-xs font-medium">Room</Label>
+                        <Select 
+                          value={filterRoom} 
+                          onValueChange={setFilterRoom} 
+                          disabled={!filterFloor || filterFloor === 'all'}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Rooms" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Rooms</SelectItem>
+                            {rooms.map(r => (
+                              <SelectItem key={r.id} value={r.id}>{r.room_number}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Tenant */}
+                      <div>
+                        <Label className="text-xs font-medium">Tenant</Label>
+                        <Select value={tenantFilter} onValueChange={setTenantFilter}>
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Tenants" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Tenants</SelectItem>
+                            {tenants.map(t => (
+                              <SelectItem key={t.id} value={t.id}>{t.company || t.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Color */}
+                      <div>
+                        <Label className="text-xs font-medium">Color</Label>
+                        <Select 
+                          value={filterColor} 
+                          onValueChange={setFilterColor} 
+                          disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Colors" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Colors</SelectItem>
+                            {[...new Set(filterCombinations.map(c => c.color).filter(Boolean))].map(color => (
+                              <SelectItem key={color} value={color}>{color}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Material */}
+                      <div>
+                        <Label className="text-xs font-medium">Material</Label>
+                        <Select 
+                          value={filterMaterial} 
+                          onValueChange={setFilterMaterial} 
+                          disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Materials" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Materials</SelectItem>
+                            {[...new Set(filterCombinations.map(c => c.material).filter(Boolean))].map(mat => (
+                              <SelectItem key={mat} value={mat}>{mat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Size */}
+                      <div>
+                        <Label className="text-xs font-medium">Size</Label>
+                        <Select 
+                          value={filterSize} 
+                          onValueChange={setFilterSize} 
+                          disabled={!filterType || filterType === 'all' || filterCombinations.length === 0}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="All Sizes" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Sizes</SelectItem>
+                            {[...new Set(filterCombinations.map(c => c.size).filter(Boolean))].map(size => (
+                              <SelectItem key={size} value={size}>{size}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 text-xs text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Clear Filters
+                </Button>
+              )}
             </div>
 
             {/* Asset Selection Table */}
